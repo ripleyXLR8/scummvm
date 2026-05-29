@@ -34,6 +34,7 @@ endif
 ifdef ENABLE_ATLANTIS
 MODULE_OBJS += \
 	atlantis/bigfile.o \
+	atlantis/con_script.o \
 	atlantis/engine.o \
 	atlantis/wam_parser.o
 endif
