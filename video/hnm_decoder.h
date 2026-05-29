@@ -161,7 +161,7 @@ private:
 	public:
 		HNM6VideoTrack(uint32 width, uint32 height, uint32 frameSize, uint32 frameCount,
 		               uint32 regularFrameDelayMs, uint32 audioSampleRate,
-		               const Graphics::PixelFormat &format);
+		               const Graphics::PixelFormat &format, bool warpMode = false);
 		~HNM6VideoTrack() override;
 
 		uint16 getWidth() const override;

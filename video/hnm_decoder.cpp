@@ -166,9 +166,35 @@ bool HNMDecoder::loadStream(Common::SeekableReadStream *stream) {
 			audioSampleRate = ((audioflags >> 4) & 6) * 11025;
 			_audioTrack = new APCAudioTrack(audioSampleRate, stereo, getSoundType());
 		}
+		// Peek at the first video chunk to determine if this is a warp-mode (IW) file.
+		// Warp mode uses a keyframe-only panorama decoder and is mutually exclusive with
+		// video mode (which allocates a second buffer for inter-frame delta decoding).
+		bool hnm6WarpMode = false;
+		{
+			int64 savedPos = _stream->pos();
+			uint32 scSize = _stream->readUint32LE() & 0x00ffffff;
+			uint32 scRemaining = scSize >= 4 ? scSize - 4 : 0;
+			while (scRemaining >= 8) {
+				uint32 cSize = _stream->readUint32LE();
+				uint16 cType = _stream->readUint16BE();
+				_stream->skip(2); // flags
+				if (cType == MKTAG16('I', 'W')) {
+					hnm6WarpMode = true;
+					break;
+				} else if (cType == MKTAG16('I', 'X')) {
+					break;
+				}
+				// Skip non-video chunks (audio etc.)
+				uint32 alignedSize = ((cSize + 3) / 4) * 4;
+				if (alignedSize < 8) break;
+				_stream->skip(alignedSize - 8);
+				scRemaining -= MIN(alignedSize, scRemaining);
+			}
+			_stream->seek(savedPos);
+		}
 		_videoTrack = new HNM6VideoTrack(width, height, frameSize, frameCount,
 		                                 _regularFrameDelayMs, audioSampleRate,
-		                                 _format);
+		                                 _format, hnm6WarpMode);
 	} else {
 		// We should never be here
 		close();
@@ -1037,10 +1063,12 @@ void HNMDecoder::HNM5VideoTrack::decodeFrame(byte *data, uint32 size) {
 
 HNMDecoder::HNM6VideoTrack::HNM6VideoTrack(uint32 width, uint32 height, uint32 frameSize,
         uint32 frameCount, uint32 regularFrameDelayMs, uint32 audioSampleRate,
-        const Graphics::PixelFormat &format) :
+        const Graphics::PixelFormat &format, bool warpMode) :
 	HNMVideoTrack(frameCount, regularFrameDelayMs, audioSampleRate),
-	_decoder(Image::createHNM6Decoder(width, height, format, frameSize, true)),
+	_decoder(Image::createHNM6Decoder(width, height, format, frameSize, !warpMode)),
 	_surface(nullptr) {
+	if (warpMode)
+		_decoder->setWarpMode(true);
 }
 
 HNMDecoder::HNM6VideoTrack::~HNM6VideoTrack() {
@@ -1067,6 +1095,8 @@ void HNMDecoder::HNM6VideoTrack::decodeChunk(byte *data, uint32 size,
         uint16 chunkType, uint16 flags) {
 	if (chunkType == MKTAG16('I', 'X') ||
 	    chunkType == MKTAG16('I', 'W')) {
+		// IW chunks use the warp (panorama) decoder; IX uses the standard decoder.
+		_decoder->setWarpMode(chunkType == MKTAG16('I', 'W'));
 		Common::MemoryReadStream stream(data, size);
 		_surface = _decoder->decodeFrame(stream);
 	} else {
