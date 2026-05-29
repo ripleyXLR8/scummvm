@@ -31,6 +31,13 @@ MODULE_OBJS += \
 	versailles/toolbar.o
 endif
 
+ifdef ENABLE_ATLANTIS
+MODULE_OBJS += \
+	atlantis/bigfile.o \
+	atlantis/engine.o \
+	atlantis/wam_parser.o
+endif
+
 # This module can be built as a plugin
 ifeq ($(ENABLE_CRYOMNI3D), DYNAMIC_PLUGIN)
 PLUGIN := 1

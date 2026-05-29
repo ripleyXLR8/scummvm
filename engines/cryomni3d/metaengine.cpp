@@ -35,6 +35,10 @@
 #include "cryomni3d/versailles/engine.h"
 #endif
 
+#ifdef ENABLE_ATLANTIS
+#include "cryomni3d/atlantis/engine.h"
+#endif
+
 #include "cryomni3d/detection.h"
 
 namespace CryOmni3D {
@@ -145,6 +149,13 @@ Common::Error CryOmni3DMetaEngine::createInstance(OSystem *syst, Engine **engine
 	case GType_HNM_PLAYER:
 		*engine = new CryOmni3DEngine_HNMPlayer(syst, gd);
 		return Common::kNoError;
+	case GType_ATLANTIS:
+#ifdef ENABLE_ATLANTIS
+		*engine = new Atlantis::CryOmni3DEngine_Atlantis(syst, gd);
+		return Common::kNoError;
+#else
+		return Common::Error(Common::kUnsupportedGameidError, _s("Atlantis: The Lost Tale support is not compiled in"));
+#endif
 	default:
 		return Common::kUnsupportedGameidError;
 	}
