@@ -65,6 +65,12 @@ static const char *const kBigFileSubdirs[] = {
 CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
         const CryOmni3DGameDescription *gamedesc) :
 	CryOmni3DEngine(syst, gamedesc),
+	_currentCONChapter(0),
+	_chapterStartMs(0),
+	_currentChapter(uint(-1)),
+	_currentPlaceId(uint(-1)),
+	_nextPlaceId(uint(-1)),
+	_currentPlace(nullptr),
 	_mainPalette(nullptr),
 	_warpLoaded(false),
 	_propAnimFrames(0),
@@ -216,30 +222,11 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	initGraphics(640, 480, &screenFmt);
 	_omni3dMan.setPixelFormat(screenFmt);
 
-	// Load the chapter-1 navigation map and show its first place's cyclorama.
-	// (Place transitions, zones and CON-driven flow land in later commits;
-	// this skeleton just proves boot + archive + WAM + panorama + look.)
-	Common::ScopedPtr<Common::SeekableReadStream> wamStream(
-	    openBigFileStream(kFileTypeWAM, "ATLAN1.WAM"));
-	if (!wamStream) {
-		SearchMan.remove("Atlantis_BigFile");
-		return Common::Error(Common::kReadingFailed, "Cannot open WAM\\ATLAN1.WAM");
-	}
-	_wam.loadStream(*wamStream);
-	if (_wam.getPlaces().empty()) {
-		SearchMan.remove("Atlantis_BigFile");
-		return Common::Error(Common::kReadingFailed, "ATLAN1.WAM has no places");
-	}
-
-	const AtlantisPlace &place = _wam.getPlaces()[0];
-	if (loadCycloHNM(place.cycloHnm)) {
-		_omni3dMan.setSourceSurface(&_warpSurface);
-		setupPalette(_mainPalette, 0, 256);
-	}
-	// Full 360-degree horizontal rotation; vertical tilt limited to +/-45 degrees.
-	_omni3dMan.setBetaMinConstraint(-M_PI / 4.);
-	_omni3dMan.setBetaMaxConstraint(M_PI / 4.);
-	setMousePos(Common::Point(320, 240));
+	// Enter chapter 1: load its WAM navigation map and CON scenario script,
+	// then show the starting place's cyclorama.  (CON-driven arrival/departure
+	// flow, zone transitions and the warp-cursor handler land in later commits;
+	// this proves boot + archive + WAM + CON load + panorama + look.)
+	changeChapter(1);
 
 	showMouse(true);
 	bool quit = false;

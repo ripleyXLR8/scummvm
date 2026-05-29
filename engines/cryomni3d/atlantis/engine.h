@@ -23,6 +23,8 @@
 #define CRYOMNI3D_ATLANTIS_ENGINE_H
 
 #include "common/error.h"
+#include "common/hash-str.h"
+#include "common/hashmap.h"
 #include "common/path.h"
 #include "common/str.h"
 #include "graphics/surface.h"
@@ -31,6 +33,7 @@
 #include "cryomni3d/omni3d.h"
 
 #include "cryomni3d/atlantis/bigfile.h"
+#include "cryomni3d/atlantis/con_script.h"
 #include "cryomni3d/atlantis/wam_parser.h"
 
 namespace CryOmni3D {
@@ -59,6 +62,13 @@ enum FileType {
 	kFileTypeSprite2D,     // SPRITE\2D\    — 2D subject/cursor icon sprites (SPR files)
 	kFileTypeImages,       // IMAGES\       — full-screen TGA background images
 	kFileTypePuzzles       // PUZZLES\      — per-minigame sprites + TGAs (eclipse, chess, …)
+};
+
+// The place each chapter starts in (placeId) and the initial camera angles.
+struct LevelInitialState {
+	uint placeId;
+	float alpha;
+	float beta;
 };
 
 // Atlantis: The Lost Tale.
@@ -95,14 +105,43 @@ public:
 	uint displayOptions() override { return 0; }
 
 private:
+	// --- Chapter / place lifecycle (place.cpp) ----------------------------
+	// Set up the chapter's WAM navigation map and load its CON script.
+	void setupChapterWAM(int chapter);
+	// Switch to the given chapter: load its WAM/CON and enter the start place.
+	void changeChapter(int chapter);
+	// Enter _nextPlaceId: load its cyclo panorama and point the viewer at it.
+	void doPlaceChange();
+
+	// --- CON scenario-script execution (con_exec.cpp) ---------------------
+	// Load CHAPI<chapter>.CON, resetting the per-chapter game-variable state.
+	void loadConScript(int chapter);
+	// True for the 7 game variables that survive a chapter change.
+	static bool isPersistentGameVar(const Common::String &key);
+
 	// Decode the first frame of a panoramic cyclorama HNM into _warpSurface
 	// (and a clean copy in _cycloSurface), updating _mainPalette.
 	bool loadCycloHNM(const Common::String &name);
 
+	static const LevelInitialState kChapterInitialStates[];
+
 	BigFileArchive _bigFile;
 	AtlantisWAMParser _wam;
+	Common::String _currentWAMName;
 
 	Omni3DManager _omni3dMan;
+
+	// CON scenario-script state.
+	ConScript _conScript;
+	uint _currentCONChapter;   // which CHAPI00N.CON is loaded (0 = none)
+	uint32 _chapterStartMs;    // wall-clock at chapter load (for `chaptertime`)
+	Common::HashMap<Common::String, int> _gameVars;
+
+	// Current chapter / place.
+	uint _currentChapter;
+	uint _currentPlaceId;
+	uint _nextPlaceId;
+	const AtlantisPlace *_currentPlace;
 
 	byte *_mainPalette;
 
