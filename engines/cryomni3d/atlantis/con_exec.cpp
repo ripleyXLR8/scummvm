@@ -80,8 +80,146 @@ void CryOmni3DEngine_Atlantis::loadConScript(int chapter) {
 	_conScript.parse((const char *)buf, sz);
 	delete[] buf;
 
+	execConInitCommands();
 	debugC(1, kDebugScript, "loadConScript: '%s' -> %u sections",
 	      name.c_str(), _conScript.sections().size());
+}
+
+void CryOmni3DEngine_Atlantis::execConInitCommands() {
+	for (const Common::String &cmd : _conScript.initCmds())
+		execConSetCommand(cmd);
+}
+
+void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
+	const char *p = cmd.c_str();
+	const char *eq = strchr(p, '=');
+	if (!eq)
+		return;
+	Common::String key(p, (uint)(eq - p));
+	key.toLowercase();
+	int value = atoi(eq + 1);
+
+	if (key == "vue") {
+		// Schedule a place change (gameStep enters it next iteration).
+		_nextPlaceId = (uint)value;
+		return;
+	}
+
+	// Every other command currently just records a game variable.  The
+	// subsystem-specific commands (showperso/hideperso, newsound, addguest,
+	// startpuzzle, enablesuj, …) are interpreted as their subsystems land;
+	// until then they populate _gameVars harmlessly and gate nothing.
+	_gameVars[key] = value;
+}
+
+bool CryOmni3DEngine_Atlantis::evalSelSection(const ConSection &sec,
+                                               int departZone, int currentVue) const {
+	// One random roll per section so multiple `random` clauses in the same
+	// conjunction see a consistent value.
+	const int rolledRandom = (int)_conRng.getRandomNumber(255);
+
+	if (sec.conditions.empty())
+		return true;
+
+	// Left-to-right short-circuit eval (atlantis.exe FUN_004298ac):
+	//   '&' + fail -> EXIT FAIL ; '|' + pass -> EXIT SUCCESS ; end -> last result.
+	for (const ConCondition &cc : sec.conditions) {
+		int lhs;
+		if (cc.key == "departvue") {
+			lhs = departZone;
+		} else if (cc.key == "vue") {
+			lhs = currentVue;
+		} else if (cc.key == "chaptertime") {
+			lhs = _chapterStartMs
+			      ? (int)((g_system->getMillis() - _chapterStartMs) / 1000)
+			      : 0;
+		} else if (cc.key == "nbvisite") {
+			lhs = (currentVue >= 0 && (uint)currentVue < _placeVisits.size())
+			      ? (int)_placeVisits[currentVue] : 0;
+		} else if (cc.key == "random") {
+			lhs = rolledRandom;
+		} else {
+			// Generic variable (covers arriveevue, the flags, initflag, …);
+			// objetenmain / invent<N> resolve to 0 until the inventory lands.
+			Common::HashMap<Common::String, int>::const_iterator it = _gameVars.find(cc.key);
+			lhs = (it != _gameVars.end()) ? it->_value : 0;
+		}
+
+		bool ok;
+		switch (cc.op) {
+		case '=': ok = (lhs == cc.value); break;
+		case '<': ok = (lhs <  cc.value); break;
+		case '>': ok = (lhs >  cc.value); break;
+		case '!': ok = (lhs != cc.value); break;
+		default:  ok = false;             break;
+		}
+
+		if (cc.nextSep == '&') {
+			if (!ok) return false;
+		} else if (cc.nextSep == '|') {
+			if (ok) return true;
+		} else {
+			return ok;
+		}
+	}
+	return true;
+}
+
+void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
+	// Execute the section's /set commands in source order.  Dialog lines are
+	// played by the full version once the dialog layer lands.
+	const uint entryChapter = _currentCONChapter;
+	for (const ConSectionItem &it : sec.items)
+		if (it.isSet)
+			execConSetCommand(it.setCmd);
+
+	// /goN redirect — chain to the target section.  Guard against a chapter
+	// reload (a /set(chapter=N)) invalidating the section list.
+	if (sec.gotoId > 0 && _currentCONChapter == entryChapter) {
+		for (ConSection &t : _conScript.sections())
+			if (t.id == sec.gotoId) {
+				playConSection(t);
+				break;
+			}
+	}
+}
+
+void CryOmni3DEngine_Atlantis::runArrivalSelSections(int arrivedVue, int fromVue) {
+	// arriveevue = the place we arrived FROM (so both the marker form
+	// (arriveevue>0)&(vue=N) and the specific (arriveevue=FROM)&(vue=TO) work).
+	_gameVars["arriveevue"] = (fromVue > 0) ? fromVue : arrivedVue;
+
+	// Single /sel pool, file order, first match fires (atlantis.exe
+	// FUN_004280f8).  This is also what runs each chapter's intro section
+	// (/sel(initflag=0), the first /sel after /FININIT).
+	for (ConSection &sec : _conScript.sections()) {
+		if (sec.isCon || sec.isTimer || sec.played)
+			continue;
+		if (!evalSelSection(sec, 0, arrivedVue))
+			continue;
+		debugC(1, kDebugScript, "runArrivalSelSections: vue=%d firing section %d",
+		      arrivedVue, sec.id);
+		sec.played = true;
+		playConSection(sec);
+		break;   // first match only
+	}
+
+	_gameVars["arriveevue"] = 0;
+}
+
+void CryOmni3DEngine_Atlantis::runDepartureSelSections(int departZone) {
+	// Same single-fire /sel scan; departure sections gate on (departvue=N) or
+	// (departvue>0), arrival-only sections self-exclude (arriveevue is 0 here).
+	for (ConSection &sec : _conScript.sections()) {
+		if (sec.isCon || sec.isTimer)
+			continue;
+		if (!evalSelSection(sec, departZone, (int)_currentPlaceId))
+			continue;
+		debugC(1, kDebugScript, "runDepartureSelSections: zone=%d firing section %d",
+		      departZone, sec.id);
+		playConSection(sec);
+		break;
+	}
 }
 
 } // End of namespace Atlantis

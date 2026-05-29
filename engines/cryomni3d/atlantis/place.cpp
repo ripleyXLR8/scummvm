@@ -79,11 +79,16 @@ void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 
 void CryOmni3DEngine_Atlantis::changeChapter(int chapter) {
 	_currentChapter = (uint)chapter;
+
+	// setupChapterWAM loads the CON and runs its /INIT block, which may set the
+	// start place via /set(vue=N) (e.g. chapter 1 opens on the place-450
+	// cinematic).  Clear _nextPlaceId first so we can detect that.
+	_nextPlaceId = uint(-1);
 	setupChapterWAM(chapter);
 
 	const LevelInitialState &init = kChapterInitialStates[chapter - 1];
-	_nextPlaceId = init.placeId;
-	doPlaceChange();
+	if (_nextPlaceId == uint(-1))
+		_nextPlaceId = init.placeId;   // fall back to the hardcoded start
 	_omni3dMan.setAlpha(init.alpha);
 	_omni3dMan.setBeta(init.beta);
 }

@@ -26,6 +26,7 @@
 #include "common/hash-str.h"
 #include "common/hashmap.h"
 #include "common/path.h"
+#include "common/random.h"
 #include "common/str.h"
 #include "graphics/surface.h"
 
@@ -139,6 +140,18 @@ private:
 	void loadConScript(int chapter);
 	// True for the 7 game variables that survive a chapter change.
 	static bool isPersistentGameVar(const Common::String &key);
+	// Run the /INIT block's /set commands once after a CON load.
+	void execConInitCommands();
+	// Apply one /set command string (e.g. "vue=12", "flagtemp3=1").
+	void execConSetCommand(const Common::String &cmd);
+	// Evaluate a /sel section's condition list (left-to-right short-circuit).
+	bool evalSelSection(const ConSection &sec, int departZone, int currentVue) const;
+	// Execute a fired section's body (its /set commands and /go redirect; the
+	// dialog lines are played once the dialog layer lands).
+	void playConSection(ConSection &sec);
+	// Fire the first matching arrival/departure /sel section, in file order.
+	void runArrivalSelSections(int arrivedVue, int fromVue);
+	void runDepartureSelSections(int departZone);
 
 	// Decode the first frame of a panoramic cyclorama HNM into _warpSurface
 	// (and a clean copy in _cycloSurface), updating _mainPalette.
@@ -157,6 +170,8 @@ private:
 	uint _currentCONChapter;   // which CHAPI00N.CON is loaded (0 = none)
 	uint32 _chapterStartMs;    // wall-clock at chapter load (for `chaptertime`)
 	Common::HashMap<Common::String, int> _gameVars;
+	Common::Array<byte> _placeVisits;          // per-place visit counts (nbvisite)
+	mutable Common::RandomSource _conRng;      // for /sel `random` conditions
 
 	// Current chapter / place.
 	uint _currentChapter;

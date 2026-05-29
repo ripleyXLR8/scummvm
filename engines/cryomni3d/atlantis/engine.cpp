@@ -71,11 +71,15 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_currentPlaceId(uint(-1)),
 	_nextPlaceId(uint(-1)),
 	_currentPlace(nullptr),
+	_isPlaying(false),
+	_abortCommand(kAbortQuit),
+	_conRng("AtlantisConRandom"),
 	_mainPalette(nullptr),
 	_warpLoaded(false),
 	_propAnimFrames(0),
 	_propAnimFrame(0),
 	_propAnimNextMs(0) {
+	_placeVisits.resize(1500, 0);
 }
 
 CryOmni3DEngine_Atlantis::~CryOmni3DEngine_Atlantis() {
@@ -238,9 +242,15 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 
 void CryOmni3DEngine_Atlantis::gameStep() {
 	while (!_abortCommand) {
-		// Enter a pending place (set by changeChapter or a zone transition).
-		if (_nextPlaceId != uint(-1))
+		// Enter a pending place (set by changeChapter, a zone transition or a
+		// CON /set(vue=N)), then run its arrival /sel sections — which may
+		// chain on by setting _nextPlaceId again (the chapter intro flow).
+		if (_nextPlaceId != uint(-1)) {
+			uint fromVue = _currentPlaceId;
 			doPlaceChange();
+			if (_currentPlace)
+				runArrivalSelSections((int)_currentPlaceId, (int)fromVue);
+		}
 		if (_nextPlaceId != uint(-1))
 			continue;
 
@@ -253,11 +263,20 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 			continue;
 		}
 
-		// A zone action in the place-id range navigates there.  (Departure /
-		// arrival CON sections that can gate or redirect the move are added
-		// with the /sel interpreter next.)
-		if (actionId >= 1 && actionId < 10000)
-			executeTransition(actionId);
+		// A zone action in the place-id range is a navigation click: run the
+		// departure /sel sections (which may abort the move by clearing
+		// _nextPlaceId, or redirect it via /set(vue=N)), then transition.
+		if (actionId >= 1 && actionId < 10000) {
+			_nextPlaceId = actionId;
+			runDepartureSelSections((int)actionId);
+			if (!shouldAbort() && _nextPlaceId != uint(-1)) {
+				uint dest = _nextPlaceId;
+				_nextPlaceId = uint(-1);
+				executeTransition(dest);
+			} else {
+				_nextPlaceId = uint(-1);
+			}
+		}
 	}
 }
 
