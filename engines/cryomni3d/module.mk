@@ -37,6 +37,7 @@ MODULE_OBJS += \
 	atlantis/con_exec.o \
 	atlantis/con_script.o \
 	atlantis/engine.o \
+	atlantis/navigation.o \
 	atlantis/place.o \
 	atlantis/wam_parser.o
 endif

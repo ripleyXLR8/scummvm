@@ -115,5 +115,12 @@ void CryOmni3DEngine_Atlantis::doPlaceChange() {
 	      _currentPlaceId, nextPlace->cycloHnm.c_str());
 }
 
+void CryOmni3DEngine_Atlantis::executeTransition(uint nextPlaceId) {
+	// The UBB_VUE place-to-place transition video is played here once the
+	// video layer lands; for now this is a direct change — gameStep() enters
+	// the new place on its next iteration.
+	_nextPlaceId = nextPlaceId;
+}
+
 } // End of namespace Atlantis
 } // End of namespace CryOmni3D

@@ -223,36 +223,42 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	_omni3dMan.setPixelFormat(screenFmt);
 
 	// Enter chapter 1: load its WAM navigation map and CON scenario script,
-	// then show the starting place's cyclorama.  (CON-driven arrival/departure
-	// flow, zone transitions and the warp-cursor handler land in later commits;
-	// this proves boot + archive + WAM + CON load + panorama + look.)
+	// then run the warp-navigation loop.  (CON arrival/departure section
+	// evaluation, the /set interpreter, transition videos, NPC dialog and the
+	// warp-cursor sprites land in later commits.)
 	changeChapter(1);
 
-	showMouse(true);
-	bool quit = false;
-	while (!shouldAbort() && !quit) {
-		pollEvents();
-		Common::KeyState key;
-		while ((key = getNextKey()).keycode != Common::KEYCODE_INVALID) {
-			if (key.keycode == Common::KEYCODE_ESCAPE)
-				quit = true;
-		}
-
-		// Edge-style look: steer the panorama toward the cursor's offset from
-		// the screen centre (a placeholder for the full warp-cursor handler).
-		Common::Point mouse = getMousePos();
-		_omni3dMan.setAlpha(_omni3dMan.getAlpha() + (mouse.x - 320) * 0.0008);
-		_omni3dMan.setBeta(_omni3dMan.getBeta()  - (mouse.y - 240) * 0.0008);
-
-		const Graphics::Surface *s = _omni3dMan.getSurface();
-		if (s)
-			g_system->copyRectToScreen(s->getPixels(), s->pitch, 0, 0, s->w, s->h);
-		g_system->updateScreen();
-		g_system->delayMillis(10);
-	}
+	_isPlaying = true;
+	_abortCommand = kAbortNoAbort;
+	gameStep();
 
 	SearchMan.remove("Atlantis_BigFile");
 	return Common::kNoError;
+}
+
+void CryOmni3DEngine_Atlantis::gameStep() {
+	while (!_abortCommand) {
+		// Enter a pending place (set by changeChapter or a zone transition).
+		if (_nextPlaceId != uint(-1))
+			doPlaceChange();
+		if (_nextPlaceId != uint(-1))
+			continue;
+
+		uint actionId = handleWarp();
+
+		// 66666 = handleWarp bailed (abort / menu / window close).
+		if (actionId == 66666) {
+			if (_abortCommand || shouldAbort())
+				break;
+			continue;
+		}
+
+		// A zone action in the place-id range navigates there.  (Departure /
+		// arrival CON sections that can gate or redirect the move are added
+		// with the /sel interpreter next.)
+		if (actionId >= 1 && actionId < 10000)
+			executeTransition(actionId);
+	}
 }
 
 } // End of namespace Atlantis

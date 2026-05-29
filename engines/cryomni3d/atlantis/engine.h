@@ -71,6 +71,17 @@ struct LevelInitialState {
 	float beta;
 };
 
+// How the gameStep() loop ended — drives run()'s outer state machine.
+enum AbortCommand {
+	kAbortNoAbort     = 0,
+	kAbortQuit        = 1,
+	kAbortLoadGame    = 2,
+	kAbortNewGame     = 3,
+	kAbortNextChapter = 5,
+	kAbortFinished    = 6,
+	kAbortGameOver    = 7
+};
+
 // Atlantis: The Lost Tale.
 //
 // This is the bootable skeleton: it mounts the BigFile archive(s), loads the
@@ -112,6 +123,16 @@ private:
 	void changeChapter(int chapter);
 	// Enter _nextPlaceId: load its cyclo panorama and point the viewer at it.
 	void doPlaceChange();
+	// Transition to the given place (currently a direct change; the UBB_VUE
+	// transition video is added with the dialog/video layer).
+	void executeTransition(uint nextPlaceId);
+
+	// --- Warp-view navigation (navigation.cpp) ----------------------------
+	// Main gameplay loop: drive handleWarp() and place transitions until abort.
+	void gameStep();
+	// Panoramic mouse-look + zone hit-test; returns the clicked zone's action
+	// (a destination place id), or 66666 when it bailed (abort / menu).
+	int handleWarp();
 
 	// --- CON scenario-script execution (con_exec.cpp) ---------------------
 	// Load CHAPI<chapter>.CON, resetting the per-chapter game-variable state.
@@ -142,6 +163,9 @@ private:
 	uint _currentPlaceId;
 	uint _nextPlaceId;
 	const AtlantisPlace *_currentPlace;
+
+	bool _isPlaying;
+	AbortCommand _abortCommand;
 
 	byte *_mainPalette;
 
