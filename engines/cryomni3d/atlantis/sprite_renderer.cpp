@@ -53,6 +53,140 @@
 namespace CryOmni3D {
 namespace Atlantis {
 
+// --- SPW (panoramic NPC/prop sprite) decode --------------------------------
+//
+// SPW file layout (verified from atlantis.exe):
+//   [0x00] uint32 file_size
+//   [0x04] uint32 num_frames
+//   [0x08] uint32 format            (9 = 16-bit palette, 8 = 15-bit)
+//   [0x14] uint32 frame_offsets[]   (low 2 bits hold flags; mask with ~3)
+//   per frame: x1/y_bot/x2/y_top bbox, format, pixel_stream_off, RGB565
+//   palette, then the flat-buffer RLE pixel stream.
+
+static uint32 readSPWFrameOffset(Common::SeekableReadStream *s, uint frameIdx = 0) {
+	if (!s->seek(0x14 + frameIdx * 4))
+		return 0;
+	return s->readUint32LE() & 0xFFFFFFFCU;
+}
+
+static bool readSPWBounds(Common::SeekableReadStream *s,
+                          int16 &x1, int16 &y1, int16 &x2, int16 &y2,
+                          uint frameIdx = 0) {
+	uint32 frameOff = readSPWFrameOffset(s, frameIdx);
+	if (!frameOff || s->err())
+		return false;
+	if (!s->seek(frameOff))
+		return false;
+	x1 = (int16)s->readUint16LE();  // frame[0x00]: x_left
+	s->readUint16LE();              // frame[0x02]: skip
+	y2 = (int16)s->readUint32LE();  // frame[0x04]: y_bottom
+	x2 = (int16)s->readUint32LE();  // frame[0x08]: x_right
+	y1 = (int16)s->readUint16LE();  // frame[0x0C]: y_top
+	return !s->err();
+}
+
+static inline uint32 rgb565ToSurfaceColor(uint16 v, const Graphics::PixelFormat &fmt) {
+	uint8 r = ((v >> 11) & 0x1F) * 255 / 31;
+	uint8 g = ((v >>  5) & 0x3F) * 255 / 63;
+	uint8 b = (v & 0x1F) * 255 / 31;
+	return fmt.RGBToColor(r, g, b);
+}
+
+static inline void putSurfacePixel(Graphics::Surface &surf, int x, int y, uint32 color) {
+	byte *dst = (byte *)surf.getBasePtr(x, y);
+	switch (surf.format.bytesPerPixel) {
+	case 2: *(uint16 *)dst = (uint16)color; break;
+	case 4: *(uint32 *)dst = color;         break;
+	default: break;
+	}
+}
+
+// Decode an SPW frame and composite it onto surf.  The pixel stream uses a
+// flat-buffer model matching the original engine: the output pointer starts at
+// flat offset 0 of the framebuffer and ROW_SEP opcodes advance it by an
+// arbitrary pixel count that may cross row boundaries; pixel coordinates derive
+// from the flat offset divided by the surface width.
+static void decodeSPWPixels(Common::SeekableReadStream *spw,
+                            Graphics::Surface &surf, uint frameIdx = 0) {
+	uint32 frameOff = readSPWFrameOffset(spw, frameIdx);
+	if (!frameOff)
+		return;
+
+	if (!spw->seek(frameOff + 0x14))
+		return;
+	uint32 pixOff = spw->readUint32LE();
+	if (spw->err() || pixOff < 0x18)
+		return;
+
+	// Palette: frame[0x18 .. frame+pixOff-1], 2 bytes per RGB565 entry.
+	uint32 palCount = (pixOff - 0x18) / 2;
+	if (palCount > 256)
+		palCount = 256;
+	uint16 palette[256] = {};
+	if (!spw->seek(frameOff + 0x18))
+		return;
+	for (uint32 i = 0; i < palCount; ++i)
+		palette[i] = spw->readUint16LE();
+	if (spw->err())
+		return;
+
+	if (!spw->seek(frameOff + pixOff))
+		return;
+
+	const Graphics::PixelFormat &fmt = surf.format;
+	const int32 surfW = surf.w;
+	const int64 surfArea = (int64)surfW * surf.h;
+	int64 curFlat = 0;
+
+	while (!spw->eos()) {
+		uint16 ctrl = spw->readUint16LE();
+		if (ctrl == 0x8000)
+			break;  // END
+		if (ctrl >= 0xC000) {
+			// ROW_SEP long form: advance = (ctrl & 0x3FFF)*65536 + extra word.
+			uint16 extra = spw->readUint16LE();
+			curFlat += (int64)(ctrl & 0x3FFF) * 65536 + extra;
+			if (curFlat >= surfArea)
+				break;
+		} else if (ctrl >= 0x8000) {
+			// ROW_SEP short form: advance = ctrl & 0x7FFF pixels.
+			curFlat += (ctrl & 0x7FFF);
+			if (curFlat >= surfArea)
+				break;
+		} else if (ctrl >= 0x4000) {
+			// BLEND: (ctrl & 0x3FFF) pixels; 2 bytes each (index, factor).
+			int count = ctrl & 0x3FFF;
+			for (int i = 0; i < count && !spw->eos(); ++i) {
+				uint8 idx    = spw->readByte();
+				uint8 factor = spw->readByte();
+				if (curFlat >= 0 && curFlat < surfArea) {
+					int cx = (int)(curFlat % surfW);
+					int cy = (int)(curFlat / surfW);
+					uint16 src = (idx < palCount) ? palette[idx] : 0;
+					uint16 dst = ((const uint16 *)surf.getBasePtr(cx, cy))[0];
+					uint16 out = blendSpwPixel565(src, dst, factor);
+					putSurfacePixel(surf, cx, cy, rgb565ToSurfaceColor(out, fmt));
+				}
+				++curFlat;
+			}
+		} else if (ctrl > 0) {
+			// DRAW: ctrl pixels; 1 byte each (palette index).
+			int count = ctrl;
+			for (int i = 0; i < count && !spw->eos(); ++i) {
+				uint8 idx = spw->readByte();
+				if (curFlat >= 0 && curFlat < surfArea) {
+					int cx = (int)(curFlat % surfW);
+					int cy = (int)(curFlat / surfW);
+					uint16 c = (idx < palCount) ? palette[idx] : 0;
+					putSurfacePixel(surf, cx, cy, rgb565ToSurfaceColor(c, fmt));
+				}
+				++curFlat;
+			}
+		}
+		// ctrl == 0: no-op
+	}
+}
+
 void CryOmni3DEngine_Atlantis::decodeSprite(Common::SeekableReadStream &stream,
         SubjSprite &spr, const uint16 *colorTable) {
 	// Per-row offset table: h x uint32, relative to the pixel-data base.
@@ -201,6 +335,200 @@ Graphics::Surface *CryOmni3DEngine_Atlantis::loadTGA(FileType ft, const char *na
 	}
 
 	return surf;
+}
+
+void CryOmni3DEngine_Atlantis::loadSpritePlaceList() {
+	_spritePlaceList.clear();
+
+	const Common::String &listFile = _wam.spwListFile;
+	if (listFile.empty()) {
+		debugC(1, kDebugVideo, "loadSpritePlaceList: WAM has no SPW list");
+		return;
+	}
+
+	Common::SeekableReadStream *s = openBigFileStream(kFileTypeSprite, listFile);
+	if (!s) {
+		warning("loadSpritePlaceList: cannot open '%s'", listFile.c_str());
+		return;
+	}
+
+	uint32 fileSize = (uint32)s->size();
+	byte *buf = new byte[fileSize + 1];
+	s->read(buf, fileSize);
+	buf[fileSize] = '\0';
+	delete s;
+
+	const char *p = (const char *)buf;
+	while (*p) {
+		while (*p == '\r' || *p == '\n' || *p == ' ' || *p == '\t')
+			p++;
+		if (!*p)
+			break;
+		const char *eol = p;
+		while (*eol && *eol != '\r' && *eol != '\n')
+			eol++;
+		Common::String line(p, (uint32)(eol - p));
+		p = eol;
+		if (line.empty() || line[0] == '#' || line[0] == ';')
+			continue;
+
+		Common::Array<Common::String> tok;
+		const char *tp = line.c_str();
+		while (*tp) {
+			while (*tp == ' ' || *tp == '\t') tp++;
+			if (!*tp) break;
+			const char *te = tp;
+			while (*te && *te != ' ' && *te != '\t') te++;
+			tok.push_back(Common::String(tp, (uint32)(te - tp)));
+			tp = te;
+		}
+		if (tok.size() < 4)
+			continue;
+
+		SpritePlaceEntry entry;
+		entry.placeId = (uint16)atoi(tok[0].c_str());
+		entry.type    = atoi(tok[1].c_str());
+		entry.frames  = atoi(tok[2].c_str());
+		entry.angle   = 0.f;
+		entry.persoId = 0;
+		entry.interactive = false;
+		// Trailing '-' on the placeId token marks the sprite as start-inactive.
+		entry.startActive = !tok[0].empty() && tok[0][tok[0].size() - 1] != '-';
+		entry.active = entry.startActive;
+		entry.frame  = 0;
+
+		// Two row formats, distinguished by token count (never 5 or 7):
+		//   4 tokens: placeId type frames spwFile
+		//   6 tokens: placeId type frames -persoId angle spwFile
+		if (tok.size() >= 6) {
+			int signedId  = atoi(tok[3].c_str());
+			entry.persoId = (signedId < 0) ? -signedId : signedId;
+			entry.angle   = (float)atof(tok[4].c_str());
+			// A leading '-' on the angle token marks the NPC's home (clickable)
+			// place — atof drops the sign on a zero magnitude, so check the raw
+			// token.
+			entry.interactive = (!tok[4].empty() && tok[4][0] == '-');
+			entry.spwFile = tok[5];
+		} else {
+			entry.spwFile = tok[3];
+		}
+
+		_spritePlaceList.push_back(entry);
+	}
+
+	delete[] buf;
+	debugC(1, kDebugVideo, "loadSpritePlaceList: %u entries from '%s'",
+	      _spritePlaceList.size(), listFile.c_str());
+}
+
+void CryOmni3DEngine_Atlantis::rebuildNpcPlaceBounds() {
+	// Always clear, even if !_warpLoaded, so stale bounds from the previous
+	// place can't false-positive a hit-test before the new place is composited.
+	_npcPlaceBounds.clear();
+	if (!_warpLoaded)
+		return;
+	for (const SpritePlaceEntry &entry : _spritePlaceList) {
+		if (entry.placeId != (uint16)_currentPlaceId)
+			continue;
+		// Click target: a real perso, marked interactive, currently active and
+		// not hidden.  type 0 = normal NPC; type 3 = script-managed clickable
+		// props (ropes/traps flagged interactive via the '-00' angle prefix).
+		if (entry.persoId <= 0 || !entry.interactive)
+			continue;
+		if (entry.type != 0 && entry.type != 3)
+			continue;
+		if (!entry.active)
+			continue;
+		bool hidden = false;
+		for (int h : _hiddenPersos) if (h == entry.persoId) { hidden = true; break; }
+		if (hidden)
+			continue;
+
+		Common::SeekableReadStream *spw =
+		    openBigFileStream(kFileTypeSpriteCyclo, entry.spwFile);
+		if (!spw)
+			continue;
+		int16 x1, y1, x2, y2;
+		if (readSPWBounds(spw, x1, y1, x2, y2) && y2 >= y1) {
+			if (x2 >= x1) {
+				NPCBound nb;
+				nb.persoId    = entry.persoId;
+				nb.panoBounds = Common::Rect(x1, y1, x2 + 1, y2 + 1);
+				_npcPlaceBounds.push_back(nb);
+			} else {
+				// Sprite straddles the panorama's 0/2048 seam — split in two.
+				const int16 panoW = 2048;
+				NPCBound nbR, nbL;
+				nbR.persoId    = entry.persoId;
+				nbR.panoBounds = Common::Rect(x1, y1, panoW, y2 + 1);
+				_npcPlaceBounds.push_back(nbR);
+				nbL.persoId    = entry.persoId;
+				nbL.panoBounds = Common::Rect(0, y1, x2 + 1, y2 + 1);
+				_npcPlaceBounds.push_back(nbL);
+			}
+		}
+		delete spw;
+	}
+}
+
+void CryOmni3DEngine_Atlantis::compositeNPCSprites() {
+	if (!_warpLoaded)
+		return;
+
+	// Animated props and wspranim poses (the SPW-header frame count + the
+	// per-frame tick) land with the music/timer layer; for now sprites render
+	// their first frame statically.
+	_propAnimFrames = 0;
+	_propAnimFrame  = 0;
+
+	// Rebaseline each current-place sprite to its parsed startActive flag so
+	// state from a previous place doesn't leak; a persoId in _hiddenPersos
+	// stays deactivated (a /set(hideperso=N) persists across places).
+	for (SpritePlaceEntry &e : _spritePlaceList) {
+		if (e.placeId != (uint16)_currentPlaceId)
+			continue;
+		e.active = e.startActive;
+		e.frame  = 0;
+		if (e.persoId > 0) {
+			for (int h : _hiddenPersos)
+				if (h == e.persoId) { e.active = false; break; }
+		}
+	}
+
+	rebuildNpcPlaceBounds();
+	recompositeSpriteLayer();
+}
+
+void CryOmni3DEngine_Atlantis::recompositeSpriteLayer() {
+	if (!_warpLoaded)
+		return;
+
+	// Start from the clean cyclo so sprites don't stack across recomposites.
+	_warpSurface.copyFrom(_cycloSurface);
+
+	// Render every active sprite at the current place (frame 0 for now).
+	for (const SpritePlaceEntry &entry : _spritePlaceList) {
+		if (entry.placeId != (uint16)_currentPlaceId)
+			continue;
+		if (!entry.active)
+			continue;
+		Common::SeekableReadStream *spw =
+		    openBigFileStream(kFileTypeSpriteCyclo, entry.spwFile);
+		if (!spw) {
+			warning("recompositeSpriteLayer: cannot open '%s'", entry.spwFile.c_str());
+			continue;
+		}
+		int16 x1, y1, x2, y2;
+		if (!readSPWBounds(spw, x1, y1, x2, y2, 0)) {
+			warning("recompositeSpriteLayer: bad header in '%s'", entry.spwFile.c_str());
+			delete spw;
+			continue;
+		}
+		debugC(5, kDebugVideo, "recompositeSpriteLayer: place=%u %s bounds [%d,%d]-[%d,%d]",
+		      entry.placeId, entry.spwFile.c_str(), x1, y1, x2, y2);
+		decodeSPWPixels(spw, _warpSurface, 0);
+		delete spw;
+	}
 }
 
 } // End of namespace Atlantis

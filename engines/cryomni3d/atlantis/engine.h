@@ -22,11 +22,13 @@
 #ifndef CRYOMNI3D_ATLANTIS_ENGINE_H
 #define CRYOMNI3D_ATLANTIS_ENGINE_H
 
+#include "common/array.h"
 #include "common/error.h"
 #include "common/hash-str.h"
 #include "common/hashmap.h"
 #include "common/path.h"
 #include "common/random.h"
+#include "common/rect.h"
 #include "common/str.h"
 #include "graphics/surface.h"
 
@@ -70,6 +72,26 @@ struct LevelInitialState {
 	uint placeId;
 	float alpha;
 	float beta;
+};
+
+// One entry from the WAM's SPW sprite list (e.g. SPWATL1.TXT).
+// NPC entries have type==0 and persoId>0; animated props (torches) have type!=0.
+struct SpritePlaceEntry {
+	uint16 placeId;
+	int type;        // 0 = NPC, non-zero = animated prop / wspranim pose
+	int frames;      // TXT frame field (animation length comes from the SPW header)
+	int persoId;     // character ID (0 for props)
+	float angle;     // camera look angle for NPC orientation
+	Common::String spwFile;
+	// The NPC's "home" place — clickable here, look-only elsewhere.  Encoded
+	// as a leading '-' on the angle token in the SPW list.
+	bool interactive;
+	// Trailing '-' on the placeId token marks the sprite as starting INACTIVE
+	// (atlantis.exe sprite-record field +0x04 = 0): it only renders after a
+	// /set(ShowPerso=N) (or wspranim activation, added later) flips it active.
+	bool startActive;
+	mutable bool active;   // runtime render flag; reset to startActive on place load
+	mutable int  frame;    // current animation frame
 };
 
 // How the gameStep() loop ended — drives run()'s outer state machine.
@@ -203,6 +225,19 @@ private:
 	// surface (caller owns it).  Returns nullptr on failure.
 	Graphics::Surface *loadTGA(FileType ft, const char *name);
 
+	// --- NPC / prop scene sprites (sprite_renderer.cpp) -------------------
+	// Parse the WAM's SPW sprite list (e.g. SPWATL1.TXT) into _spritePlaceList.
+	void loadSpritePlaceList();
+	// Reset each current-place sprite to its baseline, then (re)build the NPC
+	// hit-test bounds and composite the sprite layer onto _warpSurface.  Called
+	// after loadCycloHNM() enters a place.
+	void compositeNPCSprites();
+	// Rebuild the NPC click-target list (_npcPlaceBounds) for the current place.
+	void rebuildNpcPlaceBounds();
+	// Re-composite every active current-place sprite onto _warpSurface from the
+	// clean _cycloSurface (so sprite show/hide changes take effect).
+	void recompositeSpriteLayer();
+
 	// Decode the first frame of a panoramic cyclorama HNM into _warpSurface
 	// (and a clean copy in _cycloSurface), updating _mainPalette.
 	bool loadCycloHNM(const Common::String &name);
@@ -245,6 +280,18 @@ private:
 
 	// Subject-menu icon sprites decoded from SPRITE\2D\SUJETS.SPR.
 	Common::Array<SubjSprite> _subjSprites;
+
+	// NPC / prop scene sprites for the current chapter (parsed from the WAM's
+	// SPW list) and the per-place NPC click-target bounds.
+	Common::Array<SpritePlaceEntry> _spritePlaceList;
+	struct NPCBound {
+		int persoId;
+		Common::Rect panoBounds;  // panoramic coords (Y=0 at top, exclusive right/bottom)
+	};
+	Common::Array<NPCBound> _npcPlaceBounds;
+	// Persos hidden by /set(hideperso=N) / disableperso=N; showperso=N removes.
+	// Cleared on chapter change.
+	Common::Array<int> _hiddenPersos;
 
 	// Panorama alpha captured when an NPC interaction starts (the direction
 	// the player faced on the click); the baseline for a line's default

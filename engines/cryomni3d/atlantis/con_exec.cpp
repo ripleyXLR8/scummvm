@@ -63,6 +63,8 @@ void CryOmni3DEngine_Atlantis::loadConScript(int chapter) {
 				persist[kv._key] = kv._value;
 		_gameVars = persist;
 	}
+	// Sprite show/hide state is per-chapter; reset it with the variables.
+	_hiddenPersos.clear();
 
 	Common::String name = Common::String::format("CHAPI%03d.CON", chapter);
 	Common::SeekableReadStream *s = openBigFileStream(kFileTypeScript, name);
@@ -132,10 +134,41 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 		return;
 	}
 
+	// hideperso=N / disableperso=N — deactivate every sprite for perso N and
+	// add it to the persistent hidden list (atlantis.exe FUN_00427bd0).
+	if (key == "hideperso" || key == "disableperso") {
+		int perso = value;
+		if (perso > 0) {
+			bool found = false;
+			for (int h : _hiddenPersos) if (h == perso) { found = true; break; }
+			if (!found)
+				_hiddenPersos.push_back(perso);
+			for (SpritePlaceEntry &e : _spritePlaceList)
+				if (e.persoId == perso) e.active = false;
+			recompositeSpriteLayer();
+			rebuildNpcPlaceBounds();
+			debugC(1, kDebugScript, "execConSetCommand: hide perso %d", perso);
+		}
+		return;
+	}
+
+	// showperso=N — reactivate every sprite for perso N and clear its hide.
+	if (key == "showperso") {
+		int perso = value;
+		for (int i = (int)_hiddenPersos.size() - 1; i >= 0; i--)
+			if (_hiddenPersos[i] == perso) _hiddenPersos.remove_at(i);
+		for (SpritePlaceEntry &e : _spritePlaceList)
+			if (e.persoId == perso) e.active = true;
+		recompositeSpriteLayer();
+		rebuildNpcPlaceBounds();
+		debugC(1, kDebugScript, "execConSetCommand: show perso %d", perso);
+		return;
+	}
+
 	// Every other command currently just records a game variable.  The
-	// subsystem-specific commands (showperso/hideperso, newsound, addguest,
-	// startpuzzle, enablesuj, …) are interpreted as their subsystems land;
-	// until then they populate _gameVars harmlessly and gate nothing.
+	// subsystem-specific commands (newsound, addguest, startpuzzle, enablesuj,
+	// …) are interpreted as their subsystems land; until then they populate
+	// _gameVars harmlessly and gate nothing.
 	_gameVars[key] = value;
 }
 

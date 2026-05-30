@@ -71,6 +71,9 @@ void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 	_currentWAMName = kWAMNames[chapter];
 	debugC(1, kDebugScript, "Loaded WAM for chapter %d: %u places", chapter, _wam.getPlaces().size());
 
+	// Per-chapter NPC / prop scene-sprite list (SPW).
+	loadSpritePlaceList();
+
 	if ((uint)chapter != _currentCONChapter) {
 		_currentCONChapter = (uint)chapter;
 		loadConScript(chapter);
@@ -109,6 +112,8 @@ void CryOmni3DEngine_Atlantis::doPlaceChange() {
 	if (loadCycloHNM(nextPlace->cycloHnm)) {
 		_omni3dMan.setSourceSurface(&_warpSurface);
 		setupPalette(_mainPalette, 0, 256);
+		// Composite the place's standing NPCs / props onto the warp surface.
+		compositeNPCSprites();
 	}
 
 	// Full 360-degree horizontal rotation; vertical tilt limited to +/-45 degrees.
