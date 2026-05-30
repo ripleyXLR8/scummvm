@@ -36,6 +36,7 @@ MODULE_OBJS += \
 	atlantis/bigfile.o \
 	atlantis/con_exec.o \
 	atlantis/con_script.o \
+	atlantis/dialog.o \
 	atlantis/engine.o \
 	atlantis/navigation.o \
 	atlantis/place.o \

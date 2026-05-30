@@ -153,6 +153,19 @@ private:
 	void runArrivalSelSections(int arrivedVue, int fromVue);
 	void runDepartureSelSections(int departZone);
 
+	// --- Dialog playback (dialog.cpp) -------------------------------------
+	// Resolve a dialog line's speaker name to a perso ID.  Transcribes the
+	// speaker-name → persoId strncmp chain from atlantis.exe (VA 0x428f58):
+	// a fixed table keyed by a case-insensitive prefix of the speaker name.
+	// The player character ("Seth") always resolves to _heroPersoId.
+	int resolveSpeakerPersoId(const Common::String &speaker) const;
+	// Parse DIALOG\INITDIAL.TXT into _dialInitData (per-perso resource table).
+	void loadDialInitData();
+	// Pick the talking-head camera (2..5) for a dialog line: honour an explicit
+	// camN, else randomise like the original (avoiding the previous cam and any
+	// cam whose UBB resource is missing).  See atlantis.exe FUN_0042844c.
+	int pickDialCam(int persoId, int explicitCam);
+
 	// Decode the first frame of a panoramic cyclorama HNM into _warpSurface
 	// (and a clean copy in _cycloSurface), updating _mainPalette.
 	bool loadCycloHNM(const Common::String &name);
@@ -172,6 +185,26 @@ private:
 	Common::HashMap<Common::String, int> _gameVars;
 	Common::Array<byte> _placeVisits;          // per-place visit counts (nbvisite)
 	mutable Common::RandomSource _conRng;      // for /sel `random` conditions
+
+	// Per-character dialog resource table parsed from DIALOG\INITDIAL.TXT.
+	// camUBB[0..3] = UBB talking-head video basenames for cameras 2..5 ("none"
+	//   or empty = unavailable).  camSPF/animMBase/s3dBase/anim3DCBase name the
+	//   per-cam SPF overlay, mouth vertex animation, scene-graph mesh and body
+	//   mesh used by the F3DC mouth pipeline (consumed once that layer lands).
+	struct DialInitEntry {
+		Common::String camUBB[4];
+		Common::String camSPF[4];
+		Common::String animMBase;
+		Common::String s3dBase;
+		Common::String anim3DCBase;
+	};
+	Common::HashMap<int, DialInitEntry> _dialInitData;
+	int _heroPersoId;          // player character's persoId (INITDIAL "hero" row)
+
+	// Random camera selection per dialog line, and the previous line's cam so
+	// consecutive lines never reuse the same shot (atlantis.exe FUN_0042844c).
+	Common::RandomSource _dialRng;
+	int _lastDialCam;          // 0 = no previous line in this dialog session
 
 	// Current chapter / place.
 	uint _currentChapter;

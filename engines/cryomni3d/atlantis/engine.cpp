@@ -74,6 +74,9 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_isPlaying(false),
 	_abortCommand(kAbortQuit),
 	_conRng("AtlantisConRandom"),
+	_heroPersoId(0),
+	_dialRng("AtlantisDialCam"),
+	_lastDialCam(0),
 	_mainPalette(nullptr),
 	_warpLoaded(false),
 	_propAnimFrames(0),
@@ -225,6 +228,9 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	Graphics::PixelFormat screenFmt(2, 5, 6, 5, 0, 11, 5, 0, 0); // RGB565
 	initGraphics(640, 480, &screenFmt);
 	_omni3dMan.setPixelFormat(screenFmt);
+
+	// Per-character dialog resource table (speaker → UBB/cam basenames).
+	loadDialInitData();
 
 	// Enter chapter 1: load its WAM navigation map and CON scenario script,
 	// then run the warp-navigation loop.  (CON arrival/departure section

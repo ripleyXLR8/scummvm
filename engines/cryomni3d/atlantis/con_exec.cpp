@@ -90,6 +90,33 @@ void CryOmni3DEngine_Atlantis::execConInitCommands() {
 		execConSetCommand(cmd);
 }
 
+int CryOmni3DEngine_Atlantis::resolveSpeakerPersoId(const Common::String &speaker) const {
+	if (speaker.empty())
+		return 0;
+	if (_heroPersoId > 0 && scumm_strnicmp(speaker.c_str(), "seth", 4) == 0)
+		return _heroPersoId;
+
+	struct SpeakerEntry { const char *prefix; uint len; int persoId; };
+	static const SpeakerEntry kSpeakerTable[] = {
+		{ "Agat",      4, 520 }, { "Lasc",      4, 521 }, { "Melj",      4, 522 },
+		{ "Sorc",      4, 567 }, { "Gard",      4, 604 }, { "Sold",      4, 604 },
+		{ "Pech",      4, 524 }, { "Acty",      4, 524 }, { "Creo",      4, 525 },
+		{ "Chas",      4, 540 }, { "Passant9",  8, 602 }, { "Carv",      4, 602 },
+		{ "Passant6",  8, 601 }, { "Passante7", 9, 606 }, { "Hect",      4, 543 },
+		{ "Cuis",      4, 551 }, { "Rein",      4, 560 }, { "Reinem",    6, 561 },
+		{ "Reinep",    6, 562 }, { "Garc",      4, 526 }, { "Servan",    6, 609 },
+		{ "Servag",    6, 582 }, { "Chie",      4, 650 }, { "Anna",      4, 663 },
+		{ "Escl",      4, 597 }, { "Enne",      4, 667 }, { "Hona",      4, 682 },
+		{ "Sama",      4, 683 }, { "Naka",      4, 684 }, { "Lona",      4, 576 },
+		{ "JPil",      4, 571 }, { "Gimb",      4, 563 },
+	};
+	for (const SpeakerEntry &e : kSpeakerTable) {
+		if (scumm_strnicmp(speaker.c_str(), e.prefix, e.len) == 0)
+			return e.persoId;
+	}
+	return 0;
+}
+
 void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 	const char *p = cmd.c_str();
 	const char *eq = strchr(p, '=');
