@@ -124,6 +124,11 @@ public:
 	~CryOmni3DEngine_Atlantis() override;
 
 	bool hasFeature(EngineFeature f) const override;
+	// True when the engine should leave the current loop: a real quit, or
+	// (while playing) any pending _abortCommand — load-game, game-over, etc.
+	// The base class only checks shouldQuit(), which would not propagate a
+	// mid-dialog load/game-over request out of handleWarp.
+	bool shouldAbort() override;
 	Common::Error loadGameState(int slot) override;
 	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false) override;
 	Common::String getSaveStateName(int slot) const override;
@@ -278,6 +283,13 @@ private:
 	                     int spaceAdvance) const;
 	void drawFontMaxText(Graphics::ManagedSurface &dst, const Common::String &text,
 	                     int anchorX, int anchorY, bool hover = false) const;
+
+	// Game-over screen: full-screen IMAGES\GOVER<NN>.TGA + the narrator's
+	// verdict (APC track + subtitle), then return so the caller reloads the
+	// chapter checkpoint.  n is the GameOver value; sectionId/track locate the
+	// narrator APC.
+	void showGameOver(int sectionId, int n, const Common::String &narratorText,
+	                  char narratorTrack);
 
 	// --- Inventory / exe tables (exetables.cpp) ---------------------------
 	// Extract the static lookup tables baked into atlantis.exe (currently the

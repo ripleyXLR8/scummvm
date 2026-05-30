@@ -344,12 +344,34 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 	// chapter so the loop stops the instant that happens.
 	const uint entryChapter = _currentCONChapter;
 	int lineIdx = 0;
+	// A /set(gameover=N) with N != 0 ends the section (atlantis.exe FUN_0042844c
+	// breaks the line loop once the GameOver variable goes non-zero); the lines
+	// that follow feed the game-over screen instead of playing as dialog.
+	int            pendingGameOver = 0;
+	Common::String gameOverText;
+	char           gameOverTrack   = 'A';
 	for (uint itemIdx = 0; itemIdx < sec.items.size(); ++itemIdx) {
 		const ConSectionItem &item = sec.items[itemIdx];
 		if (shouldAbort())
 			break;
 
 		if (item.isSet) {
+			// /set(gameover=N), N != 0: trigger the game-over screen.  Its
+			// narrator commentary is the first dialog line after the command;
+			// the APC track is that line's index within the section.
+			if (scumm_strnicmp(item.setCmd.c_str(), "gameover=", 9) == 0 &&
+			        atoi(item.setCmd.c_str() + 9) != 0) {
+				execConSetCommand(item.setCmd);
+				pendingGameOver = atoi(item.setCmd.c_str() + 9);
+				for (uint j = itemIdx + 1; j < sec.items.size(); ++j) {
+					if (!sec.items[j].isSet) {
+						gameOverText  = sec.items[j].line.text;
+						gameOverTrack = (char)('A' + lineIdx);
+						break;
+					}
+				}
+				break;
+			}
 			const uint placeBeforeSet = _nextPlaceId;
 			execConSetCommand(item.setCmd);
 			// A chapter reload reparsed _conScript: `sec`/`item`/the section
@@ -443,14 +465,29 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		                  /*interactiveDialog=*/sec.isCon);
 	}
 
+	// Game-over screen (GereGameOver): show the verdict image + narrator, then
+	// reload the chapter checkpoint.  Run after the loop so the click/key that
+	// ended the last dialog line has already drained.
+	if (pendingGameOver != 0) {
+		showGameOver(sec.id, pendingGameOver, gameOverText, gameOverTrack);
+		_gameVars["gameover"] = 0;   // restored to its pre-section value
+		// A game-over is gated on a persistent CON variable, so resuming in
+		// place would loop straight back into the death — reload the chapter
+		// checkpoint (the autosave written on chapter entry, slot 1).
+		_loadedSave   = 1;
+		_abortCommand = kAbortLoadGame;
+	}
+
 	// Restore the cursor to whatever it was before the section.
 	showMouse(cursorWasVisible);
 
 	// /go N — chain to the continuation section once this body finishes.
 	// Test the chapter guard FIRST: a /set(chapter=N) in the body reparsed
 	// _conScript and left `sec` dangling, so reading sec.gotoId before the
-	// guard would be a use-after-free.
-	if (_currentCONChapter == entryChapter && sec.gotoId > 0 && !shouldAbort()) {
+	// guard would be a use-after-free.  Skip the chain on a pending game-over
+	// (the reload replays the chapter) or any pending abort.
+	if (_currentCONChapter == entryChapter && sec.gotoId > 0 && !shouldAbort() &&
+	        pendingGameOver == 0 && _abortCommand == kAbortNoAbort) {
 		for (ConSection &target : _conScript.sections()) {
 			if (target.id == sec.gotoId) {
 				target.played = true;

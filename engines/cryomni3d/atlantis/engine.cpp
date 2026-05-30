@@ -158,6 +158,14 @@ void CryOmni3DEngine_Atlantis::setupPalette(const byte *colors, uint start, uint
 	setPalette(colors, start, num);
 }
 
+bool CryOmni3DEngine_Atlantis::shouldAbort() {
+	if (g_engine->shouldQuit()) {
+		_abortCommand = kAbortQuit;
+		return true;
+	}
+	return _isPlaying && _abortCommand != kAbortNoAbort;
+}
+
 bool CryOmni3DEngine_Atlantis::showSubtitles() const {
 	return ConfMan.getBool("subtitles");
 }
@@ -321,6 +329,11 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 		gameStep();
 		if (_abortCommand == kAbortLoadGame) {
 			_abortCommand = kAbortNoAbort;
+			// Reload the requested slot (the game-over path sets _loadedSave
+			// without loading; the GMM path already loaded — reloading is
+			// idempotent), then re-enter the loop at the restored place.
+			if (_loadedSave != 0)
+				loadGame(_loadedSave);
 			continue;
 		}
 		break;   // quit / unhandled abort

@@ -23,7 +23,18 @@
 // starts with the FONTMAX gold menu font; the menu screens, the game-over
 // screen and the smaller player-name / credits fonts layer on as they land.
 
+#include "common/events.h"
+#include "common/memstream.h"
+#include "common/stream.h"
+#include "common/system.h"
+#include "common/textconsole.h"
+
+#include "audio/decoders/apc.h"
+#include "audio/mixer.h"
+#include "graphics/font.h"
+#include "graphics/fontman.h"
 #include "graphics/managed_surface.h"
+#include "graphics/surface.h"
 
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/sprite_blend.h"
@@ -104,6 +115,113 @@ void CryOmni3DEngine_Atlantis::drawFontMaxText(Graphics::ManagedSurface &dst,
 	    (hover && !_fontMaxHoverSprites.empty()) ? _fontMaxHoverSprites
 	                                             : _fontMaxSprites,
 	    _fontMaxSprites, kFontMaxSpaceAdvance);
+}
+
+// Game-over screen (atlantis.exe GereGameOver, FUN_00426590): show the
+// full-screen verdict image with the narrator's commentary, then return so the
+// caller reloads the chapter checkpoint (the death is gated on a persistent CON
+// variable, so resuming in place would loop straight back into it).
+void CryOmni3DEngine_Atlantis::showGameOver(int sectionId, int n,
+        const Common::String &narratorText, char narratorTrack) {
+	Common::String name = Common::String::format("GOVER%02d.TGA", n);
+	Graphics::Surface *raw = loadTGA(kFileTypeImages, name.c_str());
+	if (!raw) {
+		warning("showGameOver: cannot load IMAGES\\%s", name.c_str());
+		return;
+	}
+
+	const Graphics::PixelFormat fmt = g_system->getScreenFormat();
+	Graphics::ManagedSurface img(640, 480, fmt);
+	img.fillRect(Common::Rect(640, 480), 0);
+	img.blitFrom(*raw);
+	raw->free();
+	delete raw;
+
+	// Narrator subtitle, bottom-anchored with a drop shadow — the proportional
+	// kBigGUIFont (Arial-like), matching playSingleConLine; honours the
+	// subtitle toggle (the voice still plays when it is off).
+	if (showSubtitles() && !narratorText.empty()) {
+		const int leftMargin = 5;
+		int widthBudget = img.w - leftMargin - 5;
+		if (widthBudget < 32)
+			widthBudget = 32;
+		const Graphics::Font *guiFont =
+		    FontMan.getFontByUsage(Graphics::FontManager::kBigGUIFont);
+		if (!guiFont)
+			guiFont = FontMan.getFontByUsage(Graphics::FontManager::kGUIFont);
+		if (guiFont) {
+			int subLineH = guiFont->getFontHeight() + 2;
+			Common::Array<Common::String> subLines;
+			guiFont->wordWrapText(narratorText, widthBudget, subLines);
+			const uint32 subColor  = fmt.RGBToColor(255, 255, 255);
+			const uint32 subShadow = fmt.RGBToColor(0, 0, 0);
+			int subBaseY = img.h - (int)subLines.size() * subLineH - 6;
+			if (subBaseY < 0)
+				subBaseY = 0;
+			for (uint i = 0; i < subLines.size(); ++i) {
+				int by = subBaseY + (int)i * subLineH;
+				guiFont->drawString(&img, subLines[i], leftMargin + 1, by + 1,
+				                    widthBudget, subShadow, Graphics::kTextAlignLeft);
+				guiFont->drawString(&img, subLines[i], leftMargin, by,
+				                    widthBudget, subColor, Graphics::kTextAlignLeft);
+			}
+		}
+	}
+
+	g_system->copyRectToScreen(img.getPixels(), img.pitch, 0, 0, 640, 480);
+	g_system->updateScreen();
+
+	// The screen owns the player's attention: hide the cursor and drain the
+	// click/key that ended the triggering dialog so it isn't read as a skip.
+	showMouse(false);
+	while (getCurrentMouseButton() != 0 && !shouldAbort()) {
+		pollEvents();
+		g_system->delayMillis(10);
+	}
+	clearKeys();
+
+	// Narrator voice: WAV\ATA<section4d><track>.APC — wait for it (skippable),
+	// or hold the image ~5 s when there is no narrator audio.
+	Common::String apcName = Common::String::format("ATA%04d%c.APC", sectionId, narratorTrack);
+	Common::SeekableReadStream *apcFile =
+	    narratorText.empty() ? nullptr : openBigFileStream(kFileTypeSound, apcName);
+	Audio::PacketizedAudioStream *apc = apcFile ? Audio::makeAPCStream(*apcFile) : nullptr;
+
+	if (apc) {
+		int64 remaining = apcFile->size() - apcFile->pos();
+		if (remaining > 0) {
+			byte *buf = new byte[remaining];
+			apcFile->read(buf, (uint32)remaining);
+			apc->queuePacket(new Common::MemoryReadStream(buf, remaining, DisposeAfterUse::YES));
+		}
+		apc->finish();
+		Audio::SoundHandle handle;
+		_mixer->playStream(Audio::Mixer::kSpeechSoundType, &handle, apc);
+		debugC(1, kDebugScript, "showGameOver: GOVER%02d.TGA + %s", n, apcName.c_str());
+		while (!shouldAbort() && _mixer->isSoundHandleActive(handle)) {
+			pollEvents();
+			if (checkKeysPressed(1, Common::KEYCODE_SPACE) || getCurrentMouseButton() != 0)
+				break;
+			g_system->delayMillis(10);
+		}
+		_mixer->stopHandle(handle);
+	} else {
+		debugC(1, kDebugScript, "showGameOver: GOVER%02d.TGA (no narrator audio)", n);
+		uint32 deadline = g_system->getMillis() + 5000;
+		while (!shouldAbort() && g_system->getMillis() < deadline) {
+			pollEvents();
+			if (checkKeysPressed(1, Common::KEYCODE_SPACE) || getCurrentMouseButton() != 0)
+				break;
+			g_system->delayMillis(10);
+		}
+	}
+	delete apcFile;
+
+	while (getCurrentMouseButton() != 0 && !shouldAbort()) {
+		pollEvents();
+		g_system->delayMillis(10);
+	}
+	clearKeys();
 }
 
 } // End of namespace Atlantis
