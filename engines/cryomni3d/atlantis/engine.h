@@ -212,6 +212,11 @@ private:
 	                       int camNum = 2, bool interactiveDialog = true);
 	// True when subtitles are enabled in the ScummVM options.
 	bool showSubtitles() const;
+	// Draw subject icon sprite `sprIdx` centred at (cx, cy) onto dst (RGB565).
+	void drawSubjectSprite(Graphics::Surface &dst, uint sprIdx, int cx, int cy) const;
+	// Show the subject (topic) grid for an NPC's enabled subjects and return
+	// the chosen option index, or -1 on cancel (right-click).
+	int showSubjectMenu(const Common::Array<ConSection *> &options);
 
 	// --- 2D sprites (sprite_renderer.cpp) ---------------------------------
 	// 2D sprite (SPR) decoded into screen-format pixels plus a parallel

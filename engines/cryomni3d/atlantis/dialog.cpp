@@ -175,9 +175,128 @@ int CryOmni3DEngine_Atlantis::pickDialCam(int persoId, int explicitCam) {
 	return 2;
 }
 
+void CryOmni3DEngine_Atlantis::drawSubjectSprite(Graphics::Surface &dst,
+        uint sprIdx, int cx, int cy) const {
+	if (sprIdx >= _subjSprites.size())
+		return;
+	const SubjSprite &spr = _subjSprites[sprIdx];
+	if (spr.pixels.empty())
+		return;
+	// cx,cy = centre point; xoff,yoff = hotspot offset from top-left.
+	int dx = cx - spr.xoff;
+	int dy = cy - spr.yoff;
+	for (int y = 0; y < (int)spr.h; y++) {
+		int sy = dy + y;
+		if (sy < 0 || sy >= dst.h) continue;
+		for (int x = 0; x < (int)spr.w; x++) {
+			int sx = dx + x;
+			if (sx < 0 || sx >= dst.w) continue;
+			uint sidx = y * spr.w + x;
+			uint16 pix = spr.pixels[sidx];
+			if (pix == kSprTransp) continue;
+			uint16 *dp = (uint16 *)dst.getBasePtr(sx, sy);
+			if (spr.blend[sidx] != kSprNoBlend)
+				pix = blendSprPixel565(pix, *dp, spr.blend[sidx]);
+			*dp = pix;
+		}
+	}
+}
+
+// Subject-choice menu, reproduced from atlantis.exe's subject grid (draw at
+// FUN_004261a0, hit-test at FUN_004211f0):
+//  - Each subject is two sprites: the border (SUJETS.SPR sprite 0) at the
+//    cell top-left, then the icon (sprite = sujId) at the cell centre.
+//  - Cells are 50x50, 4 rows per column, columns step 50px in X from X=450.
+//  - For <=4 subjects the single column is bottom-anchored (startY=330-50*N);
+//    for >=5 the grid starts at Y=180.  No hover highlight; right-click cancels.
+// Returns the chosen option index, or -1 on cancel.
+int CryOmni3DEngine_Atlantis::showSubjectMenu(const Common::Array<ConSection *> &options) {
+	const int kScreenW = 640, kScreenH = 480;
+	const uint nOpts = options.size();
+	if (nOpts == 0)
+		return -1;
+
+	const int kBorderX  = 450;  // exe 0x1c2 — column-0 cell origin X
+	const int kColStepX = 50;
+	const int kRowStepY = 50;
+	const int kCell     = 50;
+	const int kIconDX   = 25;   // icon anchor = cell top-left + (25,25)
+	const int kIconDY   = 25;
+	const int kPerCol   = 4;
+	const int startY = (nOpts < 5) ? (int)(330 - 50 * nOpts) : 180;
+
+	struct IconLayout { int bx, by; uint optIdx; };
+	Common::Array<IconLayout> layout;
+	for (uint i = 0; i < nOpts; i++) {
+		int col = (int)i / kPerCol;
+		int row = (int)i % kPerCol;
+		layout.push_back({kBorderX + col * kColStepX, startY + row * kRowStepY, i});
+	}
+
+	Graphics::PixelFormat fmt = g_system->getScreenFormat();
+	Graphics::ManagedSurface frame(kScreenW, kScreenH, fmt);
+
+	showMouse(true);
+	setArrowCursor();
+
+	// Drain the press that opened the menu so it isn't read as an immediate
+	// (and missing) selection that closes the menu the instant it appears.
+	while (getCurrentMouseButton() != 0 && !shouldAbort()) {
+		pollEvents();
+		g_system->delayMillis(10);
+	}
+
+	int result = -1;
+	bool done = false;
+	while (!done && !shouldAbort()) {
+		pollEvents();
+
+		// Panoramic background → frame buffer.
+		const Graphics::Surface *bg = _warpLoaded ? _omni3dMan.getSurface() : nullptr;
+		if (bg)
+			frame.blitFrom(*bg);
+		else
+			frame.fillRect(Common::Rect(kScreenW, kScreenH), 0);
+
+		Graphics::Surface *rawPtr = frame.surfacePtr();
+		for (const IconLayout &il : layout) {
+			drawSubjectSprite(*rawPtr, 0, il.bx, il.by);
+			int sujId = options[il.optIdx]->sujId;
+			uint sprIdx = (sujId > 0 && (uint)sujId < _subjSprites.size())
+			              ? (uint)sujId : 0;
+			drawSubjectSprite(*rawPtr, sprIdx, il.bx + kIconDX, il.by + kIconDY);
+		}
+
+		g_system->copyRectToScreen(frame.getPixels(), frame.pitch, 0, 0, kScreenW, kScreenH);
+		g_system->updateScreen();
+
+		if (getCurrentMouseButton() == 1) {
+			Common::Point click = getMousePos();
+			while (getCurrentMouseButton() != 0 && !shouldAbort()) {
+				pollEvents();
+				g_system->delayMillis(10);
+			}
+			for (const IconLayout &il : layout) {
+				if (click.x >= il.bx && click.x < il.bx + kCell &&
+				    click.y >= il.by && click.y < il.by + kCell) {
+					result = (int)il.optIdx;
+					break;
+				}
+			}
+			done = true;
+		} else if (getCurrentMouseButton() == 2) {
+			done = true;   // right-click cancels
+		}
+		g_system->delayMillis(10);
+	}
+
+	showMouse(false);
+	return result;
+}
+
 // Play a fired CON section: run its /set commands and dialog lines in source
-// order, then follow any /go redirect.  The subject menu, the game-over screen
-// and the F3DC mouth pipeline layer on as their subsystems land.
+// order, then follow any /go redirect.  The game-over screen and the F3DC
+// mouth pipeline layer on as their subsystems land.
 void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 	// Hide the cursor for the duration of the section; restore it after.
 	bool cursorWasVisible = showMouse(false);

@@ -338,12 +338,16 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 	_dialBaseAlpha = _omni3dMan.getAlpha();
 	_dialBaseAlphaValid = true;
 
-	// atlantis.exe FUN_00425828 plays exactly ONE /con section per click.
-	// Collect the first condition-passing, unplayed /con(clicperso=N) section
-	// that is also subject-enabled, and play it.  (The subject topic menu — for
-	// NPCs with several enabled subjects — lands with the cursor layer; until
-	// then the first eligible subject's section plays directly.)
-	ConSection *chosen = nullptr;
+	// atlantis.exe FUN_00425828 plays exactly ONE /con section per click and
+	// returns.  A perso with enabled subjects (count>0) opens the topic menu;
+	// a perso with none plays the first condition-passing /con(clicperso=N)
+	// directly (the count==0 branch).
+	bool persoHasMenu = false;
+	for (const SujState &ss : _sujEnabled)
+		if (ss.persoId == persoId && !ss.sujs.empty()) { persoHasMenu = true; break; }
+
+	Common::Array<ConSection *> options;
+	Common::Array<int> seenSujs;
 	for (ConSection &sec : _conScript.sections()) {
 		if (!sec.isCon)
 			continue;
@@ -368,27 +372,45 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 		if (!evalSelSection(sec, 0, (int)_currentPlaceId))
 			continue;
 
-		// A sujId-0 section (scripted greeting / give-object) always plays.
-		// A subject section requires one of its subjects to be enabled.
-		if (sec.sujId != 0) {
-			bool anyEnabled = false;
-			for (int s : sec.sujIds)
-				if (isSujEnabled(persoId, s)) { anyEnabled = true; break; }
-			if (!anyEnabled && sec.sujIds.empty() && isSujEnabled(persoId, sec.sujId))
-				anyEnabled = true;
-			if (!anyEnabled)
-				continue;
+		// A sujId-0 section (scripted greeting / give-object) — or any section
+		// of a perso with no menu — plays directly and preempts the menu.
+		if (sec.sujId == 0 || !persoHasMenu) {
+			options.clear();
+			options.push_back(&sec);
+			break;
 		}
 
-		chosen = &sec;
-		break;
+		// Subject section: dedupe by sujId (first id is the menu icon / key)
+		// and require one of its subjects enabled.
+		bool alreadySeen = false;
+		for (int s : seenSujs) if (s == sec.sujId) { alreadySeen = true; break; }
+		if (alreadySeen)
+			continue;
+		bool anyEnabled = false;
+		for (int s : sec.sujIds)
+			if (isSujEnabled(persoId, s)) { anyEnabled = true; break; }
+		if (!anyEnabled && sec.sujIds.empty() && isSujEnabled(persoId, sec.sujId))
+			anyEnabled = true;
+		if (!anyEnabled)
+			continue;
+
+		options.push_back(&sec);
+		seenSujs.push_back(sec.sujId);
 	}
 
-	if (chosen) {
-		chosen->played = true;
-		playConSection(*chosen);
-	} else {
+	if (options.empty()) {
 		debugC(1, kDebugScript, "interactNPC: persoId=%d no options found", persoId);
+	} else {
+		int choice;
+		if (options.size() == 1 && (options[0]->sujId == 0 || !persoHasMenu))
+			choice = 0;   // automatic section / menu-less perso → play directly
+		else
+			choice = showSubjectMenu(options);   // let the player pick a topic
+		if (choice >= 0 && !shouldAbort()) {
+			ConSection *sec = options[(uint)choice];
+			sec->played = true;
+			playConSection(*sec);
+		}
 	}
 
 	_gameVars["clicperso"] = 0;
