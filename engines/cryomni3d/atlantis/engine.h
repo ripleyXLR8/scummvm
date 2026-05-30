@@ -179,6 +179,30 @@ private:
 	// True when subtitles are enabled in the ScummVM options.
 	bool showSubtitles() const;
 
+	// --- 2D sprites (sprite_renderer.cpp) ---------------------------------
+	// 2D sprite (SPR) decoded into screen-format pixels plus a parallel
+	// per-pixel blend array (kSprNoBlend = opaque; otherwise a 5-bit edge
+	// anti-alias coverage factor).  kSprTransp marks transparent pixels.
+	struct SubjSprite {
+		uint16 w, h;
+		int16  xoff, yoff;
+		Common::Array<uint16> pixels;  // RGB565; kSprTransp marks transparent pixels
+		Common::Array<uint8>  blend;   // per-pixel blend factor; kSprNoBlend = opaque
+	};
+	static const uint16 kSprTransp = 0x0001;  // sentinel: not a real game colour
+
+	// Decode one sprite's RLE rows (atlantis.exe FUN_0041047f) into spr.pixels
+	// and spr.blend.  spr.w/h must already be set and the stream positioned at
+	// the per-row offset table.  Shared by every SPR loader.  colorTable maps
+	// the 8-bit indices to RGB565.
+	void decodeSprite(Common::SeekableReadStream &stream, SubjSprite &spr,
+	                  const uint16 *colorTable);
+	// Load the subject-menu icon sprites from SPRITE\2D\SUJETS.SPR.
+	void loadSubjectSprites();
+	// Load a 15-bit uncompressed TGA from the BigFile into a new screen-format
+	// surface (caller owns it).  Returns nullptr on failure.
+	Graphics::Surface *loadTGA(FileType ft, const char *name);
+
 	// Decode the first frame of a panoramic cyclorama HNM into _warpSurface
 	// (and a clean copy in _cycloSurface), updating _mainPalette.
 	bool loadCycloHNM(const Common::String &name);
@@ -218,6 +242,9 @@ private:
 	// consecutive lines never reuse the same shot (atlantis.exe FUN_0042844c).
 	Common::RandomSource _dialRng;
 	int _lastDialCam;          // 0 = no previous line in this dialog session
+
+	// Subject-menu icon sprites decoded from SPRITE\2D\SUJETS.SPR.
+	Common::Array<SubjSprite> _subjSprites;
 
 	// Panorama alpha captured when an NPC interaction starts (the direction
 	// the player faced on the click); the baseline for a line's default

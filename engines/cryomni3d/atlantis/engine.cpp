@@ -239,6 +239,9 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	// Per-character dialog resource table (speaker → UBB/cam basenames).
 	loadDialInitData();
 
+	// Subject-menu icon sprites (shared by the NPC topic menu).
+	loadSubjectSprites();
+
 	// Enter chapter 1: load its WAM navigation map and CON scenario script,
 	// then run the warp-navigation loop.  (CON arrival/departure section
 	// evaluation, the /set interpreter, transition videos, NPC dialog and the

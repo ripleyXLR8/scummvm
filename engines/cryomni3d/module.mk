@@ -40,6 +40,7 @@ MODULE_OBJS += \
 	atlantis/engine.o \
 	atlantis/navigation.o \
 	atlantis/place.o \
+	atlantis/sprite_renderer.o \
 	atlantis/wam_parser.o
 endif
 
