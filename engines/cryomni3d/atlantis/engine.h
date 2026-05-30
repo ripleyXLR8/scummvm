@@ -156,6 +156,9 @@ private:
 	// Panoramic mouse-look + zone hit-test; returns the clicked zone's action
 	// (a destination place id), or 66666 when it bailed (abort / menu).
 	int handleWarp();
+	// True if `pan` (panoramic coords) lands on a clickable NPC at the current
+	// place; outPersoId receives the perso.
+	bool npcPanoHitTest(const Common::Point &pan, int &outPersoId) const;
 
 	// --- CON scenario-script execution (con_exec.cpp) ---------------------
 	// Load CHAPI<chapter>.CON, resetting the per-chapter game-variable state.
@@ -174,6 +177,15 @@ private:
 	// Fire the first matching arrival/departure /sel section, in file order.
 	void runArrivalSelSections(int arrivedVue, int fromVue);
 	void runDepartureSelSections(int departZone);
+
+	// Handle a click on NPC `persoId`: play the first condition-passing
+	// /con(clicperso=N) section for them (the subject topic menu lands with
+	// the cursor layer).  Mirrors atlantis.exe FUN_00425828.
+	void interactNPC(int persoId);
+	// Per-NPC enabled-subject table (atlantis.exe 0x602f10): /set(enablesuj)
+	// appends, /set(disablesuj) removes.  sujsForPerso creates-on-demand.
+	Common::Array<int> &sujsForPerso(int persoId);
+	bool isSujEnabled(int persoId, int sujId) const;
 
 	// --- Dialog playback (dialog.cpp) -------------------------------------
 	// Resolve a dialog line's speaker name to a perso ID.  Transcribes the
@@ -292,6 +304,13 @@ private:
 	// Persos hidden by /set(hideperso=N) / disableperso=N; showperso=N removes.
 	// Cleared on chapter change.
 	Common::Array<int> _hiddenPersos;
+
+	// Per-NPC enabled-subject state (keyed by persoId).
+	struct SujState {
+		int persoId;
+		Common::Array<int> sujs;
+	};
+	Common::Array<SujState> _sujEnabled;
 
 	// Panorama alpha captured when an NPC interaction starts (the direction
 	// the player faced on the click); the baseline for a line's default

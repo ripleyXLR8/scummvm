@@ -63,8 +63,10 @@ void CryOmni3DEngine_Atlantis::loadConScript(int chapter) {
 				persist[kv._key] = kv._value;
 		_gameVars = persist;
 	}
-	// Sprite show/hide state is per-chapter; reset it with the variables.
+	// Sprite show/hide and subject-enable state are per-chapter; reset them
+	// with the variables.
 	_hiddenPersos.clear();
+	_sujEnabled.clear();
 
 	Common::String name = Common::String::format("CHAPI%03d.CON", chapter);
 	Common::SeekableReadStream *s = openBigFileStream(kFileTypeScript, name);
@@ -121,6 +123,50 @@ int CryOmni3DEngine_Atlantis::resolveSpeakerPersoId(const Common::String &speake
 
 void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 	const char *p = cmd.c_str();
+
+	// enableSuj,persoId=suj1,suj2,... / disableSuj,persoId=sujId[,sujId...]
+	// These carry the perso before '=' and a comma-separated subject list
+	// after, so they're parsed on the raw string before the key/value split.
+	if (scumm_strnicmp(p, "enablesuj,", 10) == 0) {
+		p += 10;
+		int perso = atoi(p);
+		while (*p && *p != '=') p++;
+		if (*p == '=') {
+			p++;
+			Common::Array<int> &sujs = sujsForPerso(perso);
+			while (*p) {
+				int suj = atoi(p);
+				if (suj > 0) {
+					bool found = false;
+					for (int s : sujs) { if (s == suj) { found = true; break; } }
+					if (!found) sujs.push_back(suj);
+				}
+				while (*p && *p != ',' && *p != ')') p++;
+				if (*p == ',') p++; else break;
+			}
+		}
+		return;
+	}
+	if (scumm_strnicmp(p, "disablesuj,", 11) == 0) {
+		p += 11;
+		int perso = atoi(p);
+		while (*p && *p != '=') p++;
+		if (*p == '=') {
+			p++;
+			Common::Array<int> &sujs = sujsForPerso(perso);
+			while (*p) {
+				int suj = atoi(p);
+				if (suj > 0) {
+					for (int i = (int)sujs.size() - 1; i >= 0; i--)
+						if (sujs[i] == suj) { sujs.remove_at(i); break; }
+				}
+				while (*p && *p != ',' && *p != ')') p++;
+				if (*p == ',') p++; else break;
+			}
+		}
+		return;
+	}
+
 	const char *eq = strchr(p, '=');
 	if (!eq)
 		return;
@@ -261,6 +307,92 @@ void CryOmni3DEngine_Atlantis::runDepartureSelSections(int departZone) {
 		playConSection(sec);
 		break;
 	}
+}
+
+Common::Array<int> &CryOmni3DEngine_Atlantis::sujsForPerso(int persoId) {
+	for (SujState &ss : _sujEnabled)
+		if (ss.persoId == persoId) return ss.sujs;
+	SujState ns;
+	ns.persoId = persoId;
+	_sujEnabled.push_back(ns);
+	return _sujEnabled.back().sujs;
+}
+
+bool CryOmni3DEngine_Atlantis::isSujEnabled(int persoId, int sujId) const {
+	for (const SujState &ss : _sujEnabled) {
+		if (ss.persoId != persoId) continue;
+		for (int s : ss.sujs)
+			if (s == sujId) return true;
+		return false;
+	}
+	return false;
+}
+
+void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
+	debugC(1, kDebugScript, "interactNPC: persoId=%d", persoId);
+	// Expose clicperso so evalSelSection can match (clicperso=N) conditions.
+	_gameVars["clicperso"] = persoId;
+	// New conversation: forget the previous cam and capture the click-time
+	// facing for the per-line default angle.
+	_lastDialCam = 0;
+	_dialBaseAlpha = _omni3dMan.getAlpha();
+	_dialBaseAlphaValid = true;
+
+	// atlantis.exe FUN_00425828 plays exactly ONE /con section per click.
+	// Collect the first condition-passing, unplayed /con(clicperso=N) section
+	// that is also subject-enabled, and play it.  (The subject topic menu — for
+	// NPCs with several enabled subjects — lands with the cursor layer; until
+	// then the first eligible subject's section plays directly.)
+	ConSection *chosen = nullptr;
+	for (ConSection &sec : _conScript.sections()) {
+		if (!sec.isCon)
+			continue;
+		// A /con section is for this NPC if a clicperso condition names it;
+		// sections whose only click constraint is a cliczone belong to the
+		// zone scan, not the per-NPC one.
+		bool hasClicPerso = false, forThisPerso = false, hasClicZone = false;
+		for (const ConCondition &cc : sec.conditions) {
+			if (cc.key == "clicperso") {
+				hasClicPerso = true;
+				if (cc.value == persoId) forThisPerso = true;
+			} else if (cc.key == "cliczone") {
+				hasClicZone = true;
+			}
+		}
+		if (hasClicPerso && !forThisPerso)
+			continue;
+		if (!hasClicPerso && hasClicZone)
+			continue;
+		if (sec.played)
+			continue;
+		if (!evalSelSection(sec, 0, (int)_currentPlaceId))
+			continue;
+
+		// A sujId-0 section (scripted greeting / give-object) always plays.
+		// A subject section requires one of its subjects to be enabled.
+		if (sec.sujId != 0) {
+			bool anyEnabled = false;
+			for (int s : sec.sujIds)
+				if (isSujEnabled(persoId, s)) { anyEnabled = true; break; }
+			if (!anyEnabled && sec.sujIds.empty() && isSujEnabled(persoId, sec.sujId))
+				anyEnabled = true;
+			if (!anyEnabled)
+				continue;
+		}
+
+		chosen = &sec;
+		break;
+	}
+
+	if (chosen) {
+		chosen->played = true;
+		playConSection(*chosen);
+	} else {
+		debugC(1, kDebugScript, "interactNPC: persoId=%d no options found", persoId);
+	}
+
+	_gameVars["clicperso"] = 0;
+	_dialBaseAlphaValid = false;
 }
 
 } // End of namespace Atlantis

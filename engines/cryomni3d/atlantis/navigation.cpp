@@ -87,17 +87,44 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		setMousePos(Common::Point(320, 240));
 		takeMouseRelative();
 
-		leftButtonPressed = (getCurrentMouseButton() == 1);
+		bool clicked = (getCurrentMouseButton() == 1);
 
-		// Hit-test the panorama at the screen centre.
+		// Hit-test the panorama at the screen centre: an NPC takes priority
+		// over the navigation zone underneath it.
 		actionId = 0;
+		int centrePerso = 0;
 		if (_currentPlace && _warpLoaded) {
 			Common::Point pan = _omni3dMan.mapMouseCoords(Common::Point(320, 240));
 			pan.y = 768 - pan.y; // flip Y to top-left origin
+			npcPanoHitTest(pan, centrePerso);
 			int16 hit = _currentPlace->hitTest(pan.x, pan.y);
 			if (hit > 0)
 				actionId = (uint)hit;
 		}
+
+		// A click on an NPC opens the conversation in place (no navigation):
+		// leave warp's relative-look mode, run the dialog, then resume looking.
+		if (clicked && centrePerso > 0) {
+			g_system->lockMouse(false);
+			interactNPC(centrePerso);
+			if (shouldAbort()) {
+				actionId = 66666;
+				exit = true;
+			} else {
+				g_system->lockMouse(true);
+				takeMouseRelative();
+				setMousePos(Common::Point(320, 240));
+				// Drain the skip click the dialog ended on so it isn't read as
+				// a fresh navigation press next frame.
+				while (getCurrentMouseButton() != 0 && !shouldAbort()) {
+					pollEvents();
+					g_system->delayMillis(10);
+				}
+				clicked = false;
+			}
+		}
+
+		leftButtonPressed = clicked;
 
 		if (shouldAbort()) {
 			actionId = 66666;
@@ -146,6 +173,17 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 
 	debugC(2, kDebugScript, "handleWarp: returning action %u", actionId);
 	return (int)actionId;
+}
+
+bool CryOmni3DEngine_Atlantis::npcPanoHitTest(const Common::Point &pan,
+                                              int &outPersoId) const {
+	for (const NPCBound &nb : _npcPlaceBounds) {
+		if (nb.panoBounds.contains(pan)) {
+			outPersoId = nb.persoId;
+			return true;
+		}
+	}
+	return false;
 }
 
 } // End of namespace Atlantis
