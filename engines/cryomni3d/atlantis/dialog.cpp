@@ -26,13 +26,29 @@
 
 #include "common/array.h"
 #include "common/debug.h"
+#include "common/events.h"
+#include "common/memstream.h"
 #include "common/ptr.h"
+#include "common/rect.h"
 #include "common/stream.h"
 #include "common/str.h"
+#include "common/system.h"
 #include "common/textconsole.h"
+
+#include "audio/decoders/apc.h"
+#include "audio/mixer.h"
+#include "graphics/font.h"
+#include "graphics/fontman.h"
+#include "graphics/managed_surface.h"
+#include "graphics/surface.h"
+
+#ifdef USE_HNM
+#include "video/hnm_decoder.h"
+#endif
 
 #include "cryomni3d/omni3d.h"
 #include "cryomni3d/atlantis/engine.h"
+#include "cryomni3d/atlantis/sprite_blend.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
@@ -157,6 +173,500 @@ int CryOmni3DEngine_Atlantis::pickDialCam(int persoId, int explicitCam) {
 		if (avail[c - 2])
 			return c;
 	return 2;
+}
+
+// Play a fired CON section: run its /set commands and dialog lines in source
+// order, then follow any /go redirect.  The subject menu, the game-over screen
+// and the F3DC mouth pipeline layer on as their subsystems land.
+void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
+	// Hide the cursor for the duration of the section; restore it after.
+	bool cursorWasVisible = showMouse(false);
+
+	// Drain the gesture that triggered us so the first line isn't immediately
+	// skipped by a still-held click (departure /sel sections fire mid-click).
+	while (getCurrentMouseButton() != 0 && !shouldAbort()) {
+		pollEvents();
+		g_system->delayMillis(10);
+	}
+	clearKeys();
+
+	// A /set(chapter=N) reloads _conScript and frees `sec`; remember the entry
+	// chapter so the loop stops the instant that happens.
+	const uint entryChapter = _currentCONChapter;
+	int lineIdx = 0;
+	for (uint itemIdx = 0; itemIdx < sec.items.size(); ++itemIdx) {
+		const ConSectionItem &item = sec.items[itemIdx];
+		if (shouldAbort())
+			break;
+
+		if (item.isSet) {
+			const uint placeBeforeSet = _nextPlaceId;
+			execConSetCommand(item.setCmd);
+			// A chapter reload reparsed _conScript: `sec`/`item`/the section
+			// list are dangling now.  Stop at once.
+			if (_currentCONChapter != entryChapter)
+				break;
+			// A mid-section /set(vue=N) followed by more dialog lines: swap to
+			// the destination's clean cyclo so those lines composite over the
+			// right panorama (the real place change still runs after the
+			// section, through the normal arrival path).
+			if (_nextPlaceId != uint(-1) && _nextPlaceId != placeBeforeSet) {
+				bool laterLine = false;
+				for (uint j = itemIdx + 1; j < sec.items.size(); ++j)
+					if (!sec.items[j].isSet) { laterLine = true; break; }
+				const AtlantisPlace *destPlace = laterLine
+				    ? _wam.findPlaceById((uint16)_nextPlaceId) : nullptr;
+				if (destPlace && loadCycloHNM(destPlace->cycloHnm))
+					debugC(1, kDebugScript, "playConSection: vue=%u mid-section — clean "
+					         "cyclo swapped for trailing dialog lines", _nextPlaceId);
+			}
+			continue;
+		}
+
+		// Dialog line — resolve the on-screen speaker and the talking-head shot.
+		// sec.clicPerso is deliberately not used: a dialog freely interleaves
+		// lines from several characters, so only the speaker name identifies
+		// who is talking on this line.
+		int persoId = resolveSpeakerPersoId(item.line.speaker);
+		int explicitCam = 0;
+		{
+			const char *camTag = strstr(item.line.params.c_str(), "cam");
+			if (camTag) sscanf(camTag, "cam%d", &explicitCam);
+			if (explicitCam < 2 || explicitCam > 5) explicitCam = 0;
+		}
+		int camNum = pickDialCam(persoId, explicitCam);
+
+		// Off-camera variants (off / off0 / off1) play as voiceover: no head
+		// shot, no FOV change, view left where the player was facing.
+		const bool isOffCam = item.line.params.equalsIgnoreCase("off")
+		                   || item.line.params.equalsIgnoreCase("off0")
+		                   || item.line.params.equalsIgnoreCase("off1");
+
+		Common::String vid;
+		if (persoId > 0 && !isOffCam) {
+			Common::HashMap<int, DialInitEntry>::const_iterator it =
+			    _dialInitData.find(persoId);
+			if (it != _dialInitData.end()) {
+				Common::String fn = it->_value.camUBB[camNum - 2];
+				if (!fn.empty() && !fn.equalsIgnoreCase("none")) {
+					fn.toUppercase();
+					vid = Common::String("PERSO\\") + fn + ".UBB";
+				}
+			}
+		}
+		// Remember for the next line so consecutive lines don't repeat a cam.
+		_lastDialCam = camNum;
+
+		// Per-line panorama angle (atlantis.exe FUN_0042844c):
+		//   • explicit [Speaker, X, Y, camN] → alpha=X°, beta=Y°
+		//   • bare / camN-only → preserve the click-time alpha, beta=0, with
+		//     hero (reverse-shot) lines flipped 180°
+		//   • off-camera → no change (view stays where the player aimed)
+		bool effHasAngle = item.line.hasAngle;
+		int  effAngleX   = item.line.angleX;
+		int  effAngleY   = item.line.angleY;
+		const bool isHero = (persoId == _heroPersoId && _heroPersoId > 0);
+		if (!effHasAngle && _warpLoaded && !isOffCam) {
+			// _dialBaseAlpha is the click-time facing during an NPC interaction
+			// (set by the NPC layer that lands later); /sel-triggered dialog
+			// falls back to the live alpha.
+			const double baseAlpha = _dialBaseAlphaValid
+			                       ? _dialBaseAlpha : _omni3dMan.getAlpha();
+			double effDegX = baseAlpha * 180.0 / M_PI;
+			if (isHero)
+				effDegX += 180.0;
+			double dx = effDegX - 360.0 * floor(effDegX / 360.0);
+			effHasAngle = true;
+			effAngleX   = (int)(dx + 0.5);
+			effAngleY   = 0;
+		}
+		// camNum=0 lands outside playSingleConLine's 2..5 range, so the FOV
+		// change is skipped while the line still plays as voiceover.
+		const int effCamNum = isOffCam ? 0 : camNum;
+		debugC(2, kDebugScript, "playConSection: speaker='%s' params='%s' persoId=%d "
+		         "cam=%d vid='%s' angle=(%d,%d)%s",
+		      item.line.speaker.c_str(), item.line.params.c_str(), persoId,
+		      effCamNum, vid.c_str(), effAngleX, effAngleY,
+		      effHasAngle ? "" : " (none)");
+		playSingleConLine(sec.id, (char)('A' + lineIdx++), item.line.text, vid,
+		                  effHasAngle, effAngleX, effAngleY, effCamNum,
+		                  /*interactiveDialog=*/sec.isCon);
+	}
+
+	// Restore the cursor to whatever it was before the section.
+	showMouse(cursorWasVisible);
+
+	// /go N — chain to the continuation section once this body finishes.
+	// Test the chapter guard FIRST: a /set(chapter=N) in the body reparsed
+	// _conScript and left `sec` dangling, so reading sec.gotoId before the
+	// guard would be a use-after-free.
+	if (_currentCONChapter == entryChapter && sec.gotoId > 0 && !shouldAbort()) {
+		for (ConSection &target : _conScript.sections()) {
+			if (target.id == sec.gotoId) {
+				target.played = true;
+				playConSection(target);
+				break;
+			}
+		}
+	}
+
+	// Drain the skip click that ended the last line so the outer warp loop
+	// doesn't read it as a fresh navigation press.
+	while (getCurrentMouseButton() != 0 && !shouldAbort()) {
+		pollEvents();
+		g_system->delayMillis(10);
+	}
+	clearKeys();
+}
+
+// Single dialog line: stream a UBB talking-head video over the warp panorama,
+// play the matching APC speech track and overlay the subtitle.
+//
+// All geometry is data-driven: the UBB header gives the composite size, the
+// screen format drives the CLUT8 conversion, and the GUI font drives the
+// subtitle metrics.  The UBB frame is decoded into a CLUT8 buffer; the IA
+// chunk's FUN_00450b08 opcode stream drives the per-pixel SKIP/RUN composite
+// (SKIP leaves the cyclo panorama showing through, RUN paints palette[idx]
+// with optional edge anti-aliasing).  The animated mouth mesh and the SPF
+// overlays layer on top once the F3DC pipeline lands.
+void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
+                                                  const Common::String &text,
+                                                  const Common::String &videoName,
+                                                  bool hasAngle,
+                                                  int angleX, int angleY,
+                                                  int camNum,
+                                                  bool interactiveDialog) {
+	(void)interactiveDialog;  // used by the NPC sprite-hiding layer (later PR)
+	const Graphics::PixelFormat fmt = g_system->getScreenFormat();
+	const int screenW = (int)g_system->getWidth();
+	const int screenH = (int)g_system->getHeight();
+
+	// Per-cam FOV (zoom).  Source: atlantis.exe DGROUP VA 0x00496080, indexed
+	// cam2..cam5 → table[0..3].  Save the current FOV so the panorama restores
+	// to its navigation default after the line.
+	static const float kCamFovDeg[4] = {20.68f, 30.0f, 48.0f, 48.26f};
+	const double savedHFov = _omni3dMan.getHFov();
+	bool fovChanged = false;
+	if (_warpLoaded && camNum >= 2 && camNum <= 5) {
+		_omni3dMan.setHFov((double)kCamFovDeg[camNum - 2] * M_PI / 180.0);
+		fovChanged = true;
+	}
+
+	// Per-line panorama angle (data-driven; degrees → radians).
+	if (_warpLoaded && hasAngle) {
+		_omni3dMan.setAlpha(((double)angleX) * M_PI / 180.0);
+		_omni3dMan.setBeta(((double)angleY) * M_PI / 180.0);
+		_gameVars["anglewarpx"] = (int)(_omni3dMan.getAlpha() * 180.0 / M_PI);
+		_gameVars["anglewarpy"] = (int)(_omni3dMan.getBeta()  * 180.0 / M_PI);
+	}
+
+#ifdef USE_HNM
+	Video::HNMDecoder *bgDecoder = nullptr;
+	Graphics::Surface ubbConvFrame;
+	byte ubbPal[256 * 3];
+	memset(ubbPal, 0, sizeof(ubbPal));
+
+	if (!videoName.empty()) {
+		Common::SeekableReadStream *vs = openBigFileStream(kFileTypeDialog, videoName);
+		if (!vs) {
+			debugC(1, kDebugScript, "playSingleConLine: %s not found in BigFile",
+			      videoName.c_str());
+		} else {
+			// UBB2 is 8-bit paletted; decode into CLUT8 and convert per-pixel so
+			// we can colour-key and bleed the cyclo through SKIP runs.
+			Graphics::PixelFormat clut8 = Graphics::PixelFormat::createFormatCLUT8();
+			bgDecoder = new Video::HNMDecoder(clut8, true);  // loop=true
+			if (!bgDecoder->loadStream(vs)) {
+				delete bgDecoder;
+				bgDecoder = nullptr;
+			} else {
+				ubbConvFrame.create(bgDecoder->getWidth(), bgDecoder->getHeight(), fmt);
+				// Opt in to IA-chunk opcode capture so the decoder stops
+				// discarding the FUN_00450b08 SKIP/RUN stream as audio.
+				bgDecoder->setCaptureOpcodeStream(true);
+				bgDecoder->start();
+				debugC(1, kDebugScript, "playSingleConLine: %s loaded (%ux%u)",
+				      videoName.c_str(), bgDecoder->getWidth(), bgDecoder->getHeight());
+			}
+		}
+	}
+#endif
+
+	// Subtitle pre-wrap.  Width budget is the composite width less symmetric
+	// 5-px margins (matching the original's x=5 origin).
+	const int subLeftMargin = 5, subRightMargin = 5;
+	int subWidthBudget = screenW - subLeftMargin - subRightMargin;
+#ifdef USE_HNM
+	if (ubbConvFrame.getPixels())
+		subWidthBudget = ubbConvFrame.w - subLeftMargin - subRightMargin;
+#endif
+	if (subWidthBudget < 32) subWidthBudget = 32;
+
+	// Subtitles render in a proportional sans-serif font, matching the original
+	// (Arial via GDI) — kBigGUIFont is ScummVM's built-in Helvetica, compiled
+	// in so it works on the no-FreeType Windows build too.
+	const Graphics::Font *guiFont =
+	    FontMan.getFontByUsage(Graphics::FontManager::kBigGUIFont);
+	if (!guiFont)
+		guiFont = FontMan.getFontByUsage(Graphics::FontManager::kGUIFont);
+	Common::Array<Common::String> subLines;
+	int subLineH = 0;
+	if (showSubtitles() && !text.empty() && guiFont) {
+		subLineH = guiFont->getFontHeight() + 2;
+		guiFont->wordWrapText(text, subWidthBudget, subLines);
+	}
+	const uint32 subColor  = fmt.RGBToColor(255, 255, 255);
+	const uint32 subShadow = fmt.RGBToColor(0, 0, 0);
+
+	bool emptyBackbufferCleared = false;
+
+	auto drawFrame = [&]() {
+		const Graphics::Surface *warpView =
+		    _warpLoaded ? _omni3dMan.getSurface() : nullptr;
+
+#ifdef USE_HNM
+		if (bgDecoder && ubbConvFrame.getPixels()) {
+			const Graphics::Surface *f = nullptr;
+			if (bgDecoder->needsUpdate())
+				f = bgDecoder->decodeNextFrame();
+
+			if (f) {
+				if (bgDecoder->hasDirtyPalette())
+					memcpy(ubbPal, bgDecoder->getPalette(), 256 * 3);
+
+				// Seed the composite with the cyclo panorama so SKIP runs show
+				// it through (mirrors FUN_00451d8b); black if no panorama.
+				if (warpView && warpView->w == ubbConvFrame.w &&
+				                warpView->h == ubbConvFrame.h &&
+				                warpView->format == fmt) {
+					const uint copyRowBytes = ubbConvFrame.w * fmt.bytesPerPixel;
+					for (int row = 0; row < ubbConvFrame.h; row++)
+						memcpy(ubbConvFrame.getBasePtr(0, row),
+						       warpView->getBasePtr(0, row), copyRowBytes);
+				} else {
+					ubbConvFrame.fillRect(Common::Rect(ubbConvFrame.w, ubbConvFrame.h), 0);
+				}
+
+				const int fw = f->w, fh = f->h;
+				const byte *srcBase = (const byte *)f->getBasePtr(0, 0);
+				uint32 opSize = 0;
+				const byte *opcodes = bgDecoder->getOpcodeStream(opSize);
+
+				uint16 palLUT[256];
+				for (int i = 0; i < 256; i++)
+					palLUT[i] = (uint16)fmt.RGBToColor(ubbPal[i*3+0], ubbPal[i*3+1],
+					                                  ubbPal[i*3+2]);
+
+				if (opcodes && opSize >= 4 && fmt.bytesPerPixel == 2) {
+					// Walk the FUN_00450b08 opcode stream: 0=SKIP (4-byte, 24-bit
+					// runlen), 1=RUN with one shade byte, 2=RUN with per-pixel
+					// shade.  shade>>3 == 0x1f is solid; lower blends the head
+					// edge against the cyclo seed (anti-aliasing).
+					const byte *op = opcodes, *opEnd = opcodes + opSize;
+					uint32 pos = 0;
+					const uint32 frameN = (uint32)fw * (uint32)fh;
+					uint16 *dst16 = (uint16 *)ubbConvFrame.getPixels();
+					while (op + 2 <= opEnd && pos < frameN) {
+						const byte type = op[0];
+						const byte runHi = op[1];
+						if (type == 0) {
+							if (op + 4 > opEnd) break;
+							const uint32 runlen = ((uint32)op[1]) |
+							                      ((uint32)op[2] << 8) |
+							                      ((uint32)op[3] << 16);
+							if (runlen == 0) break;            // terminator
+							pos += runlen;
+							op += 4;
+						} else if (type == 1) {
+							if (op + 3 > opEnd) break;
+							const uint32 runlen = runHi;
+							const byte *src = srcBase + pos;
+							const uint shade = (uint)(op[2] >> 3);
+							if (shade >= 0x1f) {
+								for (uint32 i = 0; i < runlen && pos + i < frameN; i++)
+									dst16[pos + i] = palLUT[src[i]];
+							} else {
+								for (uint32 i = 0; i < runlen && pos + i < frameN; i++)
+									dst16[pos + i] = blendUbbPixel565(
+									    palLUT[src[i]], dst16[pos + i], shade);
+							}
+							pos += runlen;
+							op += 3;
+						} else if (type == 2) {
+							if (op + 2 + runHi > opEnd) break;
+							const uint32 runlen = runHi;
+							const byte *src = srcBase + pos;
+							const byte *shadeBytes = op + 2;
+							for (uint32 i = 0; i < runlen && pos + i < frameN; i++) {
+								const uint shade = (uint)(shadeBytes[i] >> 3);
+								dst16[pos + i] = (shade >= 0x1f)
+								    ? palLUT[src[i]]
+								    : blendUbbPixel565(palLUT[src[i]],
+								                       dst16[pos + i], shade);
+							}
+							pos += runlen;
+							op += 2 + runlen;
+						} else {
+							warning("playSingleConLine: unknown UBB opcode 0x%02x at +%u",
+							        type, (uint)(op - opcodes));
+							break;
+						}
+					}
+				} else {
+					// No opcode stream (or non-16bpp) — flat composite so the
+					// head is at least visible.
+					const uint bpp = fmt.bytesPerPixel;
+					const int fp = f->pitch;
+					for (int fy = 0; fy < fh; fy++) {
+						const byte *src = srcBase + fy * fp;
+						byte *dst = (byte *)ubbConvFrame.getBasePtr(0, fy);
+						for (int fx = 0; fx < fw; fx++, dst += bpp) {
+							const uint32 c = palLUT[src[fx]];
+							if (bpp == 2)      *(uint16 *)dst = (uint16)c;
+							else if (bpp == 4) *(uint32 *)dst = c;
+							else               memcpy(dst, &c, bpp);
+						}
+					}
+				}
+			}
+		} else
+#endif
+		if (warpView) {
+			g_system->copyRectToScreen(warpView->getPixels(), warpView->pitch,
+			                           0, 0, warpView->w, warpView->h);
+		} else if (!emptyBackbufferCleared) {
+			Graphics::ManagedSurface clr(screenW, screenH, fmt);
+			clr.fillRect(Common::Rect(screenW, screenH), 0);
+			g_system->copyRectToScreen(clr.getPixels(), clr.pitch, 0, 0, screenW, screenH);
+			emptyBackbufferCleared = true;
+		}
+
+		// Subtitle overlay, drawn directly onto the composite (no opaque bar),
+		// bottom-anchored with a 1-px drop shadow.
+#ifdef USE_HNM
+		if (bgDecoder && ubbConvFrame.getPixels()) {
+			Graphics::ManagedSurface compose(ubbConvFrame.w, ubbConvFrame.h, fmt);
+			const uint rowBytes = ubbConvFrame.w * fmt.bytesPerPixel;
+			for (int row = 0; row < ubbConvFrame.h; row++)
+				memcpy(compose.getBasePtr(0, row), ubbConvFrame.getBasePtr(0, row), rowBytes);
+
+			int subAreaH = (int)subLines.size() * subLineH;
+			int subBaseY = compose.h - subAreaH - 6;
+			if (subBaseY < 0) subBaseY = 0;
+			if (guiFont) {
+				for (uint i = 0; i < subLines.size(); ++i) {
+					int by = subBaseY + (int)i * subLineH;
+					guiFont->drawString(&compose, subLines[i], subLeftMargin + 1, by + 1,
+					    subWidthBudget, subShadow, Graphics::kTextAlignLeft);
+					guiFont->drawString(&compose, subLines[i], subLeftMargin, by,
+					    subWidthBudget, subColor, Graphics::kTextAlignLeft);
+				}
+			}
+			int blitX = (screenW - compose.w) / 2;
+			int blitY = (screenH - compose.h) / 2;
+			if (blitX < 0) blitX = 0;
+			if (blitY < 0) blitY = 0;
+			g_system->copyRectToScreen(compose.getPixels(), compose.pitch,
+			                           blitX, blitY, compose.w, compose.h);
+		} else
+#endif
+		if (!subLines.empty() && subLineH > 0) {
+			int subAreaH = (int)subLines.size() * subLineH;
+			Graphics::ManagedSurface overlay(screenW, subAreaH + 4, fmt);
+			int srcY = screenH - subAreaH - 6;
+			if (srcY < 0) srcY = 0;
+			if (warpView) {
+				int rowsAvail = warpView->h - srcY;
+				if (rowsAvail > overlay.h) rowsAvail = overlay.h;
+				const uint rowBytes = warpView->w * fmt.bytesPerPixel;
+				for (int row = 0; row < rowsAvail; row++)
+					memcpy(overlay.getBasePtr(0, row),
+					       warpView->getBasePtr(0, srcY + row), rowBytes);
+			} else {
+				overlay.fillRect(Common::Rect(overlay.w, overlay.h), 0);
+			}
+			if (guiFont) {
+				for (uint i = 0; i < subLines.size(); ++i) {
+					int by = (int)i * subLineH;
+					guiFont->drawString(&overlay, subLines[i], subLeftMargin + 1, by + 1,
+					    subWidthBudget, subShadow, Graphics::kTextAlignLeft);
+					guiFont->drawString(&overlay, subLines[i], subLeftMargin, by,
+					    subWidthBudget, subColor, Graphics::kTextAlignLeft);
+				}
+			}
+			g_system->copyRectToScreen(overlay.getPixels(), overlay.pitch,
+			                           0, srcY, overlay.w, overlay.h);
+		}
+		g_system->updateScreen();
+	};
+
+	// Linger scales with subtitle length (≈80 ms/char, min 1.5 s) so longer
+	// lines aren't cut short when no audio exists.
+	int lingerMs = text.empty() ? 1500 : MAX(1500, (int)text.size() * 80);
+
+	// One click/key skips only one line: drain a still-held skip from the
+	// previous line so this one watches for a fresh press.
+	while (getCurrentMouseButton() != 0 && !shouldAbort()) {
+		pollEvents();
+		g_system->delayMillis(10);
+	}
+	clearKeys();
+
+	Common::String apcName = Common::String::format("ATA%04d%c.APC", sectionId, track);
+	Common::SeekableReadStream *apcFile = openBigFileStream(kFileTypeSound, apcName);
+
+	if (!apcFile) {
+		for (int ms = 0; ms < lingerMs && !shouldAbort(); ms += 20) {
+			drawFrame();
+			pollEvents();
+			if (checkKeysPressed(1, Common::KEYCODE_SPACE) || getCurrentMouseButton() != 0)
+				break;
+			g_system->delayMillis(20);
+		}
+	} else {
+		Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*apcFile);
+		if (apc) {
+			int64 remaining = apcFile->size() - apcFile->pos();
+			if (remaining > 0) {
+				byte *buf = new byte[remaining];
+				apcFile->read(buf, (uint32)remaining);
+				apc->queuePacket(new Common::MemoryReadStream(buf, remaining,
+				                                              DisposeAfterUse::YES));
+			}
+			apc->finish();
+			Audio::SoundHandle handle;
+			_mixer->playStream(Audio::Mixer::kSpeechSoundType, &handle, apc);
+			debugC(1, kDebugScript, "playSingleConLine: %s", apcName.c_str());
+
+			while (!shouldAbort() && _mixer->isSoundHandleActive(handle)) {
+				drawFrame();
+				pollEvents();
+				if (checkKeysPressed(1, Common::KEYCODE_SPACE) || getCurrentMouseButton() != 0) {
+					_mixer->stopHandle(handle);
+					break;
+				}
+				g_system->delayMillis(10);
+			}
+			_mixer->stopHandle(handle);
+		}
+		delete apcFile;
+
+		// Fixed 500 ms subtitle tail after the audio ends.
+		for (int ms = 0; ms < 500 && !shouldAbort(); ms += 20) {
+			drawFrame();
+			pollEvents();
+			if (checkKeysPressed(1, Common::KEYCODE_SPACE) || getCurrentMouseButton() != 0)
+				break;
+			g_system->delayMillis(20);
+		}
+	}
+
+#ifdef USE_HNM
+	delete bgDecoder;
+	ubbConvFrame.free();
+#endif
+	if (fovChanged)
+		_omni3dMan.setHFov(savedHFov);
 }
 
 } // End of namespace Atlantis

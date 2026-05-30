@@ -192,25 +192,6 @@ bool CryOmni3DEngine_Atlantis::evalSelSection(const ConSection &sec,
 	return true;
 }
 
-void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
-	// Execute the section's /set commands in source order.  Dialog lines are
-	// played by the full version once the dialog layer lands.
-	const uint entryChapter = _currentCONChapter;
-	for (const ConSectionItem &it : sec.items)
-		if (it.isSet)
-			execConSetCommand(it.setCmd);
-
-	// /goN redirect — chain to the target section.  Guard against a chapter
-	// reload (a /set(chapter=N)) invalidating the section list.
-	if (sec.gotoId > 0 && _currentCONChapter == entryChapter) {
-		for (ConSection &t : _conScript.sections())
-			if (t.id == sec.gotoId) {
-				playConSection(t);
-				break;
-			}
-	}
-}
-
 void CryOmni3DEngine_Atlantis::runArrivalSelSections(int arrivedVue, int fromVue) {
 	// arriveevue = the place we arrived FROM (so both the marker form
 	// (arriveevue>0)&(vue=N) and the specific (arriveevue=FROM)&(vue=TO) work).

@@ -20,6 +20,7 @@
  */
 
 #include "common/archive.h"
+#include "common/config-manager.h"
 #include "common/debug.h"
 #include "common/events.h"
 #include "common/file.h"
@@ -77,6 +78,8 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_heroPersoId(0),
 	_dialRng("AtlantisDialCam"),
 	_lastDialCam(0),
+	_dialBaseAlpha(0.0),
+	_dialBaseAlphaValid(false),
 	_mainPalette(nullptr),
 	_warpLoaded(false),
 	_propAnimFrames(0),
@@ -124,6 +127,10 @@ void CryOmni3DEngine_Atlantis::setupPalette(const byte *colors, uint start, uint
 	// Atlantis runs in 16bpp true colour; the base palette helpers are
 	// no-ops in that mode (see CryOmni3DEngine::setPalette).
 	setPalette(colors, start, num);
+}
+
+bool CryOmni3DEngine_Atlantis::showSubtitles() const {
+	return ConfMan.getBool("subtitles");
 }
 
 void CryOmni3DEngine_Atlantis::makeTranslucent(Graphics::Surface &dst,

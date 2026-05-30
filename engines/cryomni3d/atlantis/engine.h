@@ -165,6 +165,19 @@ private:
 	// camN, else randomise like the original (avoiding the previous cam and any
 	// cam whose UBB resource is missing).  See atlantis.exe FUN_0042844c.
 	int pickDialCam(int persoId, int explicitCam);
+	// Play one dialog line: stream its UBB talking-head video over the warp
+	// panorama (or just the panorama when off-camera), play the matching APC
+	// speech track and overlay the subtitle.  `camNum` (2..5) selects the
+	// per-cam zoom; `hasAngle`/angleX/angleY rotate the panorama under the
+	// head; `interactiveDialog` is reserved for the sprite-hiding the NPC
+	// layer adds later.  The F3DC mouth pipeline and SPF overlays layer on
+	// top once those subsystems land.
+	void playSingleConLine(int sectionId, char track, const Common::String &text,
+	                       const Common::String &videoName = "",
+	                       bool hasAngle = false, int angleX = 0, int angleY = 0,
+	                       int camNum = 2, bool interactiveDialog = true);
+	// True when subtitles are enabled in the ScummVM options.
+	bool showSubtitles() const;
 
 	// Decode the first frame of a panoramic cyclorama HNM into _warpSurface
 	// (and a clean copy in _cycloSurface), updating _mainPalette.
@@ -205,6 +218,14 @@ private:
 	// consecutive lines never reuse the same shot (atlantis.exe FUN_0042844c).
 	Common::RandomSource _dialRng;
 	int _lastDialCam;          // 0 = no previous line in this dialog session
+
+	// Panorama alpha captured when an NPC interaction starts (the direction
+	// the player faced on the click); the baseline for a line's default
+	// angle.  Set true only during an NPC interaction — the sprite/NPC layer
+	// that drives that lands later, so for now /sel-triggered dialog falls
+	// back to the live panorama alpha.
+	double _dialBaseAlpha;
+	bool   _dialBaseAlphaValid;
 
 	// Current chapter / place.
 	uint _currentChapter;
