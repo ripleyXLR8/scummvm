@@ -175,6 +175,37 @@ int CryOmni3DEngine_Atlantis::pickDialCam(int persoId, int explicitCam) {
 	return 2;
 }
 
+void CryOmni3DEngine_Atlantis::drawGivenObject(Graphics::Surface &dst) const {
+	if (_dialogGivenObjSprite < 0 || (uint)_dialogGivenObjSprite >= _objSprites.size())
+		return;
+	const SubjSprite &spr = _objSprites[(uint)_dialogGivenObjSprite];
+	if (spr.pixels.empty())
+		return;
+	// Centre horizontally; anchor the icon's bottom a fixed gap above the
+	// screen edge, above the subtitle strip (the original's DAT_0049619c
+	// overlay; the exact Y isn't recoverable so we use a fixed inset).
+	const int cx = dst.w / 2;
+	const int objBottom = dst.h - 56;
+	const int cy = objBottom - ((int)spr.h - spr.yoff);
+	const int dx = cx - spr.xoff;
+	const int dy = cy - spr.yoff;
+	for (int y = 0; y < (int)spr.h; y++) {
+		int sy = dy + y;
+		if (sy < 0 || sy >= dst.h) continue;
+		for (int x = 0; x < (int)spr.w; x++) {
+			int sx = dx + x;
+			if (sx < 0 || sx >= dst.w) continue;
+			uint sidx = y * spr.w + x;
+			uint16 pix = spr.pixels[sidx];
+			if (pix == kSprTransp) continue;
+			uint16 *dp = (uint16 *)dst.getBasePtr(sx, sy);
+			if (spr.blend[sidx] != kSprNoBlend)
+				pix = blendSprPixel565(pix, *dp, spr.blend[sidx]);
+			*dp = pix;
+		}
+	}
+}
+
 void CryOmni3DEngine_Atlantis::drawSubjectSprite(Graphics::Surface &dst,
         uint sprIdx, int cx, int cy) const {
 	if (sprIdx >= _subjSprites.size())
@@ -647,12 +678,28 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 						}
 					}
 				}
+
+				// "Just received" item icon: an NPC that gave the player an
+				// object this dialog shows its icon centre-bottom over the head.
+				if (fmt.bytesPerPixel == 2)
+					drawGivenObject(ubbConvFrame);
 			}
 		} else
 #endif
 		if (warpView) {
-			g_system->copyRectToScreen(warpView->getPixels(), warpView->pitch,
-			                           0, 0, warpView->w, warpView->h);
+			// No video: if an item was just given, overlay its icon on a copy
+			// of the panorama before showing it.
+			if (_dialogGivenObjSprite >= 0 && fmt.bytesPerPixel == 2) {
+				Graphics::Surface tmp;
+				tmp.create(warpView->w, warpView->h, fmt);
+				tmp.copyFrom(*warpView);
+				drawGivenObject(tmp);
+				g_system->copyRectToScreen(tmp.getPixels(), tmp.pitch, 0, 0, tmp.w, tmp.h);
+				tmp.free();
+			} else {
+				g_system->copyRectToScreen(warpView->getPixels(), warpView->pitch,
+				                           0, 0, warpView->w, warpView->h);
+			}
 		} else if (!emptyBackbufferCleared) {
 			Graphics::ManagedSurface clr(screenW, screenH, fmt);
 			clr.fillRect(Common::Rect(screenW, screenH), 0);

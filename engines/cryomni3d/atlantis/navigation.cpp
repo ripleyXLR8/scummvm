@@ -36,6 +36,7 @@
 #include "graphics/cursorman.h"
 #include "graphics/pixelformat.h"
 
+#include "cryomni3d/objects.h"
 #include "cryomni3d/omni3d.h"
 
 #include "cryomni3d/atlantis/engine.h"
@@ -142,6 +143,61 @@ void CryOmni3DEngine_Atlantis::setArrowCursor() {
 	                 spr.xoff, spr.yoff, kWarpCursorKey);
 }
 
+void CryOmni3DEngine_Atlantis::setItemCursor(const Object *obj, int overlayCursorFrame) {
+	if (!obj || _objects.empty() || _objSprites.empty()) return;
+	ptrdiff_t idx = obj - &_objects.front();
+	if (idx < 0 || (uint)idx >= _objSprites.size()) return;
+	const SubjSprite &spr = _objSprites[(uint)idx];
+	if (spr.pixels.empty()) return;
+
+	const bool overlay = overlayCursorFrame >= 0 &&
+	    (uint)overlayCursorFrame < _cursorSprites.size() &&
+	    !_cursorSprites[(uint)overlayCursorFrame].pixels.empty();
+
+	if (!overlay) {
+		// No action overlay: the object sprite alone is the cursor.
+		setBlendedCursor(spr.w, spr.h, spr.pixels.data(), spr.blend.data(),
+		                 spr.xoff, spr.yoff, kSprTransp);
+		return;
+	}
+
+	// Carrying an object with an action available: composite the object sprite
+	// with the action cursor on top, both anchored by their own hotspot.
+	const CursorSpr &act = _cursorSprites[(uint)overlayCursorFrame];
+	const int hx = MAX((int)spr.xoff, (int)act.xoff);
+	const int hy = MAX((int)spr.yoff, (int)act.yoff);
+	const int w  = hx + MAX((int)spr.w - spr.xoff, (int)act.w - act.xoff);
+	const int h  = hy + MAX((int)spr.h - spr.yoff, (int)act.h - act.yoff);
+
+	Common::Array<uint16> buf;
+	Common::Array<uint8>  blendBuf;
+	buf.resize((uint)(w * h), kSprTransp);
+	blendBuf.resize((uint)(w * h), kSprNoBlend);
+
+	const int ox = hx - spr.xoff, oy = hy - spr.yoff;   // object (base)
+	for (int y = 0; y < (int)spr.h; y++)
+		for (int x = 0; x < (int)spr.w; x++) {
+			uint si = y * spr.w + x;
+			if (spr.pixels[si] != kSprTransp) {
+				uint di = (oy + y) * w + (ox + x);
+				buf[di]      = spr.pixels[si];
+				blendBuf[di] = spr.blend[si];
+			}
+		}
+	const int ax = hx - act.xoff, ay = hy - act.yoff;   // action cursor (top)
+	for (int y = 0; y < (int)act.h; y++)
+		for (int x = 0; x < (int)act.w; x++) {
+			uint si = y * act.w + x;
+			if (act.pixels[si] != kWarpCursorKey) {
+				uint di = (ay + y) * w + (ax + x);
+				buf[di]      = act.pixels[si];
+				blendBuf[di] = act.blend[si];
+			}
+		}
+	setBlendedCursor((uint16)w, (uint16)h, buf.data(), blendBuf.data(),
+	                 hx, hy, kSprTransp);
+}
+
 void CryOmni3DEngine_Atlantis::tickWarpCursor() {
 	static const int kGroupFirst[] = {  0,  9, 18, 26 };
 	static const int kGroupCount[] = {  9,  9,  8, 20 };
@@ -221,7 +277,9 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 
 	// Cursor group reflecting what the crosshair is over (talk / navigate /
 	// default), re-applied only when it changes; tickWarpCursor animates it.
+	// When the player is carrying an object the item cursor replaces it.
 	int curCursorGroup = -1;
+	const Object *curHeldObj = nullptr;
 
 	while (!leftButtonPressed && !exit) {
 		pollEvents();
@@ -256,16 +314,27 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				actionId = (uint)hit;
 		}
 
-		// Cursor reflects what the crosshair is over: talk (NPC) > navigate
-		// (transition zone) > default.  tickWarpCursor() animates it below.
-		int wantCursor = (centrePerso > 0) ? kWarpCursorTalk
-		               : (actionId > 0)    ? kWarpCursorNavigate
-		               :                     kWarpCursorDefault;
-		if (wantCursor != curCursorGroup) {
-			setWarpCursor(wantCursor);
-			curCursorGroup = wantCursor;
+		// Cursor: a carried object shows the item cursor; otherwise it reflects
+		// what the crosshair is over — talk (NPC) > navigate (zone) > default.
+		const Object *heldObj = _inventory.selectedObject();
+		if (heldObj) {
+			if (heldObj != curHeldObj) {
+				setItemCursor(heldObj);
+				curHeldObj = heldObj;
+				curCursorGroup = -1;   // force a warp-cursor re-apply once dropped
+			}
 		} else {
-			tickWarpCursor();
+			if (curHeldObj)
+				curHeldObj = nullptr;
+			int wantCursor = (centrePerso > 0) ? kWarpCursorTalk
+			               : (actionId > 0)    ? kWarpCursorNavigate
+			               :                     kWarpCursorDefault;
+			if (wantCursor != curCursorGroup) {
+				setWarpCursor(wantCursor);
+				curCursorGroup = wantCursor;
+			} else {
+				tickWarpCursor();
+			}
 		}
 
 		// A click on an NPC opens the conversation in place (no navigation):
@@ -280,6 +349,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				g_system->lockMouse(true);
 				takeMouseRelative();
 				setMousePos(Common::Point(320, 240));
+				_dialogGivenObjSprite = -1;   // the conversation ended
 				curCursorGroup = -1;   // dialog changed the cursor; re-apply
 				// Drain the skip click the dialog ended on so it isn't read as
 				// a fresh navigation press next frame.

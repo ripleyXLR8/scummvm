@@ -109,6 +109,7 @@ void CryOmni3DEngine_Atlantis::doPlaceChange() {
 	_currentPlace = nextPlace;
 	_currentPlaceId = _nextPlaceId;
 	_nextPlaceId = uint(-1);
+	_dialogGivenObjSprite = -1;   // any pending given-item overlay ends here
 
 	// Load the panoramic cyclo HNM and point the viewer at it.
 	if (loadCycloHNM(nextPlace->cycloHnm)) {

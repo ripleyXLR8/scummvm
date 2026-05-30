@@ -272,6 +272,12 @@ private:
 	void setWarpCursor(int group);  // set cursor group + reset animation
 	void tickWarpCursor();          // advance the animation frame (call each tick)
 	void setArrowCursor();          // plain arrow (CURSEURS.SPR sprite 8)
+	// Set the carried-item cursor to object `obj`'s icon; when overlayCursorFrame
+	// >= 0 that _cursorSprites frame (an action cursor) is composited on top.
+	void setItemCursor(const Object *obj, int overlayCursorFrame = -1);
+	// Draw the "just received" item icon centre-bottom (the dialog overlay an
+	// NPC-given object shows for the rest of the conversation).
+	void drawGivenObject(Graphics::Surface &dst) const;
 
 	// --- NPC / prop scene sprites (sprite_renderer.cpp) -------------------
 	// Parse the WAM's SPW sprite list (e.g. SPWATL1.TXT) into _spritePlaceList.
