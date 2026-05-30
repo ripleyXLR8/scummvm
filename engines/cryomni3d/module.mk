@@ -42,6 +42,7 @@ MODULE_OBJS += \
 	atlantis/menus.o \
 	atlantis/navigation.o \
 	atlantis/place.o \
+	atlantis/saveload.o \
 	atlantis/sprite_renderer.o \
 	atlantis/toolbar.o \
 	atlantis/wam_parser.o

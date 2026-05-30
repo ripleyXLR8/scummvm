@@ -124,6 +124,9 @@ public:
 	~CryOmni3DEngine_Atlantis() override;
 
 	bool hasFeature(EngineFeature f) const override;
+	Common::Error loadGameState(int slot) override;
+	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false) override;
+	Common::String getSaveStateName(int slot) const override;
 
 	// Build a path for a named file of the given type (for files outside the BigFile).
 	Common::Path getFilePath(FileType fileType, const Common::String &baseName) const;
@@ -152,6 +155,16 @@ private:
 	// Transition to the given place (currently a direct change; the UBB_VUE
 	// transition video is added with the dialog/video layer).
 	void executeTransition(uint nextPlaceId);
+	// Load a named WAM over the current one (a CON /set(changewam=…) sub-WAM or
+	// a save's stored WAM), without touching the inventory or CON script.
+	void setupWAMByName(const Common::String &wamName);
+
+	// --- Save / load (saveload.cpp) ---------------------------------------
+	// Serialize / restore the full game state to a 1-based save slot.
+	void saveGame(uint saveNum, const Common::String &saveName);
+	bool loadGame(uint saveNum);
+	// Write the per-chapter checkpoint (called on chapter entry).
+	void autosave();
 
 	// --- Warp-view navigation (navigation.cpp) ----------------------------
 	// Main gameplay loop: drive handleWarp() and place transitions until abort.
@@ -415,6 +428,8 @@ private:
 
 	bool _isPlaying;
 	AbortCommand _abortCommand;
+	uint _loadedSave;          // 1-based slot a kAbortLoadGame should re-enter
+	bool _autosavePending;     // a chapter change armed the checkpoint write
 
 	byte *_mainPalette;
 

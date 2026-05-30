@@ -73,8 +73,10 @@ void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 
 	// Per-chapter NPC / prop scene-sprite list (SPW).
 	loadSpritePlaceList();
-	// The carried inventory is per-chapter; the CON /INIT repopulates it.
-	_inventory.clear();
+	// The carried inventory persists across chapters; only a new game (chapter 1)
+	// starts empty.  The CON /INIT then repopulates chapter 1's starting items.
+	if (chapter == 1)
+		_inventory.clear();
 
 	if ((uint)chapter != _currentCONChapter) {
 		_currentCONChapter = (uint)chapter;
@@ -82,8 +84,26 @@ void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 	}
 }
 
+void CryOmni3DEngine_Atlantis::setupWAMByName(const Common::String &wamName) {
+	Common::ScopedPtr<Common::SeekableReadStream> s(
+	    openBigFileStream(kFileTypeWAM, wamName));
+	if (!s) {
+		warning("Cannot open WAM file '%s'", wamName.c_str());
+		return;
+	}
+	_wam.loadStream(*s);
+	_currentWAMName = wamName;
+	// Each WAM references its own SPW list; reload it so the new area's NPCs
+	// composite.  (Inventory and CON script are untouched by a sub-WAM swap.)
+	loadSpritePlaceList();
+	debugC(1, kDebugScript, "Loaded WAM '%s': %u places", wamName.c_str(), _wam.getPlaces().size());
+}
+
 void CryOmni3DEngine_Atlantis::changeChapter(int chapter) {
 	_currentChapter = (uint)chapter;
+	// Arm the chapter checkpoint; doPlaceChange writes it once the start place
+	// is entered (the original autosaves as it enters a new chapter's place).
+	_autosavePending = true;
 
 	// setupChapterWAM loads the CON and runs its /INIT block, which may set the
 	// start place via /set(vue=N) (e.g. chapter 1 opens on the place-450
@@ -117,6 +137,12 @@ void CryOmni3DEngine_Atlantis::doPlaceChange() {
 		setupPalette(_mainPalette, 0, 256);
 		// Composite the place's standing NPCs / props onto the warp surface.
 		compositeNPCSprites();
+	}
+
+	// Write the chapter checkpoint once, on entering the chapter's first place.
+	if (_autosavePending) {
+		_autosavePending = false;
+		autosave();
 	}
 
 	// Full 360-degree horizontal rotation; vertical tilt limited to +/-45 degrees.

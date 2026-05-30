@@ -75,6 +75,8 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_currentPlace(nullptr),
 	_isPlaying(false),
 	_abortCommand(kAbortQuit),
+	_loadedSave(0),
+	_autosavePending(false),
 	_conRng("AtlantisConRandom"),
 	_heroPersoId(0),
 	_dialRng("AtlantisDialCam"),
@@ -105,6 +107,28 @@ bool CryOmni3DEngine_Atlantis::hasFeature(EngineFeature f) const {
 	// ScummVM global menu.  Loading is still permitted.
 	return CryOmni3DEngine::hasFeature(f)
 	       || (f == kSupportsLoadingDuringRuntime);
+}
+
+Common::String CryOmni3DEngine_Atlantis::getSaveStateName(int slot) const {
+	return Common::String::format("atlantis.%04d", slot + 1);
+}
+
+Common::Error CryOmni3DEngine_Atlantis::loadGameState(int slot) {
+	if (loadGame((uint)slot + 1)) {
+		// Defer the place re-entry to the game loop: loadGame() set _nextPlaceId,
+		// so abort the current step and re-run it.
+		_abortCommand = kAbortLoadGame;
+		_loadedSave = (uint)slot + 1;
+		return Common::kNoError;
+	}
+	return Common::kReadingFailed;
+}
+
+Common::Error CryOmni3DEngine_Atlantis::saveGameState(int slot, const Common::String &desc,
+        bool isAutosave) {
+	(void)isAutosave;
+	saveGame((uint)slot + 1, desc);
+	return Common::kNoError;
 }
 
 Common::Path CryOmni3DEngine_Atlantis::getFilePath(FileType fileType,
@@ -284,10 +308,23 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	// evaluation, the /set interpreter, transition videos, NPC dialog and the
 	// warp-cursor sprites land in later commits.)
 	changeChapter(1);
+	_canLoadSave = true;
 
 	_isPlaying = true;
+	// Outer state machine: gameStep() returns when something sets _abortCommand.
+	// A load-game request (from the GMM, or a game-over checkpoint reload) has
+	// already restored the state and set _nextPlaceId, so we clear the abort and
+	// re-enter the loop, which steps into the loaded place.  gameStep() always
+	// runs at least once (do/while, not a shouldQuit()-gated head test).
 	_abortCommand = kAbortNoAbort;
-	gameStep();
+	do {
+		gameStep();
+		if (_abortCommand == kAbortLoadGame) {
+			_abortCommand = kAbortNoAbort;
+			continue;
+		}
+		break;   // quit / unhandled abort
+	} while (!shouldQuit());
 
 	SearchMan.remove("Atlantis_BigFile");
 	return Common::kNoError;
