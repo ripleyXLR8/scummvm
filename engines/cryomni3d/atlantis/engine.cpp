@@ -139,9 +139,9 @@ bool CryOmni3DEngine_Atlantis::showSubtitles() const {
 }
 
 void CryOmni3DEngine_Atlantis::refreshInventoryToolbar(uint changedSlot) {
-	// No-op until the toolbar lands; it will then redraw the inventory bar to
-	// reflect the added/removed item.
-	(void)changedSlot;
+	// Keep the toolbar's visible slot window in sync when an item is added or
+	// removed (it pages forward when a new item lands outside the window).
+	_toolbar.inventoryChanged(changedSlot);
 }
 
 void CryOmni3DEngine_Atlantis::makeTranslucent(Graphics::Surface &dst,
@@ -262,8 +262,19 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	loadAtlantisExeTables();
 	setupObjects();
 	loadObjectSprites();
+	loadInventoryBarSprite();
 	_inventory.init(20, new Common::Functor1Mem<uint, void, CryOmni3DEngine_Atlantis>(
 	                        this, &CryOmni3DEngine_Atlantis::refreshInventoryToolbar));
+
+	// The inventory bar: the OBJETS0.SPR background is added as the toolbar's
+	// only menu sprite, left edge centred at x=20 (the sprite carries
+	// xoff=-20, so tx=0 yields draw_x=20).  Item icons composite on top.
+	_toolbar.init(&_inventory, this);
+	if (!_inventoryBarSprite.pixels.empty()) {
+		const SubjSprite &s = _inventoryBarSprite;
+		_toolbar.addMenuSprite(s.w, s.h, s.xoff, s.yoff, kSprTransp,
+		                       0, s.yoff, s.pixels.data(), s.blend.data());
+	}
 
 	// Enter chapter 1: load its WAM navigation map and CON scenario script,
 	// then run the warp-navigation loop.  (CON arrival/departure section

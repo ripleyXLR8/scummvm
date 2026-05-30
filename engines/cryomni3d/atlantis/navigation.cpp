@@ -368,8 +368,38 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			exit = true;
 		}
 
-		// Escape leaves the warp (run() turns this into a quit for now).
-		if (getNextKey().keycode == Common::KEYCODE_ESCAPE) {
+		// Right-click or Space opens the inventory toolbar; Escape leaves the
+		// warp (run() turns this into a quit for now — the in-game menu lands
+		// with the menus layer).
+		Common::KeyCode kc = getNextKey().keycode;
+		if (!exit && (getCurrentMouseButton() == 2 || kc == Common::KEYCODE_SPACE)) {
+			// Show the current view, switch to a normal pointer, run the bar,
+			// then re-arm relative-look mode.
+			if (_warpLoaded) {
+				const Graphics::Surface *bg = _omni3dMan.getSurface();
+				if (bg)
+					g_system->copyRectToScreen(bg->getPixels(), bg->pitch, 0, 0, bg->w, bg->h);
+			}
+			g_system->lockMouse(false);
+			if (_inventory.selectedObject() != nullptr)
+				setItemCursor(_inventory.selectedObject());
+			else
+				setArrowCursor();
+			displayToolbar(_warpLoaded ? _omni3dMan.getSurface() : nullptr);
+			if (shouldAbort()) {
+				actionId = 66666;
+				exit = true;
+			}
+			g_system->lockMouse(true);
+			takeMouseRelative();
+			setMousePos(Common::Point(320, 240));
+			curCursorGroup = -1;   // re-apply the warp cursor next frame
+			curHeldObj = nullptr;
+			while (getCurrentMouseButton() != 0 && !shouldAbort()) {
+				pollEvents();
+				g_system->delayMillis(10);
+			}
+		} else if (kc == Common::KEYCODE_ESCAPE) {
 			actionId = 66666;
 			exit = true;
 			_abortCommand = kAbortQuit;

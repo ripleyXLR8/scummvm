@@ -37,6 +37,7 @@
 
 #include "cryomni3d/atlantis/bigfile.h"
 #include "cryomni3d/atlantis/con_script.h"
+#include "cryomni3d/atlantis/toolbar.h"
 #include "cryomni3d/atlantis/wam_parser.h"
 
 namespace CryOmni3D {
@@ -113,6 +114,8 @@ enum AbortCommand {
 // sprites, menus, saves and the F3DC mouth pipeline are layered on top in
 // subsequent commits.
 class CryOmni3DEngine_Atlantis : public CryOmni3DEngine {
+	friend class Atlantis_Toolbar;
+
 protected:
 	Common::Error run() override;
 
@@ -133,7 +136,7 @@ public:
 	// CryOmni3DEngine interface.
 	void setupPalette(const byte *colors, uint start, uint num) override;
 	void makeTranslucent(Graphics::Surface &dst, const Graphics::Surface &src) const override;
-	bool displayToolbar(const Graphics::Surface *original) override { return false; }
+	bool displayToolbar(const Graphics::Surface *original) override { return _toolbar.displayToolbar(original); }
 	bool hasPlaceDocumentation() override { return false; }
 	bool displayPlaceDocumentation() override { return false; }
 	uint displayOptions() override { return 0; }
@@ -240,6 +243,11 @@ private:
 	void loadSubjectSprites();
 	// Load inventory item icons from SPRITE\2D\OBJETS1.SPR into _objSprites.
 	void loadObjectSprites();
+	// Load the inventory-bar background sprite from SPRITE\2D\OBJETS0.SPR.
+	void loadInventoryBarSprite();
+	// Draw object `obj`'s icon centred in slot rect `r` (clipped to dst only).
+	void drawInventoryIcon(Graphics::ManagedSurface &dst, const Object *obj,
+	                       const Common::Rect &r);
 
 	// --- Inventory / exe tables (exetables.cpp) ---------------------------
 	// Extract the static lookup tables baked into atlantis.exe (currently the
@@ -341,6 +349,8 @@ private:
 	Common::Array<uint> _inventoryObjectIds;
 	Common::Array<SubjSprite> _objSprites;
 	int _dialogGivenObjSprite;
+	SubjSprite _inventoryBarSprite;   // OBJETS0.SPR bar background
+	Atlantis_Toolbar _toolbar;
 
 	// Animated warp-view cursors (CURSEURS.SPR) + current group/frame state.
 	Common::Array<CursorSpr> _cursorSprites;

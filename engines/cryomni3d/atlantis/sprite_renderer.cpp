@@ -44,9 +44,11 @@
 #include "common/system.h"
 #include "common/textconsole.h"
 
+#include "graphics/managed_surface.h"
 #include "graphics/pixelformat.h"
 #include "graphics/surface.h"
 
+#include "cryomni3d/objects.h"
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/sprite_blend.h"
 
@@ -291,6 +293,97 @@ void CryOmni3DEngine_Atlantis::loadSubjectSprites() {
 	}
 
 	debugC(1, kDebugScript, "loadSubjectSprites: loaded %u sprites from SUJETS.SPR", count);
+}
+
+void CryOmni3DEngine_Atlantis::loadInventoryBarSprite() {
+	// OBJETS0.SPR holds the single ~599x82 inventory-bar background (golden
+	// line + 9 slot ornaments).  Same SPR format as the other 2D sprites.
+	_inventoryBarSprite = SubjSprite();
+	Common::ScopedPtr<Common::SeekableReadStream> stream(
+	    openBigFileStream(kFileTypeSprite2D, "OBJETS0.SPR"));
+	if (!stream) {
+		warning("loadInventoryBarSprite: cannot open SPRITE\\2D\\OBJETS0.SPR");
+		return;
+	}
+
+	uint16 flags = stream->readUint16LE();
+	uint16 colorTable[256];
+	memset(colorTable, 0, sizeof(colorTable));
+	if (flags & 0x4) {
+		for (int i = 0; i < 256; i++) {
+			uint16 rgb555 = stream->readUint16LE();
+			uint16 r = (rgb555 >> 10) & 0x1f;
+			uint16 g = (rgb555 >> 5)  & 0x1f;
+			uint16 b =  rgb555        & 0x1f;
+			colorTable[i] = (r << 11) | (g << 6) | b;
+		}
+	}
+	if (flags & 0x8)
+		stream->skip(256 * 2);
+
+	uint16 count = stream->readUint16LE();
+	if (count != 1) {
+		warning("loadInventoryBarSprite: expected 1 sprite, got %u", count);
+		return;
+	}
+
+	const int64 sprDataBase = stream->pos();
+	uint32 spr0Off = stream->readUint32LE();
+	if (!stream->seek(sprDataBase + spr0Off)) {
+		warning("loadInventoryBarSprite: seek failed");
+		return;
+	}
+
+	SubjSprite &spr = _inventoryBarSprite;
+	spr.w    = stream->readUint16LE();
+	spr.h    = stream->readUint16LE();
+	spr.xoff = stream->readSint16LE();
+	spr.yoff = stream->readSint16LE();
+	if (spr.w == 0 || spr.h == 0 || spr.w > 1024 || spr.h > 256) {
+		warning("loadInventoryBarSprite: bad dims %ux%u", spr.w, spr.h);
+		spr = SubjSprite();
+		return;
+	}
+	decodeSprite(*stream, spr, colorTable);
+
+	debugC(1, kDebugScript, "loadInventoryBarSprite: loaded %ux%u from OBJETS0.SPR (hotspot %d,%d)",
+	      spr.w, spr.h, spr.xoff, spr.yoff);
+}
+
+void CryOmni3DEngine_Atlantis::drawInventoryIcon(Graphics::ManagedSurface &dst,
+        const Object *obj, const Common::Rect &r) {
+	if (_objSprites.empty() || obj == nullptr || _objects.empty())
+		return;
+	// Find this object's icon via its slot in _objects (parallel to _objSprites).
+	ptrdiff_t idx = obj - &_objects.front();
+	if (idx < 0 || (uint)idx >= _objSprites.size())
+		return;
+	const SubjSprite &spr = _objSprites[(uint)idx];
+	if (spr.pixels.empty())
+		return;
+
+	// Centre the icon on the slot; clip ONLY to the surface (OBJETS1 icons run
+	// up to 60x60, larger than the 50x40 slot, so per-slot clipping would trim
+	// them — the 70px column spacing leaves room).
+	int cx = (r.left + r.right)  / 2;
+	int cy = (r.top  + r.bottom) / 2;
+	int dx = cx - spr.xoff;
+	int dy = cy - spr.yoff;
+	for (int y = 0; y < (int)spr.h; y++) {
+		int sy = dy + y;
+		if (sy < 0 || sy >= (int)dst.h) continue;
+		for (int x = 0; x < (int)spr.w; x++) {
+			int sx = dx + x;
+			if (sx < 0 || sx >= (int)dst.w) continue;
+			uint sidx = y * spr.w + x;
+			uint16 pix = spr.pixels[sidx];
+			if (pix == kSprTransp) continue;
+			uint16 *dp = (uint16 *)dst.getBasePtr(sx, sy);
+			if (spr.blend[sidx] != kSprNoBlend)
+				pix = blendSprPixel565(pix, *dp, spr.blend[sidx]);
+			*dp = pix;
+		}
+	}
 }
 
 Graphics::Surface *CryOmni3DEngine_Atlantis::loadTGA(FileType ft, const char *name) {
