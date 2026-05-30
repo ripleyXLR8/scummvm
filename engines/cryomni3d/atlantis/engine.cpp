@@ -22,6 +22,7 @@
 #include "common/archive.h"
 #include "common/config-manager.h"
 #include "common/debug.h"
+#include "common/func.h"
 #include "common/events.h"
 #include "common/file.h"
 #include "common/ptr.h"
@@ -80,6 +81,7 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_lastDialCam(0),
 	_dialBaseAlpha(0.0),
 	_dialBaseAlphaValid(false),
+	_dialogGivenObjSprite(-1),
 	_warpCursorGroup(0),
 	_warpCursorFrame(-1),
 	_warpCursorNextMs(0),
@@ -134,6 +136,12 @@ void CryOmni3DEngine_Atlantis::setupPalette(const byte *colors, uint start, uint
 
 bool CryOmni3DEngine_Atlantis::showSubtitles() const {
 	return ConfMan.getBool("subtitles");
+}
+
+void CryOmni3DEngine_Atlantis::refreshInventoryToolbar(uint changedSlot) {
+	// No-op until the toolbar lands; it will then redraw the inventory bar to
+	// reflect the added/removed item.
+	(void)changedSlot;
 }
 
 void CryOmni3DEngine_Atlantis::makeTranslucent(Graphics::Surface &dst,
@@ -247,6 +255,15 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 
 	// Animated warp-view / arrow cursors.
 	loadCursorSprites();
+
+	// Inventory: extract the exe object table, build the object catalogue and
+	// load the item icons.  20 carry slots; the toolbar refresh callback is
+	// wired when the toolbar lands.
+	loadAtlantisExeTables();
+	setupObjects();
+	loadObjectSprites();
+	_inventory.init(20, new Common::Functor1Mem<uint, void, CryOmni3DEngine_Atlantis>(
+	                        this, &CryOmni3DEngine_Atlantis::refreshInventoryToolbar));
 
 	// Enter chapter 1: load its WAM navigation map and CON scenario script,
 	// then run the warp-navigation loop.  (CON arrival/departure section

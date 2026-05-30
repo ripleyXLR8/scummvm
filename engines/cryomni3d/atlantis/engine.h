@@ -238,6 +238,19 @@ private:
 	                  const uint16 *colorTable);
 	// Load the subject-menu icon sprites from SPRITE\2D\SUJETS.SPR.
 	void loadSubjectSprites();
+	// Load inventory item icons from SPRITE\2D\OBJETS1.SPR into _objSprites.
+	void loadObjectSprites();
+
+	// --- Inventory / exe tables (exetables.cpp) ---------------------------
+	// Extract the static lookup tables baked into atlantis.exe (currently the
+	// inventory object-id table); grows as more tables are needed.
+	void loadAtlantisExeTables();
+	// Build the base _objects catalogue from _inventoryObjectIds (the OBJETS1
+	// sprite order), so _objSprites[i] is the icon for _objects[i].
+	void setupObjects();
+	// Inventory-change callback (Inventory::add/remove invoke it).  A no-op
+	// until the toolbar lands, when it will redraw the inventory bar.
+	void refreshInventoryToolbar(uint changedSlot);
 	// Load a 15-bit uncompressed TGA from the BigFile into a new screen-format
 	// surface (caller owns it).  Returns nullptr on failure.
 	Graphics::Surface *loadTGA(FileType ft, const char *name);
@@ -315,6 +328,13 @@ private:
 
 	// Subject-menu icon sprites decoded from SPRITE\2D\SUJETS.SPR.
 	Common::Array<SubjSprite> _subjSprites;
+
+	// Inventory: the object-id table extracted from atlantis.exe (canonical
+	// OBJETS1.SPR sprite order), the matching item icons, and the index into
+	// _objSprites of an item an NPC just gave the player this dialog (-1 = none).
+	Common::Array<uint> _inventoryObjectIds;
+	Common::Array<SubjSprite> _objSprites;
+	int _dialogGivenObjSprite;
 
 	// Animated warp-view cursors (CURSEURS.SPR) + current group/frame state.
 	Common::Array<CursorSpr> _cursorSprites;

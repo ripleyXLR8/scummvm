@@ -337,6 +337,59 @@ Graphics::Surface *CryOmni3DEngine_Atlantis::loadTGA(FileType ft, const char *na
 	return surf;
 }
 
+void CryOmni3DEngine_Atlantis::loadObjectSprites() {
+	Common::ScopedPtr<Common::SeekableReadStream> stream(
+	    openBigFileStream(kFileTypeSprite2D, "OBJETS1.SPR"));
+	if (!stream) {
+		warning("loadObjectSprites: cannot open SPRITE\\2D\\OBJETS1.SPR");
+		return;
+	}
+
+	uint16 flags = stream->readUint16LE();
+	uint16 colorTable[256];
+	memset(colorTable, 0, sizeof(colorTable));
+	if (flags & 0x4) {
+		for (int i = 0; i < 256; i++) {
+			uint16 rgb555 = stream->readUint16LE();
+			uint16 r = (rgb555 >> 10) & 0x1f;
+			uint16 g = (rgb555 >> 5)  & 0x1f;
+			uint16 b =  rgb555        & 0x1f;
+			colorTable[i] = (r << 11) | (g << 6) | b;
+		}
+	}
+	if (flags & 0x8)
+		stream->skip(256 * 2);
+
+	uint16 count = stream->readUint16LE();
+	if (count == 0 || count > 256) {
+		warning("loadObjectSprites: unexpected count %u", count);
+		return;
+	}
+
+	const int64 sprDataBase = stream->pos();
+	Common::Array<uint32> offsets(count);
+	for (uint16 i = 0; i < count; i++)
+		offsets[i] = stream->readUint32LE();
+
+	_objSprites.resize(count);
+	for (uint16 si = 0; si < count; si++) {
+		if (!stream->seek(sprDataBase + offsets[si])) {
+			warning("loadObjectSprites: seek failed for sprite %u", si);
+			continue;
+		}
+		SubjSprite &spr = _objSprites[si];
+		spr.w    = stream->readUint16LE();
+		spr.h    = stream->readUint16LE();
+		spr.xoff = stream->readSint16LE();
+		spr.yoff = stream->readSint16LE();
+		if (spr.w == 0 || spr.h == 0 || spr.w > 640 || spr.h > 480)
+			continue;
+		decodeSprite(*stream, spr, colorTable);
+	}
+
+	debugC(1, kDebugScript, "loadObjectSprites: loaded %u sprites from OBJETS1.SPR", count);
+}
+
 void CryOmni3DEngine_Atlantis::loadCursorSprites() {
 	Common::ScopedPtr<Common::SeekableReadStream> stream(
 	    openBigFileStream(kFileTypeSprite2D, "CURSEURS.SPR"));

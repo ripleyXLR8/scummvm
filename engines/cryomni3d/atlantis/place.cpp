@@ -73,6 +73,8 @@ void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 
 	// Per-chapter NPC / prop scene-sprite list (SPW).
 	loadSpritePlaceList();
+	// The carried inventory is per-chapter; the CON /INIT repopulates it.
+	_inventory.clear();
 
 	if ((uint)chapter != _currentCONChapter) {
 		_currentCONChapter = (uint)chapter;
