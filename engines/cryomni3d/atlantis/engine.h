@@ -237,6 +237,24 @@ private:
 	// surface (caller owns it).  Returns nullptr on failure.
 	Graphics::Surface *loadTGA(FileType ft, const char *name);
 
+	// --- Cursors (navigation.cpp) -----------------------------------------
+	// RGB565 colour key (pure blue) for the cursor sprites and CursorMan masks.
+	static const uint16 kWarpCursorKey = 0x001Fu;
+	// Animated warp-view cursor frames decoded from SPRITE\2D\CURSEURS.SPR.
+	struct CursorSpr {
+		uint16 w, h;
+		int16  xoff, yoff;
+		Common::Array<uint16> pixels;  // RGB565; kWarpCursorKey = transparent
+		Common::Array<uint8>  blend;   // per-pixel blend factor; kSprNoBlend = opaque
+	};
+	void loadCursorSprites();
+	// Install an alpha-blended hardware cursor from sprite pixels + blend factors.
+	void setBlendedCursor(uint16 w, uint16 h, const uint16 *pixels,
+	                      const uint8 *blend, int hotX, int hotY, uint16 transpKey);
+	void setWarpCursor(int group);  // set cursor group + reset animation
+	void tickWarpCursor();          // advance the animation frame (call each tick)
+	void setArrowCursor();          // plain arrow (CURSEURS.SPR sprite 8)
+
 	// --- NPC / prop scene sprites (sprite_renderer.cpp) -------------------
 	// Parse the WAM's SPW sprite list (e.g. SPWATL1.TXT) into _spritePlaceList.
 	void loadSpritePlaceList();
@@ -292,6 +310,12 @@ private:
 
 	// Subject-menu icon sprites decoded from SPRITE\2D\SUJETS.SPR.
 	Common::Array<SubjSprite> _subjSprites;
+
+	// Animated warp-view cursors (CURSEURS.SPR) + current group/frame state.
+	Common::Array<CursorSpr> _cursorSprites;
+	int    _warpCursorGroup;    // WarpCursorState: 0=default 1=navigate 2=object 3=talk
+	int    _warpCursorFrame;    // current frame index within the group
+	uint32 _warpCursorNextMs;   // getMillis() threshold for the next frame
 
 	// NPC / prop scene sprites for the current chapter (parsed from the WAM's
 	// SPW list) and the per-place NPC click-target bounds.

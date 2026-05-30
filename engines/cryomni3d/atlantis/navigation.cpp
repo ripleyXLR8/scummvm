@@ -25,18 +25,168 @@
 // cursor, the toolbar and the in-game menu are layered on as their subsystems
 // land.
 
+#include "common/array.h"
 #include "common/debug.h"
 #include "common/events.h"
 #include "common/rect.h"
 #include "common/scummsys.h"
 #include "common/system.h"
+#include "common/util.h"
+
+#include "graphics/cursorman.h"
+#include "graphics/pixelformat.h"
 
 #include "cryomni3d/omni3d.h"
 
 #include "cryomni3d/atlantis/engine.h"
+#include "cryomni3d/atlantis/sprite_blend.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
+
+// Cursor group indices matching CURSEURS.SPR sprite groups.
+enum WarpCursorState {
+	kWarpCursorDefault  = 0,  // sprites 0–8   — no interactive zone (static)
+	kWarpCursorNavigate = 1,  // sprites 9–17  — place transition
+	kWarpCursorObject   = 2,  // sprites 18–25 — object interaction
+	kWarpCursorTalk     = 3   // sprites 26–45 — NPC interaction
+};
+
+// Fallback bitmask cursors used when CURSEURS.SPR is unavailable.
+static void buildWarpCursorFallback(uint16 *out, const uint16 *rowMasks, uint16 color, uint16 key) {
+	for (int r = 0; r < 16; r++) {
+		uint16 mask = rowMasks[r];
+		for (int c = 0; c < 16; c++)
+			out[r * 16 + c] = (mask & (0x8000u >> c)) ? color : key;
+	}
+}
+static const uint16 kCursorDefaultMask[16] = {
+	0x8000, 0xC000, 0xE000, 0xF000, 0xF800, 0xFC00, 0xFE00, 0xFF00,
+	0xE000, 0xC800, 0x8400, 0x0200, 0x0000, 0x0000, 0x0000, 0x0000
+};
+static const uint16 kCursorNavigateMask[16] = {
+	0x0000, 0x0000, 0x0000, 0x0000, 0x0010, 0x0030, 0x0070, 0xFFF0,
+	0xFFF8, 0xFFF0, 0x0070, 0x0030, 0x0010, 0x0000, 0x0000, 0x0000
+};
+static const uint16 kCursorTalkMask[16] = {
+	0x0000, 0x1FF0, 0x2004, 0x2448, 0x2448, 0x2004, 0x2814, 0x27E4,
+	0x2004, 0x1FF0, 0x0080, 0x0100, 0x0200, 0x0000, 0x0000, 0x0000
+};
+
+// Convert one RGB565 sprite pixel to straight-alpha ARGB8888 for a hardware
+// cursor.  Blend pixels carry a premultiplied colour (src*factor/32), so the
+// colour is un-premultiplied and the factor becomes the alpha.
+static uint32 spriteToArgb(uint16 p, uint8 factor, uint16 transpKey) {
+	if (p == transpKey)
+		return 0;  // fully transparent
+	uint r = (p >> 11) & 0x1f;
+	uint g = (p >>  5) & 0x3f;
+	uint b =  p        & 0x1f;
+	uint a = 0xff;
+	if (factor != kSprNoBlend) {
+		uint f = factor & 0x1f;
+		if (f == 0)
+			return 0;  // factor 0 == fully transparent edge pixel
+		r = MIN<uint>(0x1f, r * 32 / f);
+		g = MIN<uint>(0x3f, g * 32 / f);
+		b = MIN<uint>(0x1f, b * 32 / f);
+		a = f * 255 / 32;
+	}
+	uint r8 = (r << 3) | (r >> 2);
+	uint g8 = (g << 2) | (g >> 4);
+	uint b8 = (b << 3) | (b >> 2);
+	return (a << 24) | (r8 << 16) | (g8 << 8) | b8;
+}
+
+void CryOmni3DEngine_Atlantis::setBlendedCursor(uint16 w, uint16 h,
+        const uint16 *pixels, const uint8 *blend, int hotX, int hotY,
+        uint16 transpKey) {
+	const uint n = (uint)w * h;
+	if (g_system->hasFeature(OSystem::kFeatureCursorAlpha)) {
+		// ARGB8888 cursor: the backend alpha-composites it, so anti-aliased
+		// edges blend the way the original game does.
+		Graphics::PixelFormat fmt(4, 8, 8, 8, 8, 16, 8, 0, 24);
+		Common::Array<uint32> buf(n);
+		for (uint i = 0; i < n; i++)
+			buf[i] = spriteToArgb(pixels[i],
+			                      blend ? blend[i] : (uint8)kSprNoBlend, transpKey);
+		CursorMan.replaceCursor(buf.data(), w, h, hotX, hotY, 0, &fmt);
+	} else {
+		// No alpha-cursor support: fall back to a key-colour RGB565 cursor.
+		Graphics::PixelFormat fmt(2, 5, 6, 5, 0, 11, 5, 0, 0);
+		Common::Array<uint16> buf;
+		buf.assign(pixels, pixels + n);
+		for (uint16 &p : buf)
+			if (p == transpKey)
+				p = kWarpCursorKey;
+		CursorMan.replaceCursor(buf.data(), w, h, hotX, hotY, kWarpCursorKey, &fmt);
+	}
+}
+
+void CryOmni3DEngine_Atlantis::setWarpCursor(int group) {
+	_warpCursorGroup = group;
+	_warpCursorFrame = -1;   // tickWarpCursor advances to 0 on first call
+	_warpCursorNextMs = 0;   // trigger an immediate update
+	tickWarpCursor();
+}
+
+// The plain Atlantis pointer: CURSEURS.SPR sprite 8 (last frame of the default
+// group) — the static arrow used for menus and the subject grid.
+void CryOmni3DEngine_Atlantis::setArrowCursor() {
+	if (_cursorSprites.size() <= 8)
+		return;
+	const CursorSpr &spr = _cursorSprites[8];
+	if (spr.pixels.empty())
+		return;
+	setBlendedCursor(spr.w, spr.h, spr.pixels.data(), spr.blend.data(),
+	                 spr.xoff, spr.yoff, kWarpCursorKey);
+}
+
+void CryOmni3DEngine_Atlantis::tickWarpCursor() {
+	static const int kGroupFirst[] = {  0,  9, 18, 26 };
+	static const int kGroupCount[] = {  9,  9,  8, 20 };
+
+	if (!_cursorSprites.empty()) {
+		int grp = CLIP(_warpCursorGroup, 0, 3);
+		// The default cursor is static in the original; only navigate / object
+		// / talk animate.
+		if (grp == kWarpCursorDefault) {
+			if (_warpCursorFrame == 0)
+				return;
+			_warpCursorFrame = 0;
+		} else {
+			uint32 now = g_system->getMillis();
+			if (now < _warpCursorNextMs) return;
+			_warpCursorNextMs = now + 80;  // ~12 fps
+			_warpCursorFrame = (_warpCursorFrame + 1) % kGroupCount[grp];
+		}
+		const CursorSpr &spr = _cursorSprites[kGroupFirst[grp] + _warpCursorFrame];
+		if (!spr.pixels.empty())
+			setBlendedCursor(spr.w, spr.h, spr.pixels.data(), spr.blend.data(),
+			                 spr.xoff, spr.yoff, kWarpCursorKey);
+		return;
+	}
+
+	// Fallback: hardcoded bitmask cursors when CURSEURS.SPR is not loaded.
+	if (_warpCursorFrame == 0) return;
+	_warpCursorFrame = 0;
+	uint16 buf[16 * 16];
+	Graphics::PixelFormat fmt(2, 5, 6, 5, 0, 11, 5, 0, 0);
+	switch (_warpCursorGroup) {
+	case kWarpCursorNavigate:
+		buildWarpCursorFallback(buf, kCursorNavigateMask, 0xFFE0u, kWarpCursorKey);
+		CursorMan.replaceCursor(buf, 16, 16, 0, 7, kWarpCursorKey, &fmt);
+		break;
+	case kWarpCursorTalk:
+		buildWarpCursorFallback(buf, kCursorTalkMask, 0x07FFu, kWarpCursorKey);
+		CursorMan.replaceCursor(buf, 16, 16, 7, 4, kWarpCursorKey, &fmt);
+		break;
+	default:
+		buildWarpCursorFallback(buf, kCursorDefaultMask, 0xFFFFu, kWarpCursorKey);
+		CursorMan.replaceCursor(buf, 16, 16, 0, 0, kWarpCursorKey, &fmt);
+		break;
+	}
+}
 
 int CryOmni3DEngine_Atlantis::handleWarp() {
 	bool leftButtonPressed = false;
@@ -68,6 +218,10 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 	static const double kLookYawDiv    = 600.0;
 	static const double kLookPitchDiv  = 800.0;
 	static const double kWarpBetaLimit = M_PI / 4.0;  // matches doPlaceChange
+
+	// Cursor group reflecting what the crosshair is over (talk / navigate /
+	// default), re-applied only when it changes; tickWarpCursor animates it.
+	int curCursorGroup = -1;
 
 	while (!leftButtonPressed && !exit) {
 		pollEvents();
@@ -102,6 +256,18 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				actionId = (uint)hit;
 		}
 
+		// Cursor reflects what the crosshair is over: talk (NPC) > navigate
+		// (transition zone) > default.  tickWarpCursor() animates it below.
+		int wantCursor = (centrePerso > 0) ? kWarpCursorTalk
+		               : (actionId > 0)    ? kWarpCursorNavigate
+		               :                     kWarpCursorDefault;
+		if (wantCursor != curCursorGroup) {
+			setWarpCursor(wantCursor);
+			curCursorGroup = wantCursor;
+		} else {
+			tickWarpCursor();
+		}
+
 		// A click on an NPC opens the conversation in place (no navigation):
 		// leave warp's relative-look mode, run the dialog, then resume looking.
 		if (clicked && centrePerso > 0) {
@@ -114,6 +280,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				g_system->lockMouse(true);
 				takeMouseRelative();
 				setMousePos(Common::Point(320, 240));
+				curCursorGroup = -1;   // dialog changed the cursor; re-apply
 				// Drain the skip click the dialog ended on so it isn't read as
 				// a fresh navigation press next frame.
 				while (getCurrentMouseButton() != 0 && !shouldAbort()) {

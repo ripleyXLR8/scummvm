@@ -80,6 +80,9 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_lastDialCam(0),
 	_dialBaseAlpha(0.0),
 	_dialBaseAlphaValid(false),
+	_warpCursorGroup(0),
+	_warpCursorFrame(-1),
+	_warpCursorNextMs(0),
 	_mainPalette(nullptr),
 	_warpLoaded(false),
 	_propAnimFrames(0),
@@ -241,6 +244,9 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 
 	// Subject-menu icon sprites (shared by the NPC topic menu).
 	loadSubjectSprites();
+
+	// Animated warp-view / arrow cursors.
+	loadCursorSprites();
 
 	// Enter chapter 1: load its WAM navigation map and CON scenario script,
 	// then run the warp-navigation loop.  (CON arrival/departure section

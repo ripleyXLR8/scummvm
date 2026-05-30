@@ -337,6 +337,90 @@ Graphics::Surface *CryOmni3DEngine_Atlantis::loadTGA(FileType ft, const char *na
 	return surf;
 }
 
+void CryOmni3DEngine_Atlantis::loadCursorSprites() {
+	Common::ScopedPtr<Common::SeekableReadStream> stream(
+	    openBigFileStream(kFileTypeSprite2D, "CURSEURS.SPR"));
+	if (!stream) {
+		warning("loadCursorSprites: cannot open SPRITE\\2D\\CURSEURS.SPR");
+		return;
+	}
+
+	uint16 flags = stream->readUint16LE();
+	uint16 colorTable[256];
+	memset(colorTable, 0, sizeof(colorTable));
+	if (flags & 0x4) {
+		for (int i = 0; i < 256; i++) {
+			uint16 rgb555 = stream->readUint16LE();
+			uint16 r = (rgb555 >> 10) & 0x1f;
+			uint16 g = (rgb555 >> 5)  & 0x1f;
+			uint16 b =  rgb555        & 0x1f;
+			uint16 rgb565 = (uint16)((r << 11) | (g << 6) | b);
+			// Remap the transparency key to near-black to avoid false keying.
+			colorTable[i] = (rgb565 == kWarpCursorKey) ? 0x0000u : rgb565;
+		}
+	}
+	if (flags & 0x8)
+		stream->skip(512);
+
+	uint16 count = stream->readUint16LE();
+	if (count == 0 || count > 256) {
+		warning("loadCursorSprites: unexpected sprite count %u", count);
+		return;
+	}
+
+	const int64 sprDataBase = stream->pos();
+	Common::Array<uint32> offsets(count);
+	for (uint16 i = 0; i < count; i++)
+		offsets[i] = stream->readUint32LE();
+
+	_cursorSprites.resize(count);
+	for (uint16 si = 0; si < count; si++) {
+		if (!stream->seek(sprDataBase + offsets[si])) {
+			warning("loadCursorSprites: seek failed for sprite %u", si);
+			continue;
+		}
+		CursorSpr &spr = _cursorSprites[si];
+		spr.w    = stream->readUint16LE();
+		spr.h    = stream->readUint16LE();
+		spr.xoff = stream->readSint16LE();
+		spr.yoff = stream->readSint16LE();
+		if (spr.w == 0 || spr.h == 0 || spr.w > 64 || spr.h > 64)
+			continue;
+
+		Common::Array<uint32> rowOff(spr.h);
+		for (uint16 r = 0; r < spr.h; r++)
+			rowOff[r] = stream->readUint32LE();
+		const int64 pixBase = stream->pos();
+
+		spr.pixels.resize(spr.w * spr.h, kWarpCursorKey);
+		spr.blend.resize(spr.w * spr.h, kSprNoBlend);
+
+		for (uint16 ry = 0; ry < spr.h; ry++) {
+			stream->seek(pixBase + rowOff[ry]);
+			int rx = 0;
+			while (rx < (int)spr.w && !stream->eos()) {
+				byte b = stream->readByte();
+				int btype = (b >> 6) & 0x3;
+				int cnt   = b & 0x3F;
+				if (btype == 0) {
+					rx += cnt;
+				} else if (btype == 1) {
+					for (int i = 0; i < cnt && rx < (int)spr.w; i++, rx++)
+						spr.pixels[ry * spr.w + rx] = colorTable[stream->readByte()];
+				} else {
+					for (int i = 0; i < cnt && rx < (int)spr.w; i++, rx++) {
+						byte factor = stream->readByte() & 0x1f;
+						spr.pixels[ry * spr.w + rx] = colorTable[stream->readByte()];
+						spr.blend[ry * spr.w + rx]  = factor;
+					}
+				}
+			}
+		}
+	}
+
+	debugC(1, kDebugScript, "loadCursorSprites: loaded %u sprites from CURSEURS.SPR", count);
+}
+
 void CryOmni3DEngine_Atlantis::loadSpritePlaceList() {
 	_spritePlaceList.clear();
 
