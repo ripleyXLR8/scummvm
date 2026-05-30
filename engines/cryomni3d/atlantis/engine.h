@@ -249,6 +249,23 @@ private:
 	void drawInventoryIcon(Graphics::ManagedSurface &dst, const Object *obj,
 	                       const Common::Rect &r);
 
+	// --- FONTMAX gold menu font (sprite_renderer.cpp / menus.cpp) ---------
+	// Decode one SPR glyph atlas (sprite_index = char_code - 0x20) into `out`.
+	void loadFontSpriteSet(const char *spr, Common::Array<SubjSprite> &out);
+	// Load FONTMAX.SPR (+ FONTMAX2.SPR hover) — the gold menu font.
+	void loadFontMaxSprites();
+	int  fontMaxCharAdvance(unsigned char c) const;
+	int  fontMaxStringWidth(const Common::String &text) const;
+	// Shared glyph-sprite blitter: layoutGlyphs drive the pen advance, drawGlyphs
+	// supply the pixels (so a hover swap recolours without reflowing).
+	void drawSprFontText(Graphics::ManagedSurface &dst, const Common::String &text,
+	                     int anchorX, int anchorY,
+	                     const Common::Array<SubjSprite> &drawGlyphs,
+	                     const Common::Array<SubjSprite> &layoutGlyphs,
+	                     int spaceAdvance) const;
+	void drawFontMaxText(Graphics::ManagedSurface &dst, const Common::String &text,
+	                     int anchorX, int anchorY, bool hover = false) const;
+
 	// --- Inventory / exe tables (exetables.cpp) ---------------------------
 	// Extract the static lookup tables baked into atlantis.exe (currently the
 	// inventory object-id table); grows as more tables are needed.
@@ -351,6 +368,11 @@ private:
 	int _dialogGivenObjSprite;
 	SubjSprite _inventoryBarSprite;   // OBJETS0.SPR bar background
 	Atlantis_Toolbar _toolbar;
+
+	// FONTMAX gold menu font (FONTMAX.SPR) + its hover/highlight set
+	// (FONTMAX2.SPR).  Glyph index = char_code - 0x20.
+	Common::Array<SubjSprite> _fontMaxSprites;
+	Common::Array<SubjSprite> _fontMaxHoverSprites;
 
 	// Animated warp-view cursors (CURSEURS.SPR) + current group/frame state.
 	Common::Array<CursorSpr> _cursorSprites;

@@ -39,6 +39,7 @@ MODULE_OBJS += \
 	atlantis/dialog.o \
 	atlantis/engine.o \
 	atlantis/exetables.o \
+	atlantis/menus.o \
 	atlantis/navigation.o \
 	atlantis/place.o \
 	atlantis/sprite_renderer.o \

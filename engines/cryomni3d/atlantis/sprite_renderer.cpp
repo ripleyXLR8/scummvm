@@ -295,6 +295,68 @@ void CryOmni3DEngine_Atlantis::loadSubjectSprites() {
 	debugC(1, kDebugScript, "loadSubjectSprites: loaded %u sprites from SUJETS.SPR", count);
 }
 
+void CryOmni3DEngine_Atlantis::loadFontSpriteSet(const char *sprName,
+        Common::Array<SubjSprite> &out) {
+	out.clear();
+	Common::ScopedPtr<Common::SeekableReadStream> stream(
+	    openBigFileStream(kFileTypeSprite2D, sprName));
+	if (!stream) {
+		warning("loadFontSpriteSet: cannot open SPRITE\\2D\\%s", sprName);
+		return;
+	}
+
+	uint16 flags = stream->readUint16LE();
+	uint16 colorTable[256];
+	memset(colorTable, 0, sizeof(colorTable));
+	if (flags & 0x4) {
+		for (int i = 0; i < 256; i++) {
+			uint16 rgb555 = stream->readUint16LE();
+			uint16 r = (rgb555 >> 10) & 0x1f;
+			uint16 g = (rgb555 >> 5)  & 0x1f;
+			uint16 b =  rgb555        & 0x1f;
+			colorTable[i] = (r << 11) | (g << 6) | b;
+		}
+	}
+	if (flags & 0x8)
+		stream->skip(256 * 2);
+
+	uint16 count = stream->readUint16LE();
+	if (count == 0 || count > 256) {
+		warning("loadFontSpriteSet(%s): unexpected count %u", sprName, count);
+		return;
+	}
+
+	const int64 sprDataBase = stream->pos();
+	Common::Array<uint32> offsets(count);
+	for (uint16 i = 0; i < count; i++)
+		offsets[i] = stream->readUint32LE();
+
+	out.resize(count);
+	for (uint16 si = 0; si < count; si++) {
+		if (!stream->seek(sprDataBase + offsets[si])) {
+			warning("loadFontSpriteSet(%s): seek failed for sprite %u", sprName, si);
+			continue;
+		}
+		SubjSprite &spr = out[si];
+		spr.w    = stream->readUint16LE();
+		spr.h    = stream->readUint16LE();
+		spr.xoff = stream->readSint16LE();
+		spr.yoff = stream->readSint16LE();
+		if (spr.w == 0 || spr.h == 0 || spr.w > 640 || spr.h > 480)
+			continue;
+		decodeSprite(*stream, spr, colorTable);
+	}
+}
+
+void CryOmni3DEngine_Atlantis::loadFontMaxSprites() {
+	// FONTMAX = the gold menu font; FONTMAX2 = its hover/highlight glyphs.
+	// (FONTMIN player-name and credit fonts land with their screens.)
+	loadFontSpriteSet("FONTMAX.SPR",  _fontMaxSprites);
+	loadFontSpriteSet("FONTMAX2.SPR", _fontMaxHoverSprites);
+	debugC(1, kDebugScript, "loadFontMaxSprites: %u FONTMAX + %u FONTMAX2 glyphs",
+	      _fontMaxSprites.size(), _fontMaxHoverSprites.size());
+}
+
 void CryOmni3DEngine_Atlantis::loadInventoryBarSprite() {
 	// OBJETS0.SPR holds the single ~599x82 inventory-bar background (golden
 	// line + 9 slot ornaments).  Same SPR format as the other 2D sprites.
