@@ -364,6 +364,108 @@ void CryOmni3DEngine_Atlantis::fadeScreenToBlack() {
 	g_system->updateScreen();
 }
 
+// Map a mouse position to the index of the hovered text/toggle item, or -1.
+static int hitTestMenu(const MenuLayout &layout,
+                       const Common::Array<Common::Rect> &rects,
+                       const Common::Point &mouse) {
+	for (uint i = 0; i < layout.items.size(); i++) {
+		MenuItem::Kind k = layout.items[i].kind;
+		if (k != MenuItem::kText && k != MenuItem::kToggle)
+			continue;
+		if (rects[i].contains(mouse))
+			return (int)i;
+	}
+	return -1;
+}
+
+// In-game (Escape) menu over a panorama snapshot.  Reproduces MAINMENU.TXT's
+// three buttons by ordinal (LOAD GAME / OPTIONS MENU / QUIT GAME — never by
+// label text, so localized discs work).  Returns 0 = resume, 28 = load (sets
+// _loadedSave), 40 = quit.  The OPTIONS sub-menu, the in-game LOAD picker, the
+// quit confirmation and the quit credits outro land in later commits — for now
+// LOAD/OPTIONS just resume (load still works through the ScummVM menu) and QUIT
+// signals quit directly.
+uint CryOmni3DEngine_Atlantis::displayInGameMenu() {
+	Graphics::PixelFormat fmt = g_system->getScreenFormat();
+	Graphics::ManagedSurface bg(640, 480, fmt);
+	if (_warpLoaded) {
+		const Graphics::Surface *pano = _omni3dMan.getSurface();
+		if (pano)
+			bg.blitFrom(*pano);
+	} else {
+		bg.fillRect(Common::Rect(0, 0, 640, 480), fmt.RGBToColor(0, 0, 0));
+	}
+
+	MenuLayout layout;
+	loadMenuLayout("MAINMENU.TXT", layout);
+
+	enum Action { kNone = 0, kContinue = 1, kLoad = 3, kQuit = 5, kOptions = 6 };
+	static const int kMainMenuActions[] = { kLoad, kOptions, kQuit };
+	Common::Array<int> actions;
+	actions.resize(layout.items.size());
+	uint textOrdinal = 0;
+	for (uint i = 0; i < layout.items.size(); i++) {
+		if (layout.items[i].kind != MenuItem::kText) {
+			actions[i] = kNone;
+			continue;
+		}
+		actions[i] = (textOrdinal < ARRAYSIZE(kMainMenuActions))
+		             ? kMainMenuActions[textOrdinal] : kNone;
+		textOrdinal++;
+	}
+
+	Graphics::ManagedSurface surf(640, 480, fmt);
+	Common::Array<Common::Rect> hitRects;
+	int hovered = -1;
+
+	clearKeys();
+	showMouse(true);
+	setArrowCursor();
+
+	surf.blitFrom(bg);
+	renderMenuLayout(surf, layout, -1, hitRects);
+	g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+	g_system->updateScreen();
+
+	uint retval = kContinue;
+	bool done = false;
+	while (!done && !shouldAbort()) {
+		pollEvents();
+
+		if (getNextKey().keycode == Common::KEYCODE_ESCAPE) {
+			retval = kContinue;
+			break;
+		}
+
+		Common::Point mouse = getMousePos();
+		int newHover = hitTestMenu(layout, hitRects, mouse);
+		if (newHover != hovered) {
+			hovered = newHover;
+			surf.blitFrom(bg);
+			renderMenuLayout(surf, layout, hovered, hitRects);
+			g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+		}
+
+		if (getCurrentMouseButton() == 1 && hovered >= 0) {
+			int act = actions[hovered];
+			waitMouseRelease();
+			if (act == kQuit) {
+				retval = kQuit;
+				done = true;
+				break;
+			}
+			// LOAD / OPTIONS: their screens land later; resume for now.
+			debugC(1, kDebugScript, "displayInGameMenu: action %d not yet available", act);
+		}
+
+		g_system->updateScreen();
+		g_system->delayMillis(10);
+	}
+
+	clearKeys();
+	return (retval == kQuit) ? 40 : 0;
+}
+
 Common::String CryOmni3DEngine_Atlantis::episodeName(uint chapter) const {
 	if (chapter < 1 || chapter > _episodeNames.size())
 		return Common::String();

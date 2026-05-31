@@ -400,9 +400,27 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				g_system->delayMillis(10);
 			}
 		} else if (kc == Common::KEYCODE_ESCAPE) {
-			actionId = 66666;
-			exit = true;
-			_abortCommand = kAbortQuit;
+			// Open the in-game menu (resume / load / quit).
+			g_system->lockMouse(false);
+			uint act = displayInGameMenu();
+			if (act == 40) {                 // quit
+				actionId = 66666;
+				exit = true;
+				_abortCommand = kAbortQuit;
+			} else if (act == 28) {          // load (displayInGameMenu set _loadedSave)
+				actionId = 66666;
+				exit = true;
+				_abortCommand = kAbortLoadGame;
+			} else if (shouldAbort()) {
+				actionId = 66666;
+				exit = true;
+			} else {                          // resume
+				g_system->lockMouse(true);
+				takeMouseRelative();
+				setMousePos(Common::Point(320, 240));
+				curCursorGroup = -1;
+				curHeldObj = nullptr;
+			}
 		}
 
 		// Apply the look and render.

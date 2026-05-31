@@ -327,6 +327,9 @@ private:
 	                      int hoveredTextIdx, Common::Array<Common::Rect> &hitRectsOut) const;
 	// Dim the screen to black (menu/chapter transitions).
 	void fadeScreenToBlack();
+	// In-game (Escape) menu over the panorama; returns 0 = resume, 28 = load
+	// (sets _loadedSave), 40 = quit.
+	uint displayInGameMenu();
 
 	// Game-over screen: full-screen IMAGES\GOVER<NN>.TGA + the narrator's
 	// verdict (APC track + subtitle), then return so the caller reloads the
