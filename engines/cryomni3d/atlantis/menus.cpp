@@ -25,6 +25,7 @@
 
 #include "common/events.h"
 #include "common/memstream.h"
+#include "common/ptr.h"
 #include "common/stream.h"
 #include "common/system.h"
 #include "common/textconsole.h"
@@ -294,6 +295,18 @@ void CryOmni3DEngine_Atlantis::showGameOver(int sectionId, int n,
 		g_system->delayMillis(10);
 	}
 	clearKeys();
+}
+
+// Parse a SPRLIST\*MENU.TXT layout (base name only, e.g. "MAINMENU.TXT").
+bool CryOmni3DEngine_Atlantis::loadMenuLayout(const char *baseName,
+        MenuLayout &out) const {
+	Common::ScopedPtr<Common::SeekableReadStream> s(
+	    openBigFileStream(kFileTypeSprite, baseName));
+	if (!s) {
+		warning("loadMenuLayout: cannot open SPRLIST\\%s", baseName);
+		return false;
+	}
+	return out.loadFromStream(*s);
 }
 
 } // End of namespace Atlantis

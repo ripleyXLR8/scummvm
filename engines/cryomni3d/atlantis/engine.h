@@ -37,6 +37,7 @@
 
 #include "cryomni3d/atlantis/bigfile.h"
 #include "cryomni3d/atlantis/con_script.h"
+#include "cryomni3d/atlantis/menu_layout.h"
 #include "cryomni3d/atlantis/toolbar.h"
 #include "cryomni3d/atlantis/wam_parser.h"
 
@@ -296,6 +297,8 @@ private:
 	// SPRMENU.SPR — the menu/toolbar decorative golden overlays.
 	void loadMenuSprites();
 	void blitMenuSprite(Graphics::ManagedSurface &dst, uint idx, int hx, int hy) const;
+	// Parse a SPRLIST\*MENU.TXT layout file (base name only) into `out`.
+	bool loadMenuLayout(const char *baseName, MenuLayout &out) const;
 
 	// Game-over screen: full-screen IMAGES\GOVER<NN>.TGA + the narrator's
 	// verdict (APC track + subtitle), then return so the caller reloads the
