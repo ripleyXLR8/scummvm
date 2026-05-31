@@ -47,6 +47,11 @@ namespace Atlantis {
 static const int kFontMaxSpaceAdvance = 22;
 static const int kFontMinSpaceAdvance = 18;
 
+// FONTMAX text item hit-box: glyphs render with their bottom near anchorY, so
+// the click rect spans [anchorY - 32, anchorY + 4].
+static const int kFontMaxHitTop    = 32;
+static const int kFontMaxHitBottom = 4;
+
 int CryOmni3DEngine_Atlantis::fontMaxCharAdvance(unsigned char c) const {
 	if (c == ' ')
 		return kFontMaxSpaceAdvance;
@@ -295,6 +300,68 @@ void CryOmni3DEngine_Atlantis::showGameOver(int sectionId, int n,
 		g_system->delayMillis(10);
 	}
 	clearKeys();
+}
+
+// Render a parsed menu: SPRMENU sprites first, then FONTMAX labels / toggle
+// values on top (the hovered item in the bright FONTMAX2 glyphs — that is how
+// the original tints the highlight).  Each text/toggle item's click rect is
+// returned in hitRectsOut for the event loop's hit-test.
+void CryOmni3DEngine_Atlantis::renderMenuLayout(Graphics::ManagedSurface &dst,
+        const MenuLayout &layout, int hoveredTextIdx,
+        Common::Array<Common::Rect> &hitRectsOut) const {
+	hitRectsOut.clear();
+	hitRectsOut.resize(layout.items.size());
+
+	for (uint i = 0; i < layout.items.size(); i++) {
+		const MenuItem &it = layout.items[i];
+		if (it.kind == MenuItem::kSprite)
+			blitMenuSprite(dst, (uint)it.sprIdx, it.hx, it.hy);
+	}
+
+	for (uint i = 0; i < layout.items.size(); i++) {
+		const MenuItem &it = layout.items[i];
+		Common::String label;
+		if (it.kind == MenuItem::kText) {
+			label = it.text;
+		} else if (it.kind == MenuItem::kToggle && !it.options.empty()) {
+			int sel = (it.selected >= 0 && it.selected < (int)it.options.size())
+			          ? it.selected : 0;
+			label = it.options[sel];
+		} else {
+			continue;
+		}
+
+		int w = fontMaxStringWidth(label);
+		int x = it.centerX ? (640 - w) / 2 : it.anchorX;
+		drawFontMaxText(dst, label, x, it.anchorY, (int)i == hoveredTextIdx);
+		hitRectsOut[i] = Common::Rect(x, it.anchorY - kFontMaxHitTop,
+		                              x + w, it.anchorY + kFontMaxHitBottom);
+	}
+}
+
+void CryOmni3DEngine_Atlantis::fadeScreenToBlack() {
+	Graphics::PixelFormat fmt = g_system->getScreenFormat();
+	for (int step = 0; step < 16 && !shouldAbort(); step++) {
+		Graphics::Surface *s = g_system->lockScreen();
+		if (s && fmt.bytesPerPixel == 2) {
+			for (int y = 0; y < s->h; y++) {
+				uint16 *row = (uint16 *)s->getBasePtr(0, y);
+				for (int x = 0; x < s->w; x++) {
+					uint8 r, g, b;
+					fmt.colorToRGB(row[x], r, g, b);
+					row[x] = (uint16)fmt.RGBToColor(r * 13 / 16, g * 13 / 16, b * 13 / 16);
+				}
+			}
+		}
+		g_system->unlockScreen();
+		g_system->updateScreen();
+		g_system->delayMillis(20);
+	}
+	Graphics::Surface *s = g_system->lockScreen();
+	if (s)
+		s->fillRect(Common::Rect(0, 0, s->w, s->h), 0);
+	g_system->unlockScreen();
+	g_system->updateScreen();
 }
 
 // Parse a SPRLIST\*MENU.TXT layout (base name only, e.g. "MAINMENU.TXT").

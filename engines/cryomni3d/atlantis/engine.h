@@ -299,6 +299,13 @@ private:
 	void blitMenuSprite(Graphics::ManagedSurface &dst, uint idx, int hx, int hy) const;
 	// Parse a SPRLIST\*MENU.TXT layout file (base name only) into `out`.
 	bool loadMenuLayout(const char *baseName, MenuLayout &out) const;
+	// Render a parsed menu onto `dst` (SPRMENU sprites, then FONTMAX labels /
+	// toggles; the hovered text item uses the bright FONTMAX2 glyphs), and
+	// return each text/toggle item's click rect in `hitRectsOut`.
+	void renderMenuLayout(Graphics::ManagedSurface &dst, const MenuLayout &layout,
+	                      int hoveredTextIdx, Common::Array<Common::Rect> &hitRectsOut) const;
+	// Dim the screen to black (menu/chapter transitions).
+	void fadeScreenToBlack();
 
 	// Game-over screen: full-screen IMAGES\GOVER<NN>.TGA + the narrator's
 	// verdict (APC track + subtitle), then return so the caller reloads the
