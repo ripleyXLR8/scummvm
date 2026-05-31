@@ -67,6 +67,17 @@ void CryOmni3DEngine_Atlantis::loadAtlantisExeTables() {
 	}
 	debugC(1, kDebugScript, "loadAtlantisExeTables: %u inventory object ids from atlantis.exe",
 	      _inventoryObjectIds.size());
+
+	// Credits-font char-width table at VA 0x004966fc: 256 raw bytes indexed by
+	// char code, for proportional spacing of CREDBLAN.SPR / CREDBLEU.SPR (the
+	// space value 0x20 = 13 is authentic).
+	memset(_creditCharWidths, 0, sizeof(_creditCharWidths));
+	const uint32 kCredWidthsVA = 0x004966fc;
+	const uint32 kCredWidthsFileOff =
+	    (kCredWidthsVA - kImageBase - kDgroupVaddr) + kDgroupRawPtr;
+	exe.seek(kCredWidthsFileOff);
+	exe.read(_creditCharWidths, sizeof(_creditCharWidths));
+	debugC(1, kDebugScript, "loadAtlantisExeTables: credit char-width table loaded");
 }
 
 void CryOmni3DEngine_Atlantis::setupObjects() {

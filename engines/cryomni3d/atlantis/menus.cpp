@@ -44,6 +44,7 @@ namespace Atlantis {
 
 // Space advance from the exe width table at 0x4965eb[' '] = 22.
 static const int kFontMaxSpaceAdvance = 22;
+static const int kFontMinSpaceAdvance = 18;
 
 int CryOmni3DEngine_Atlantis::fontMaxCharAdvance(unsigned char c) const {
 	if (c == ' ')
@@ -115,6 +116,77 @@ void CryOmni3DEngine_Atlantis::drawFontMaxText(Graphics::ManagedSurface &dst,
 	    (hover && !_fontMaxHoverSprites.empty()) ? _fontMaxHoverSprites
 	                                             : _fontMaxSprites,
 	    _fontMaxSprites, kFontMaxSpaceAdvance);
+}
+
+// FONTMIN.SPR player-name font; FONTMIN2 is its hover variant.  Layout always
+// uses FONTMIN so hovering only recolours.
+void CryOmni3DEngine_Atlantis::drawFontMinText(Graphics::ManagedSurface &dst,
+        const Common::String &text, int anchorX, int anchorY, bool hover) const {
+	drawSprFontText(dst, text, anchorX, anchorY,
+	    (hover && !_fontMin2Sprites.empty()) ? _fontMin2Sprites : _fontMinSprites,
+	    _fontMinSprites, kFontMinSpaceAdvance);
+}
+
+// CREDBLAN.SPR / CREDBLEU.SPR credits glyphs.  Advance widths come from the
+// exe char-width table (_creditCharWidths); the glyph index is char-0x21
+// (these atlases have NO space slot, unlike FONTMAX's char-0x20).
+int CryOmni3DEngine_Atlantis::creditCharAdvance(unsigned char c) const {
+	return (int)_creditCharWidths[c];
+}
+
+int CryOmni3DEngine_Atlantis::creditStringWidth(const Common::String &text) const {
+	int w = 0;
+	for (uint i = 0; i < text.size(); i++)
+		w += creditCharAdvance((unsigned char)text[i]);
+	return w;
+}
+
+void CryOmni3DEngine_Atlantis::drawCreditText(Graphics::ManagedSurface &dst,
+        const Common::String &text, int anchorX, int anchorY, bool blue) const {
+	const Common::Array<SubjSprite> &glyphs = blue ? _creditBleuSprites
+	                                                : _creditBlanSprites;
+	if (glyphs.empty())
+		return;
+	int cx = anchorX;
+	for (uint i = 0; i < text.size(); i++) {
+		unsigned char c = (unsigned char)text[i];
+		int adv = creditCharAdvance(c);
+		if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+			cx += adv;
+			continue;
+		}
+		int idx = (int)c - 0x21;   // no space slot in these atlases
+		if (idx < 0 || idx >= (int)glyphs.size()) {
+			cx += adv;
+			continue;
+		}
+		const SubjSprite &spr = glyphs[idx];
+		if (spr.pixels.empty()) {
+			cx += adv;
+			continue;
+		}
+		int dx = cx - spr.xoff;
+		int dy = anchorY - spr.yoff;
+		for (int sy = 0; sy < (int)spr.h; ++sy) {
+			int ty = dy + sy;
+			if (ty < 0 || ty >= dst.h)
+				continue;
+			for (int sx = 0; sx < (int)spr.w; ++sx) {
+				uint sidx = sy * spr.w + sx;
+				uint16 pix = spr.pixels[sidx];
+				if (pix == kSprTransp)
+					continue;
+				int tx = dx + sx;
+				if (tx < 0 || tx >= dst.w)
+					continue;
+				uint16 *dp = (uint16 *)dst.getBasePtr(tx, ty);
+				if (spr.blend[sidx] != kSprNoBlend)
+					pix = blendSprPixel565(pix, *dp, spr.blend[sidx]);
+				*dp = pix;
+			}
+		}
+		cx += adv;
+	}
 }
 
 // Game-over screen (atlantis.exe GereGameOver, FUN_00426590): show the

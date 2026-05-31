@@ -349,12 +349,55 @@ void CryOmni3DEngine_Atlantis::loadFontSpriteSet(const char *sprName,
 }
 
 void CryOmni3DEngine_Atlantis::loadFontMaxSprites() {
-	// FONTMAX = the gold menu font; FONTMAX2 = its hover/highlight glyphs.
-	// (FONTMIN player-name and credit fonts land with their screens.)
+	// FONTMAX = the gold menu font (FONTMAX2 = hover); FONTMIN = the smaller
+	// red player-name font (FONTMIN2 = hover).
 	loadFontSpriteSet("FONTMAX.SPR",  _fontMaxSprites);
 	loadFontSpriteSet("FONTMAX2.SPR", _fontMaxHoverSprites);
-	debugC(1, kDebugScript, "loadFontMaxSprites: %u FONTMAX + %u FONTMAX2 glyphs",
-	      _fontMaxSprites.size(), _fontMaxHoverSprites.size());
+	loadFontSpriteSet("FONTMIN.SPR",  _fontMinSprites);
+	loadFontSpriteSet("FONTMIN2.SPR", _fontMin2Sprites);
+	debugC(1, kDebugScript, "loadFontMaxSprites: %u FONTMAX + %u FONTMIN glyphs",
+	      _fontMaxSprites.size(), _fontMinSprites.size());
+}
+
+void CryOmni3DEngine_Atlantis::loadCreditFontSprites() {
+	// Two glyph banks for the credits roll (same SPR format as FONTMAX).
+	loadFontSpriteSet("CREDBLAN.SPR", _creditBlanSprites);
+	loadFontSpriteSet("CREDBLEU.SPR", _creditBleuSprites);
+	debugC(1, kDebugScript, "loadCreditFontSprites: %u blanc + %u bleu glyphs",
+	      _creditBlanSprites.size(), _creditBleuSprites.size());
+}
+
+void CryOmni3DEngine_Atlantis::loadMenuSprites() {
+	// SPRMENU.SPR: sparse golden-filigree overlays for the toolbar and menus.
+	loadFontSpriteSet("SPRMENU.SPR", _menuSprites);
+	debugC(1, kDebugScript, "loadMenuSprites: %u sprites from SPRMENU.SPR", _menuSprites.size());
+}
+
+void CryOmni3DEngine_Atlantis::blitMenuSprite(Graphics::ManagedSurface &dst, uint idx,
+        int hx, int hy) const {
+	if (idx >= _menuSprites.size() || _menuSprites[idx].pixels.empty())
+		return;
+	const SubjSprite &s = _menuSprites[idx];
+	int baseX = hx - s.xoff;
+	int baseY = hy - s.yoff;
+	for (int sy = 0; sy < (int)s.h; sy++) {
+		int dy = baseY + sy;
+		if (dy < 0 || dy >= dst.h)
+			continue;
+		for (int sx = 0; sx < (int)s.w; sx++) {
+			int dx = baseX + sx;
+			if (dx < 0 || dx >= dst.w)
+				continue;
+			uint sidx = sy * s.w + sx;
+			uint16 pix = s.pixels[sidx];
+			if (pix == kSprTransp)
+				continue;
+			uint16 *dp = (uint16 *)dst.getBasePtr(dx, dy);
+			if (s.blend[sidx] != kSprNoBlend)
+				pix = blendSprPixel565(pix, *dp, s.blend[sidx]);
+			*dp = pix;
+		}
+	}
 }
 
 void CryOmni3DEngine_Atlantis::loadInventoryBarSprite() {

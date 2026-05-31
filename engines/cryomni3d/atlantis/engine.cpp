@@ -288,8 +288,10 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	// Animated warp-view / arrow cursors.
 	loadCursorSprites();
 
-	// FONTMAX gold menu font.
+	// Menu / credit fonts and the SPRMENU decorative overlays.
 	loadFontMaxSprites();
+	loadCreditFontSprites();
+	loadMenuSprites();
 
 	// Inventory: extract the exe object table, build the object catalogue and
 	// load the item icons.  20 carry slots; the toolbar refresh callback is

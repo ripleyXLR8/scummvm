@@ -283,6 +283,19 @@ private:
 	                     int spaceAdvance) const;
 	void drawFontMaxText(Graphics::ManagedSurface &dst, const Common::String &text,
 	                     int anchorX, int anchorY, bool hover = false) const;
+	// FONTMIN.SPR — the smaller red player-name font (FONTMIN2 = hover).
+	void drawFontMinText(Graphics::ManagedSurface &dst, const Common::String &text,
+	                     int anchorX, int anchorY, bool hover = false) const;
+	// CREDBLAN.SPR / CREDBLEU.SPR — the credits-roll glyphs; advance widths come
+	// from the exe char-width table.  `blue` selects the CREDBLEU bank.
+	void loadCreditFontSprites();
+	int  creditCharAdvance(unsigned char c) const;
+	int  creditStringWidth(const Common::String &text) const;
+	void drawCreditText(Graphics::ManagedSurface &dst, const Common::String &text,
+	                    int anchorX, int anchorY, bool blue) const;
+	// SPRMENU.SPR — the menu/toolbar decorative golden overlays.
+	void loadMenuSprites();
+	void blitMenuSprite(Graphics::ManagedSurface &dst, uint idx, int hx, int hy) const;
 
 	// Game-over screen: full-screen IMAGES\GOVER<NN>.TGA + the narrator's
 	// verdict (APC track + subtitle), then return so the caller reloads the
@@ -398,6 +411,14 @@ private:
 	// (FONTMAX2.SPR).  Glyph index = char_code - 0x20.
 	Common::Array<SubjSprite> _fontMaxSprites;
 	Common::Array<SubjSprite> _fontMaxHoverSprites;
+	// FONTMIN player-name font (+ hover), the credits-roll glyph banks and the
+	// exe char-width table, and the SPRMENU decorative menu/toolbar overlays.
+	Common::Array<SubjSprite> _fontMinSprites;
+	Common::Array<SubjSprite> _fontMin2Sprites;
+	Common::Array<SubjSprite> _creditBlanSprites;
+	Common::Array<SubjSprite> _creditBleuSprites;
+	byte _creditCharWidths[256];   // populated by loadAtlantisExeTables
+	Common::Array<SubjSprite> _menuSprites;
 
 	// Animated warp-view cursors (CURSEURS.SPR) + current group/frame state.
 	Common::Array<CursorSpr> _cursorSprites;
