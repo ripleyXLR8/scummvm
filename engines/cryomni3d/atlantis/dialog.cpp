@@ -473,9 +473,20 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		_gameVars["gameover"] = 0;   // restored to its pre-section value
 		// A game-over is gated on a persistent CON variable, so resuming in
 		// place would loop straight back into the death — reload the chapter
-		// checkpoint (the autosave written on chapter entry, slot 1).
-		_loadedSave   = 1;
-		_abortCommand = kAbortLoadGame;
+		// checkpoint (the per-episode autosave), falling back to the player's
+		// resume save, or a fresh start when no checkpoint exists yet.
+		int ckSlot = (_currentPlayer >= 0)
+		           ? episodeSaveSlot((uint)_currentPlayer, _currentCONChapter) : -1;
+		uint reload = (ckSlot >= 0 && saveSlotExists(ckSlot))
+		            ? (uint)ckSlot + 1
+		            : (_currentPlayer >= 0 ? playerResumeSave((uint)_currentPlayer) : 0);
+		if (reload != 0) {
+			_loadedSave   = reload;
+			_abortCommand = kAbortLoadGame;
+		} else {
+			warning("playConSection: game-over with no checkpoint; restarting");
+			_abortCommand = kAbortNewGame;
+		}
 	}
 
 	// Restore the cursor to whatever it was before the section.

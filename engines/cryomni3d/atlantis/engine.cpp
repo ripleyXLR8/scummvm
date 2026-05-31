@@ -77,6 +77,7 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_abortCommand(kAbortQuit),
 	_loadedSave(0),
 	_autosavePending(false),
+	_currentPlayer(0),
 	_conRng("AtlantisConRandom"),
 	_heroPersoId(0),
 	_dialRng("AtlantisDialCam"),
@@ -114,6 +115,8 @@ Common::String CryOmni3DEngine_Atlantis::getSaveStateName(int slot) const {
 }
 
 Common::Error CryOmni3DEngine_Atlantis::loadGameState(int slot) {
+	// The slot's block identifies its owning player.
+	_currentPlayer = slot / (int)kPlayerSlotStride;
 	if (loadGame((uint)slot + 1)) {
 		// Defer the place re-entry to the game loop: loadGame() set _nextPlaceId,
 		// so abort the current step and re-run it.
@@ -293,6 +296,10 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	loadCreditFontSprites();
 	loadMenuSprites();
 
+	// Episode checkpoint names + player profiles (per-episode save backend).
+	loadEpisodeNames();
+	loadPlayers();
+
 	// Inventory: extract the exe object table, build the object catalogue and
 	// load the item icons.  20 carry slots; the toolbar refresh callback is
 	// wired when the toolbar lands.
@@ -336,6 +343,13 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 			// idempotent), then re-enter the loop at the restored place.
 			if (_loadedSave != 0)
 				loadGame(_loadedSave);
+			continue;
+		}
+		if (_abortCommand == kAbortNewGame) {
+			// Game-over with no checkpoint (e.g. chapter 1): restart.  The full
+			// new-game flow runs through the main menu once that lands.
+			_abortCommand = kAbortNoAbort;
+			changeChapter(1);
 			continue;
 		}
 		break;   // quit / unhandled abort

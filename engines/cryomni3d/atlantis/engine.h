@@ -172,6 +172,27 @@ private:
 	// Write the per-chapter checkpoint (called on chapter entry).
 	void autosave();
 
+	// --- Players / episodes (saveload.cpp) --------------------------------
+	// Atlantis has no manual save: it keeps one named save per episode and
+	// rewrites it when that episode is (re-)entered.  Up to kMaxPlayers named
+	// players each own the absolute slot block [id*stride, id*stride+stride);
+	// chapter N's save is local slot N of the block.
+	static const uint kMaxPlayers       = 5;
+	static const uint kPlayerSlotStride = 100;
+	int episodeSaveSlot(uint player, uint chapter) const {
+		return (int)(player * kPlayerSlotStride + chapter);
+	}
+	void loadPlayers();
+	void savePlayers();
+	void deletePlayerSaves(uint player);
+	bool saveSlotExists(int absSlot) const;
+	bool playerHasSave(uint player) const;
+	uint playerResumeSave(uint player) const;   // 1-based slot, 0 = none
+	// SPRLIST\EPI.TXT episode checkpoint names; episodeName serves chapter N
+	// from index N-1 (empty = no checkpoint for that chapter).
+	void loadEpisodeNames();
+	Common::String episodeName(uint chapter) const;
+
 	// --- Warp-view navigation (navigation.cpp) ----------------------------
 	// Main gameplay loop: drive handleWarp() and place transitions until abort.
 	void gameStep();
@@ -473,6 +494,10 @@ private:
 	AbortCommand _abortCommand;
 	uint _loadedSave;          // 1-based slot a kAbortLoadGame should re-enter
 	bool _autosavePending;     // a chapter change armed the checkpoint write
+	Common::String _players[kMaxPlayers];   // named player profiles (empty = unused)
+	int            _currentPlayer;          // owning player for autosave slots
+	int            _playerChapter[kMaxPlayers];  // per-player resume chapter
+	Common::Array<Common::String> _episodeNames;
 
 	byte *_mainPalette;
 

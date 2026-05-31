@@ -364,6 +364,12 @@ void CryOmni3DEngine_Atlantis::fadeScreenToBlack() {
 	g_system->updateScreen();
 }
 
+Common::String CryOmni3DEngine_Atlantis::episodeName(uint chapter) const {
+	if (chapter < 1 || chapter > _episodeNames.size())
+		return Common::String();
+	return _episodeNames[chapter - 1];
+}
+
 // Parse a SPRLIST\*MENU.TXT layout (base name only, e.g. "MAINMENU.TXT").
 bool CryOmni3DEngine_Atlantis::loadMenuLayout(const char *baseName,
         MenuLayout &out) const {
