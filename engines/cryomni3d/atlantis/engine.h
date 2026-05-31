@@ -133,6 +133,9 @@ public:
 	Common::Error loadGameState(int slot) override;
 	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false) override;
 	Common::String getSaveStateName(int slot) const override;
+	// Atlantis writes its own per-episode checkpoint on chapter entry; disable
+	// ScummVM's periodic autosave so it cannot overwrite a checkpoint slot.
+	int getAutosaveSlot() const override { return -1; }
 
 	// Build a path for a named file of the given type (for files outside the BigFile).
 	Common::Path getFilePath(FileType fileType, const Common::String &baseName) const;
