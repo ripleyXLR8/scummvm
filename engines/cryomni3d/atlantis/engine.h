@@ -339,6 +339,13 @@ private:
 	void displayOptionsMenu(const Graphics::ManagedSurface &bg);
 	// True when the OMNI 3D option inverts the vertical look.
 	bool omni3dInvertY() const;
+	// LOAD screen: the player's per-episode saves listed by EPI.TXT name, plus
+	// RESTART EPISODE / OK / Cancel and a draggable scrollbar.  Returns the
+	// 1-based slot to load, or 0 on cancel.  (saveMode/outSaveName reserved.)
+	uint displaySavePicker(bool saveMode, Common::String &outSaveName);
+	// Render player/save-row text in FONTMIN with the exe's player width table.
+	void drawPlayerText(Graphics::ManagedSurface &dst, const Common::String &text,
+	                    int anchorX, int anchorY, bool hover) const;
 
 	// Game-over screen: full-screen IMAGES\GOVER<NN>.TGA + the narrator's
 	// verdict (APC track + subtitle), then return so the caller reloads the

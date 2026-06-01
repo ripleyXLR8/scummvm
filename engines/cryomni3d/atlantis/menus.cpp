@@ -27,6 +27,7 @@
 #include "common/events.h"
 #include "common/memstream.h"
 #include "common/ptr.h"
+#include "common/savefile.h"
 #include "common/stream.h"
 #include "common/system.h"
 #include "common/textconsole.h"
@@ -381,6 +382,230 @@ static int hitTestMenu(const MenuLayout &layout,
 
 static const char *const kOmni3dInvertKey = "atlantis_omni3d_invert";
 
+// FONTMIN per-char advance widths (atlantis.exe @ 0x496697), glyph idx char-0x20.
+static const uint8 kPlayerCharWidths[137] = {
+	15, 8,13, 6,13,20,17, 6,13,20,11, 6, 4,20,15,12,17, 8,16,16,
+	14,13,15,13,16,15, 7, 6, 6, 6, 6,20, 6,17,19,18,19,16,16,19,
+	18,12,12,17,16,24,20,23,17,22,17,15,19,20,17,23,22,18,17, 7,
+	16, 6,10, 6, 7,16,16,15,15,16,12,16,17, 8, 9,16, 7,19,16,17,
+	16,15,13,12,10,17,15,19,17,15,14,16, 6,17,11,16,17,17,15,16,
+	15,16,16,16,15,15,15,11,10,10,18,18,16,17,17,17,17,15,23,19,
+	15,19, 0,21,17,16,10,17,17,10,20,14,14,13, 3, 5, 8
+};
+
+// Player/save-row text in FONTMIN (FONTMIN2 when hover), spaced by the exe's
+// player width table so a hover swap only recolours, never reflows.
+void CryOmni3DEngine_Atlantis::drawPlayerText(Graphics::ManagedSurface &dst,
+        const Common::String &text, int anchorX, int anchorY, bool hover) const {
+	const Common::Array<SubjSprite> &glyphs =
+	    (hover && !_fontMin2Sprites.empty()) ? _fontMin2Sprites : _fontMinSprites;
+	int cx = anchorX;
+	for (uint i = 0; i < text.size(); ++i) {
+		int gi = (int)(unsigned char)text[i] - 0x20;
+		if (gi < 0 || gi >= (int)glyphs.size())
+			continue;
+		const SubjSprite &spr = glyphs[gi];
+		if (!spr.pixels.empty()) {
+			int dx = cx - spr.xoff;
+			int dy = anchorY - spr.yoff;
+			for (int sy = 0; sy < (int)spr.h; ++sy) {
+				int ty = dy + sy;
+				if (ty < 0 || ty >= dst.h)
+					continue;
+				for (int sx = 0; sx < (int)spr.w; ++sx) {
+					uint sidx = sy * spr.w + sx;
+					uint16 pix = spr.pixels[sidx];
+					if (pix == kSprTransp)
+						continue;
+					int tx = dx + sx;
+					if (tx < 0 || tx >= dst.w)
+						continue;
+					uint16 *dp = (uint16 *)dst.getBasePtr(tx, ty);
+					if (spr.blend[sidx] != kSprNoBlend)
+						pix = blendSprPixel565(pix, *dp, spr.blend[sidx]);
+					*dp = pix;
+				}
+			}
+		}
+		if (gi < (int)ARRAYSIZE(kPlayerCharWidths))
+			cx += kPlayerCharWidths[gi];
+	}
+}
+
+// LOAD screen (LOADMENU.TXT): the current player's per-episode saves listed by
+// their EPI.TXT names, with RESTART EPISODE / OK / Cancel and a draggable
+// scrollbar (atlantis.exe FUN_0041cf78).  Returns the 1-based slot to load, or
+// 0 on cancel.  Atlantis has no manual save, so this is load-only.
+uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &outSaveName) {
+	(void)saveMode;
+	(void)outSaveName;
+
+	const int kListX = 50, kListY0 = 133, kRowStep = 20, kVisible = 11;
+	Graphics::PixelFormat fmt = g_system->getScreenFormat();
+
+	Graphics::ManagedSurface bg(640, 480, fmt);
+	const Graphics::Surface *pano = _warpLoaded ? _omni3dMan.getSurface() : nullptr;
+	if (pano)
+		bg.blitFrom(*pano);
+	else
+		bg.fillRect(Common::Rect(0, 0, 640, 480), fmt.RGBToColor(0, 0, 0));
+
+	MenuLayout layout;
+	if (!loadMenuLayout("LOADMENU.TXT", layout))
+		return 0;
+	int restartIdx = -1, okIdx = -1, cancelIdx = -1;
+	uint textOrd = 0;
+	for (uint i = 0; i < layout.items.size(); i++) {
+		if (layout.items[i].kind != MenuItem::kText)
+			continue;
+		if (textOrd == 1)      restartIdx = (int)i;
+		else if (textOrd == 2) okIdx      = (int)i;
+		else if (textOrd == 3) cancelIdx  = (int)i;
+		textOrd++;
+	}
+
+	struct Entry { int localSlot; Common::String name; };
+	Common::Array<Entry> saves;
+	int selected = -1;
+	for (uint ch = 0; ch < kPlayerSlotStride; ch++) {
+		int abs = episodeSaveSlot((uint)_currentPlayer, ch);
+		Common::InSaveFile *in = _saveFileMan->openForLoading(getSaveStateName(abs));
+		if (!in)
+			continue;
+		char desc[21];
+		memset(desc, 0, sizeof(desc));
+		bool ok = (in->read(desc, 20) == 20);
+		delete in;
+		if (!ok)
+			continue;
+		Entry e;
+		e.localSlot = (int)ch;
+		e.name = episodeName(ch);
+		if (e.name.empty())
+			e.name = desc[0] ? Common::String(desc) : Common::String::format("Chapter %u", ch);
+		if (ch == _currentCONChapter)
+			selected = (int)saves.size();
+		saves.push_back(e);
+	}
+
+	auto rowWidth = [&](const Common::String &s) {
+		int w = 0;
+		for (uint i = 0; i < s.size(); i++) {
+			int gi = (int)(unsigned char)s[i] - 0x20;
+			if (gi >= 0 && gi < (int)ARRAYSIZE(kPlayerCharWidths))
+				w += kPlayerCharWidths[gi];
+		}
+		return w;
+	};
+
+	const int maxScroll = MAX(0, (int)saves.size() - kVisible);
+	int scroll = (selected >= 0) ? CLIP(selected - kVisible / 2, 0, maxScroll) : 0;
+
+	// Scrollbar track (LOADMENU /spr=13 thumb) — interactive Y span [123,338].
+	const int kBarTop = 123, kBarBot = 338, kBarH = kBarBot - kBarTop;
+	const int kBarX0 = 595, kBarX1 = 640;
+	const bool scrollable = maxScroll > 0;
+	int thumbItem = -1;
+	for (uint i = 0; i < layout.items.size(); i++)
+		if (layout.items[i].kind == MenuItem::kSprite && layout.items[i].sprIdx == 13) {
+			thumbItem = (int)i;
+			break;
+		}
+
+	Graphics::ManagedSurface surf(640, 480, fmt);
+	Common::Array<Common::Rect> hitRects;
+
+	clearKeys();
+	showMouse(true);
+	setArrowCursor();
+
+	uint result = 0;
+	bool done = false;
+	while (!done && !shouldAbort()) {
+		pollEvents();
+
+		Common::KeyState k = getNextKey();
+		if (k.keycode == Common::KEYCODE_ESCAPE) {
+			result = 0;
+			break;
+		} else if ((k.keycode == Common::KEYCODE_RETURN || k.keycode == Common::KEYCODE_KP_ENTER)
+		        && selected >= 0) {
+			result = (uint)episodeSaveSlot((uint)_currentPlayer, (uint)saves[selected].localSlot) + 1;
+			done = true;
+			break;
+		} else if (k.keycode == Common::KEYCODE_UP && selected > 0) {
+			selected--;
+		} else if (k.keycode == Common::KEYCODE_DOWN && selected + 1 < (int)saves.size()) {
+			selected++;
+		}
+		if (selected >= 0) {
+			if (selected < scroll) scroll = selected;
+			else if (selected >= scroll + kVisible) scroll = selected - kVisible + 1;
+		}
+
+		Common::Point mouse = getMousePos();
+		int rowHover = -1;
+		for (int i = 0; i + scroll < (int)saves.size() && i < kVisible; i++) {
+			int entry = scroll + i;
+			int ay = kListY0 + i * kRowStep;
+			int w  = MAX(rowWidth(saves[entry].name), 60);
+			if (Common::Rect(kListX, ay - 17, kListX + w, ay + 4).contains(mouse)) {
+				rowHover = entry;
+				break;
+			}
+		}
+		int btnHover = hitRects.empty() ? -1 : hitTestMenu(layout, hitRects, mouse);
+		if (btnHover != restartIdx && btnHover != okIdx && btnHover != cancelIdx)
+			btnHover = -1;
+
+		bool draggingBar = false;
+		if (scrollable && getCurrentMouseButton() == 1 &&
+		        mouse.x >= kBarX0 && mouse.x <= kBarX1 &&
+		        mouse.y >= kBarTop && mouse.y <= kBarBot) {
+			scroll = CLIP((mouse.y - kBarTop) * maxScroll / kBarH, 0, maxScroll);
+			draggingBar = true;
+		}
+		if (!draggingBar && getCurrentMouseButton() == 1) {
+			waitMouseRelease();
+			if (rowHover >= 0) {
+				selected = rowHover;
+			} else if (btnHover == okIdx && selected >= 0) {
+				result = (uint)episodeSaveSlot((uint)_currentPlayer, (uint)saves[selected].localSlot) + 1;
+				done = true;
+				break;
+			} else if (btnHover == restartIdx) {
+				int slot = episodeSaveSlot((uint)_currentPlayer, _currentCONChapter);
+				if (saveSlotExists(slot)) {
+					result = (uint)slot + 1;
+					done = true;
+					break;
+				}
+			} else if (btnHover == cancelIdx) {
+				result = 0;
+				break;
+			}
+		}
+
+		if (thumbItem >= 0)
+			layout.items[thumbItem].hy = scrollable
+			    ? kBarTop + (maxScroll > 0 ? scroll * kBarH / maxScroll : 0) : -100;
+
+		surf.blitFrom(bg);
+		renderMenuLayout(surf, layout, btnHover, hitRects);
+		for (int i = 0; i + scroll < (int)saves.size() && i < kVisible; i++) {
+			int entry = scroll + i;
+			drawPlayerText(surf, saves[entry].name, kListX, kListY0 + i * kRowStep,
+			               entry == selected);
+		}
+		g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+		g_system->updateScreen();
+		g_system->delayMillis(10);
+	}
+
+	clearKeys();
+	return result;
+}
+
 bool CryOmni3DEngine_Atlantis::omni3dInvertY() const {
 	return ConfMan.hasKey(kOmni3dInvertKey) && ConfMan.getBool(kOmni3dInvertKey);
 }
@@ -628,9 +853,24 @@ uint CryOmni3DEngine_Atlantis::displayInGameMenu() {
 				g_system->updateScreen();
 				continue;
 			}
-			// LOAD: the in-game save-picker lands later (loading still works via
-			// the ScummVM menu); resume for now.
-			debugC(1, kDebugScript, "displayInGameMenu: action %d not yet available", act);
+			if (act == kLoad) {
+				Common::String dummy;
+				uint slot = displaySavePicker(false, dummy);
+				if (slot > 0) {
+					_loadedSave = slot;
+					retval = kLoad;
+					done = true;
+					break;
+				}
+				// Cancelled — repaint and stay in the menu.
+				hovered = -1;
+				surf.blitFrom(bg);
+				renderMenuLayout(surf, layout, -1, hitRects);
+				g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+				g_system->updateScreen();
+				continue;
+			}
+			debugC(1, kDebugScript, "displayInGameMenu: action %d not handled", act);
 		}
 
 		g_system->updateScreen();
@@ -638,7 +878,11 @@ uint CryOmni3DEngine_Atlantis::displayInGameMenu() {
 	}
 
 	clearKeys();
-	return (retval == kQuit) ? 40 : 0;
+	if (retval == kQuit)
+		return 40;
+	if (retval == kLoad)
+		return 28;   // _loadedSave is set; the caller reloads it
+	return 0;
 }
 
 Common::String CryOmni3DEngine_Atlantis::episodeName(uint chapter) const {
