@@ -423,9 +423,10 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			}
 		}
 
-		// Apply the look and render.
+		// Apply the look and render.  The OMNI 3D option inverts the pitch.
+		int pitchDelta = omni3dInvertY() ? -yDelta : yDelta;
 		double alpha = _omni3dMan.getAlpha() - xDelta / kLookYawDiv;
-		double beta  = _omni3dMan.getBeta()  + yDelta / kLookPitchDiv;
+		double beta  = _omni3dMan.getBeta()  + pitchDelta / kLookPitchDiv;
 		while (alpha >= 2.0 * M_PI) alpha -= 2.0 * M_PI;
 		while (alpha < 0.0)         alpha += 2.0 * M_PI;
 		if (beta < -kWarpBetaLimit) beta = -kWarpBetaLimit;

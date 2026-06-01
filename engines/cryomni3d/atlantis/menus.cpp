@@ -23,6 +23,7 @@
 // starts with the FONTMAX gold menu font; the menu screens, the game-over
 // screen and the smaller player-name / credits fonts layer on as they land.
 
+#include "common/config-manager.h"
 #include "common/events.h"
 #include "common/memstream.h"
 #include "common/ptr.h"
@@ -378,6 +379,101 @@ static int hitTestMenu(const MenuLayout &layout,
 	return -1;
 }
 
+static const char *const kOmni3dInvertKey = "atlantis_omni3d_invert";
+
+bool CryOmni3DEngine_Atlantis::omni3dInvertY() const {
+	return ConfMan.hasKey(kOmni3dInvertKey) && ConfMan.getBool(kOmni3dInvertKey);
+}
+
+// Options menu (OPTMENU.TXT): SUBTITLES and OMNI 3D (look-Y) toggles, plus a
+// SOUND OPTIONS button (its sub-menu lands later) and OK.  Both toggles persist
+// to ConfMan.  Authored "default" label first: SUBTITLES "ON&&OFF", OMNI 3D
+// "MODE 2&&MODE 1".
+void CryOmni3DEngine_Atlantis::displayOptionsMenu(const Graphics::ManagedSurface &bg) {
+	MenuLayout layout;
+	if (!loadMenuLayout("OPTMENU.TXT", layout))
+		return;
+
+	int soundIdx = -1, okIdx = -1, subIdx = -1, omniIdx = -1;
+	int textOrd = 0, toggleOrd = 0;
+	for (uint i = 0; i < layout.items.size(); i++) {
+		if (layout.items[i].kind == MenuItem::kText) {
+			if (textOrd == 1)      soundIdx = (int)i;
+			else if (textOrd == 4) okIdx    = (int)i;
+			textOrd++;
+		} else if (layout.items[i].kind == MenuItem::kToggle) {
+			if (toggleOrd == 0)      subIdx  = (int)i;
+			else if (toggleOrd == 1) omniIdx = (int)i;
+			toggleOrd++;
+		}
+	}
+
+	if (subIdx >= 0)
+		layout.items[subIdx].selected = showSubtitles() ? 0 : 1;
+	if (omniIdx >= 0)
+		layout.items[omniIdx].selected = omni3dInvertY() ? 1 : 0;
+
+	Graphics::PixelFormat fmt = g_system->getScreenFormat();
+	Graphics::ManagedSurface surf(640, 480, fmt);
+	Common::Array<Common::Rect> hitRects;
+	int hovered = -1;
+	bool done = false;
+
+	clearKeys();
+	showMouse(true);
+	setArrowCursor();
+
+	surf.blitFrom(bg);
+	renderMenuLayout(surf, layout, -1, hitRects);
+	g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+	g_system->updateScreen();
+
+	while (!done && !shouldAbort()) {
+		pollEvents();
+		if (getNextKey().keycode == Common::KEYCODE_ESCAPE)
+			break;
+
+		int newHover = hitTestMenu(layout, hitRects, getMousePos());
+		if (newHover != soundIdx && newHover != okIdx &&
+		    newHover != subIdx && newHover != omniIdx)
+			newHover = -1;
+		if (newHover != hovered) {
+			hovered = newHover;
+			surf.blitFrom(bg);
+			renderMenuLayout(surf, layout, hovered, hitRects);
+			g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+		}
+
+		if (getCurrentMouseButton() == 1 && hovered >= 0) {
+			waitMouseRelease();
+			if (hovered == okIdx) {
+				done = true;
+			} else if (hovered == soundIdx) {
+				// The SOUND OPTIONS sub-menu lands in a later commit.
+				debugC(1, kDebugScript, "displayOptionsMenu: sound menu not yet available");
+			} else {
+				MenuItem &tog = layout.items[hovered];
+				if (!tog.options.empty())
+					tog.selected = (tog.selected + 1) % (int)tog.options.size();
+				if (hovered == subIdx)
+					ConfMan.setBool("subtitles", tog.selected == 0);
+				else if (hovered == omniIdx)
+					ConfMan.setBool(kOmni3dInvertKey, tog.selected == 1);
+			}
+			hovered = -1;
+			surf.blitFrom(bg);
+			renderMenuLayout(surf, layout, -1, hitRects);
+			g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+		}
+
+		g_system->updateScreen();
+		g_system->delayMillis(10);
+	}
+
+	ConfMan.flushToDisk();
+	clearKeys();
+}
+
 // "ARE YOU SURE ?" quit confirmation (SUREMENU.TXT) over the menu backdrop.
 // The prompt label is inert; only the OK (confirm) and Cancel buttons react.
 // Returns true to quit.
@@ -523,7 +619,17 @@ uint CryOmni3DEngine_Atlantis::displayInGameMenu() {
 				g_system->updateScreen();
 				continue;
 			}
-			// LOAD / OPTIONS: their screens land later; resume for now.
+			if (act == kOptions) {
+				displayOptionsMenu(bg);
+				hovered = -1;
+				surf.blitFrom(bg);
+				renderMenuLayout(surf, layout, -1, hitRects);
+				g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+				g_system->updateScreen();
+				continue;
+			}
+			// LOAD: the in-game save-picker lands later (loading still works via
+			// the ScummVM menu); resume for now.
 			debugC(1, kDebugScript, "displayInGameMenu: action %d not yet available", act);
 		}
 

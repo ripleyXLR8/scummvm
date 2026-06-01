@@ -335,6 +335,10 @@ private:
 	uint displayInGameMenu();
 	// "ARE YOU SURE ?" quit confirmation over `bg`; true = confirmed.
 	bool confirmQuit(const Graphics::ManagedSurface &bg);
+	// Options menu over `bg`: SUBTITLES + OMNI 3D (look-Y) toggles, persisted.
+	void displayOptionsMenu(const Graphics::ManagedSurface &bg);
+	// True when the OMNI 3D option inverts the vertical look.
+	bool omni3dInvertY() const;
 
 	// Game-over screen: full-screen IMAGES\GOVER<NN>.TGA + the narrator's
 	// verdict (APC track + subtitle), then return so the caller reloads the
