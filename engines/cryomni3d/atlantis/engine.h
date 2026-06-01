@@ -333,6 +333,8 @@ private:
 	// In-game (Escape) menu over the panorama; returns 0 = resume, 28 = load
 	// (sets _loadedSave), 40 = quit.
 	uint displayInGameMenu();
+	// "ARE YOU SURE ?" quit confirmation over `bg`; true = confirmed.
+	bool confirmQuit(const Graphics::ManagedSurface &bg);
 
 	// Game-over screen: full-screen IMAGES\GOVER<NN>.TGA + the narrator's
 	// verdict (APC track + subtitle), then return so the caller reloads the

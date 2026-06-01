@@ -378,6 +378,66 @@ static int hitTestMenu(const MenuLayout &layout,
 	return -1;
 }
 
+// "ARE YOU SURE ?" quit confirmation (SUREMENU.TXT) over the menu backdrop.
+// The prompt label is inert; only the OK (confirm) and Cancel buttons react.
+// Returns true to quit.
+bool CryOmni3DEngine_Atlantis::confirmQuit(const Graphics::ManagedSurface &bg) {
+	MenuLayout layout;
+	if (!loadMenuLayout("SUREMENU.TXT", layout))
+		return true;   // no confirmation data on this disc — just quit
+
+	int confirmIdx = -1, cancelIdx = -1;
+	uint textOrdinal = 0;
+	for (uint i = 0; i < layout.items.size(); i++) {
+		if (layout.items[i].kind != MenuItem::kText)
+			continue;
+		if (textOrdinal == 1)
+			confirmIdx = (int)i;   // OK
+		else if (textOrdinal == 2)
+			cancelIdx = (int)i;    // Cancel
+		textOrdinal++;
+	}
+
+	Graphics::PixelFormat fmt = g_system->getScreenFormat();
+	Graphics::ManagedSurface surf(640, 480, fmt);
+	Common::Array<Common::Rect> hitRects;
+	int hovered = -1;
+
+	clearKeys();
+	showMouse(true);
+	setArrowCursor();
+
+	surf.blitFrom(bg);
+	renderMenuLayout(surf, layout, -1, hitRects);
+	g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+	g_system->updateScreen();
+
+	while (!shouldAbort()) {
+		pollEvents();
+		if (getNextKey().keycode == Common::KEYCODE_ESCAPE)
+			return false;
+
+		int hit = hitTestMenu(layout, hitRects, getMousePos());
+		if (hit != confirmIdx && hit != cancelIdx)
+			hit = -1;
+		if (hit != hovered) {
+			hovered = hit;
+			surf.blitFrom(bg);
+			renderMenuLayout(surf, layout, hovered, hitRects);
+			g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+		}
+
+		if (getCurrentMouseButton() == 1 && hovered >= 0) {
+			waitMouseRelease();
+			return hovered == confirmIdx;
+		}
+
+		g_system->updateScreen();
+		g_system->delayMillis(10);
+	}
+	return false;
+}
+
 // In-game (Escape) menu over a panorama snapshot.  Reproduces MAINMENU.TXT's
 // three buttons by ordinal (LOAD GAME / OPTIONS MENU / QUIT GAME — never by
 // label text, so localized discs work).  Returns 0 = resume, 28 = load (sets
@@ -450,9 +510,18 @@ uint CryOmni3DEngine_Atlantis::displayInGameMenu() {
 			int act = actions[hovered];
 			waitMouseRelease();
 			if (act == kQuit) {
-				retval = kQuit;
-				done = true;
-				break;
+				if (confirmQuit(bg)) {
+					retval = kQuit;
+					done = true;
+					break;
+				}
+				// Cancelled — repaint the in-game menu and stay.
+				hovered = -1;
+				surf.blitFrom(bg);
+				renderMenuLayout(surf, layout, -1, hitRects);
+				g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+				g_system->updateScreen();
+				continue;
 			}
 			// LOAD / OPTIONS: their screens land later; resume for now.
 			debugC(1, kDebugScript, "displayInGameMenu: action %d not yet available", act);
