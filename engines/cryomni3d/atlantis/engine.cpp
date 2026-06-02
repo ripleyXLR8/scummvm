@@ -320,40 +320,54 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 		                       0, s.yoff, s.pixels.data(), s.blend.data());
 	}
 
-	// Enter chapter 1: load its WAM navigation map and CON scenario script,
-	// then run the warp-navigation loop.  (CON arrival/departure section
-	// evaluation, the /set interpreter, transition videos, NPC dialog and the
-	// warp-cursor sprites land in later commits.)
-	changeChapter(1);
 	_canLoadSave = true;
 
-	_isPlaying = true;
-	// Outer state machine: gameStep() returns when something sets _abortCommand.
-	// A load-game request (from the GMM, or a game-over checkpoint reload) has
-	// already restored the state and set _nextPlaceId, so we clear the abort and
-	// re-enter the loop, which steps into the loaded place.  gameStep() always
-	// runs at least once (do/while, not a shouldQuit()-gated head test).
-	_abortCommand = kAbortNoAbort;
-	do {
+	// Outer state machine.  nextStep 0 = show the main menu; 27 = new game,
+	// 28 = load (_loadedSave set), 40 = quit.  gameStep() returns when an
+	// _abortCommand fires; the switch maps that back onto the next step.
+	// If launched directly onto a save slot (ScummVM "play" with a save),
+	// skip the menu and load it.
+	uint nextStep = 0;
+	int bootSlot = ConfMan.getInt("save_slot");
+	if (bootSlot >= 0) {
+		_loadedSave = (uint)bootSlot + 1;
+		nextStep = 28;
+	}
+	bool stopGame = false;
+	while (!stopGame && !shouldQuit()) {
+		if (nextStep == 0) {
+			_isPlaying = false;          // startup main menu (New / Load / Quit)
+			nextStep = displayOptions();
+		}
+		if (nextStep == 40 || shouldQuit())
+			break;                        // quit
+
+		_abortCommand = kAbortNoAbort;
+		_isPlaying = true;
+		if (nextStep == 28)
+			loadGame(_loadedSave);        // load: restores state + _nextPlaceId
+		else
+			changeChapter(1);             // new game (also the fallback)
+
 		gameStep();
-		if (_abortCommand == kAbortLoadGame) {
-			_abortCommand = kAbortNoAbort;
-			// Reload the requested slot (the game-over path sets _loadedSave
-			// without loading; the GMM path already loaded — reloading is
-			// idempotent), then re-enter the loop at the restored place.
-			if (_loadedSave != 0)
-				loadGame(_loadedSave);
-			continue;
+
+		switch (_abortCommand) {
+		case kAbortLoadGame:
+			// In-game load / game-over checkpoint reload: _loadedSave is set.
+			nextStep = 28;
+			break;
+		case kAbortNewGame:
+			nextStep = 27;
+			break;
+		case kAbortQuit:
+			stopGame = true;
+			break;
+		default:
+			// Any other exit returns to the main menu.
+			nextStep = 0;
+			break;
 		}
-		if (_abortCommand == kAbortNewGame) {
-			// Game-over with no checkpoint (e.g. chapter 1): restart.  The full
-			// new-game flow runs through the main menu once that lands.
-			_abortCommand = kAbortNoAbort;
-			changeChapter(1);
-			continue;
-		}
-		break;   // quit / unhandled abort
-	} while (!shouldQuit());
+	}
 
 	SearchMan.remove("Atlantis_BigFile");
 	return Common::kNoError;

@@ -903,5 +903,110 @@ bool CryOmni3DEngine_Atlantis::loadMenuLayout(const char *baseName,
 	return out.loadFromStream(*s);
 }
 
+uint CryOmni3DEngine_Atlantis::displayFilePicker(const Graphics::Surface *bgFrame,
+        bool saveMode, Common::String &saveName) {
+	(void)bgFrame;
+	return displaySavePicker(saveMode, saveName);
+}
+
+// The main menu (startup) / in-game options entry point — the CryOmni3DEngine
+// displayOptions() hook.  At startup it offers New Game / Load Game / Quit; in
+// game, Continue / Load / New / Quit.  Returns 0 = continue, 27 = new game,
+// 28 = load (sets _loadedSave), 40 = quit.
+uint CryOmni3DEngine_Atlantis::displayOptions() {
+	const Graphics::Font *font = FontMan.getFontByUsage(Graphics::FontManager::kGUIFont);
+	if (!font)
+		font = FontMan.getFontByUsage(Graphics::FontManager::kConsoleFont);
+
+	struct Entry { const char *label; uint retval; };
+	static const Entry kStartup[] = { {"New Game",27}, {"Load Game",28}, {"Quit",40} };
+	static const Entry kInGame[]  = { {"Continue",0}, {"Load Game",28}, {"New Game",27}, {"Quit",40} };
+	const Entry *entries = _isPlaying ? kInGame : kStartup;
+	uint numEntries = _isPlaying ? ARRAYSIZE(kInGame) : ARRAYSIZE(kStartup);
+
+	Graphics::PixelFormat fmt = g_system->getScreenFormat();
+
+	// PREINTRO.TGA backdrop (black fallback) + the SELEMENU ornament sprites.
+	Graphics::ManagedSurface bgSurf;
+	{
+		Graphics::Surface *raw = loadTGA(kFileTypeImages, "PREINTRO.TGA");
+		if (raw) {
+			bgSurf.copyFrom(*raw);
+			raw->free();
+			delete raw;
+		} else {
+			bgSurf.create(640, 480, fmt);
+			bgSurf.fillRect(Common::Rect(0, 0, 640, 480), fmt.RGBToColor(0, 0, 0));
+		}
+	}
+	blitMenuSprite(bgSurf,  8, 110, 182);
+	blitMenuSprite(bgSurf,  7, 520, 184);
+	blitMenuSprite(bgSurf,  9, 180, 270);
+	blitMenuSprite(bgSurf, 10, 450, 340);
+
+	Graphics::ManagedSurface surf(640, 480, fmt);
+	const int lineH  = font ? (font->getFontHeight() + 4) : 20;
+	const int blockH = (int)numEntries * lineH;
+	const int y = (480 - blockH) / 2;
+	const uint32 white  = fmt.RGBToColor(255, 255, 255);
+	const uint32 yellow = fmt.RGBToColor(255, 255, 0);
+
+	Common::Array<Common::Rect> rects;
+	for (uint i = 0; i < numEntries; i++)
+		rects.push_back(Common::Rect(160, y + (int)i * lineH, 480, y + (int)(i + 1) * lineH));
+
+	auto redraw = [&](int hov) {
+		surf.blitFrom(bgSurf);
+		if (font)
+			font->drawString(&surf, "ATLANTIS: The Lost Tale", 0, y - lineH * 2, 640,
+			                 white, Graphics::kTextAlignCenter);
+		for (uint i = 0; i < numEntries; i++) {
+			uint32 col = ((int)i == hov) ? yellow : white;
+			if (font)
+				font->drawString(&surf, entries[i].label, rects[i].left, rects[i].top,
+				                 rects[i].width(), col, Graphics::kTextAlignCenter);
+		}
+		g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+		g_system->updateScreen();
+	};
+
+	showMouse(true);
+	setArrowCursor();
+	int hovered = -1;
+	redraw(-1);
+
+	while (!shouldAbort()) {
+		pollEvents();
+		Common::Point mouse = getMousePos();
+		int newHover = -1;
+		for (int i = 0; i < (int)numEntries; i++)
+			if (rects[i].contains(mouse)) { newHover = i; break; }
+		if (newHover != hovered) {
+			hovered = newHover;
+			redraw(hovered);
+		}
+
+		if (getCurrentMouseButton() == 1 && hovered >= 0) {
+			uint retval = entries[hovered].retval;
+			waitMouseRelease();
+			if (retval == 28) {
+				Common::String dummy;
+				uint slot = displayFilePicker(nullptr, false, dummy);
+				if (slot > 0) {
+					_loadedSave = slot;
+					return 28;
+				}
+				hovered = -1;
+				redraw(-1);
+				continue;
+			}
+			return retval;
+		}
+		g_system->updateScreen();
+		g_system->delayMillis(10);
+	}
+	return 40;   // window close
+}
+
 } // End of namespace Atlantis
 } // End of namespace CryOmni3D

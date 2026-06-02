@@ -151,7 +151,7 @@ public:
 	bool displayToolbar(const Graphics::Surface *original) override { return _toolbar.displayToolbar(original); }
 	bool hasPlaceDocumentation() override { return false; }
 	bool displayPlaceDocumentation() override { return false; }
-	uint displayOptions() override { return 0; }
+	uint displayOptions() override;
 
 private:
 	// --- Chapter / place lifecycle (place.cpp) ----------------------------
@@ -343,6 +343,8 @@ private:
 	// RESTART EPISODE / OK / Cancel and a draggable scrollbar.  Returns the
 	// 1-based slot to load, or 0 on cancel.  (saveMode/outSaveName reserved.)
 	uint displaySavePicker(bool saveMode, Common::String &outSaveName);
+	uint displayFilePicker(const Graphics::Surface *bgFrame, bool saveMode,
+	                       Common::String &saveName);
 	// Render player/save-row text in FONTMIN with the exe's player width table.
 	void drawPlayerText(Graphics::ManagedSurface &dst, const Common::String &text,
 	                    int anchorX, int anchorY, bool hover) const;
