@@ -428,6 +428,18 @@ bool CryOmni3DEngine_Atlantis::evalSelSection(const ConSection &sec,
 			lhs = departZone;
 		} else if (cc.key == "vue") {
 			lhs = currentVue;
+		} else if (cc.key == "objetenmain") {
+			// Live held-object id, not the stored game variable: a pickup or
+			// the toolbar can change the selection without any /set running.
+			Object *sel = _inventory.selectedObject();
+			lhs = (sel && sel->idOBJ() != uint(-1)) ? (int)sel->idOBJ() : 0;
+		} else if (cc.key.hasPrefix("invent") && cc.key.size() > 6
+		           && Common::isDigit(cc.key[6])) {
+			// invent<N> — 1 when object N is in the inventory, else 0.  The
+			// original (atlantis.exe FUN_00429e54) tests the live inventory
+			// here; it is not a stored game variable.
+			uint objId = (uint)atoi(cc.key.c_str() + 6);
+			lhs = _inventory.inInventoryByNameID(objId) ? 1 : 0;
 		} else if (cc.key == "chaptertime") {
 			lhs = _chapterStartMs
 			      ? (int)((g_system->getMillis() - _chapterStartMs) / 1000)
@@ -438,8 +450,7 @@ bool CryOmni3DEngine_Atlantis::evalSelSection(const ConSection &sec,
 		} else if (cc.key == "random") {
 			lhs = rolledRandom;
 		} else {
-			// Generic variable (covers arriveevue, the flags, initflag, …);
-			// objetenmain / invent<N> resolve to 0 until the inventory lands.
+			// Generic variable (covers arriveevue, the flags, initflag, …).
 			Common::HashMap<Common::String, int>::const_iterator it = _gameVars.find(cc.key);
 			lhs = (it != _gameVars.end()) ? it->_value : 0;
 		}
