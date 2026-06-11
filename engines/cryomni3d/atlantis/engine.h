@@ -319,6 +319,9 @@ private:
 	int  creditStringWidth(const Common::String &text) const;
 	void drawCreditText(Graphics::ManagedSurface &dst, const Common::String &text,
 	                    int anchorX, int anchorY, bool blue) const;
+	// Quit credits slideshow: CREDIT01..10.TGA + CREDITS.TXT overlay text
+	// (+ 04GENERI.APC on discs that have it), skippable by key or click.
+	void playQuitOutro();
 	// SPRMENU.SPR — the menu/toolbar decorative golden overlays.
 	void loadMenuSprites();
 	void blitMenuSprite(Graphics::ManagedSurface &dst, uint idx, int hx, int hy) const;

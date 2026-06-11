@@ -1309,6 +1309,11 @@ uint CryOmni3DEngine_Atlantis::displayInGameMenu() {
 			waitMouseRelease();
 			if (act == kQuit) {
 				if (confirmQuit(bg)) {
+					// Credits slideshow before signalling quit — only this
+					// explicit QUIT GAME button runs it; other quit paths
+					// (Escape dismiss, window close, GMM Quit) bypass the
+					// outro by design.
+					playQuitOutro();
 					retval = kQuit;
 					done = true;
 					break;
