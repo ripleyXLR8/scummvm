@@ -36,6 +36,7 @@
 
 #include "cryomni3d/objects.h"
 #include "cryomni3d/atlantis/engine.h"
+#include "cryomni3d/atlantis/puzzle_eclipse.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
@@ -134,6 +135,12 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 	// FinPuzzle=255, e.g. CHAPI012's /sel(FinPuzzle=255)&(Vue=N)&...).
 	int finPuzzle = 255;
 	switch (puzzleId) {
+	case 0: {
+		// Celestial alignment ("eclipse on Atlantis") at CHAPI012 vue 221.
+		EclipsePuzzle puz(this);
+		finPuzzle = puz.run();
+		break;
+	}
 	default:
 		debugC(1, kDebugScript, "playPuzzle: no handler for puzzle %d, auto-win", puzzleId);
 		break;

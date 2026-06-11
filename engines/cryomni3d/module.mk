@@ -44,6 +44,8 @@ MODULE_OBJS += \
 	atlantis/music.o \
 	atlantis/navigation.o \
 	atlantis/place.o \
+	atlantis/puzzle_assets.o \
+	atlantis/puzzle_eclipse.o \
 	atlantis/saveload.o \
 	atlantis/sprite_renderer.o \
 	atlantis/toolbar.o \
