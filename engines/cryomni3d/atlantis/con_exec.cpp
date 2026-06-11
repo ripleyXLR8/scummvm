@@ -127,6 +127,41 @@ int CryOmni3DEngine_Atlantis::resolveSpeakerPersoId(const Common::String &speake
 	return 0;
 }
 
+void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
+	// Dispatch to the per-puzzle handler.  Puzzles not yet implemented
+	// fall back to the auto-win stub so their CHAPI script chains keep
+	// progressing (most of them gate further story content behind
+	// FinPuzzle=255, e.g. CHAPI012's /sel(FinPuzzle=255)&(Vue=N)&...).
+	int finPuzzle = 255;
+	switch (puzzleId) {
+	default:
+		debugC(1, kDebugScript, "playPuzzle: no handler for puzzle %d, auto-win", puzzleId);
+		break;
+	}
+	_gameVars["finpuzzle"] = finPuzzle;
+	// Puzzle launches are often gated behind a click on a sentinel zone
+	// (CHAPI012 vue 221 zone.action=1000 — "1000" is not a real place,
+	// just a hotspot trigger for /sel(vue=221)&(flagtemp6=0)).  The /sel
+	// itself doesn't /set(abortdepart=1), so the pending departure to
+	// place 1000 would still fire after the puzzle returns — emitting a
+	// "place 1000 not found" warning and stranding the player.  Cancel
+	// any pending departure here so the puzzle's caller stays put.
+	_nextPlaceId = uint(-1);
+
+	// Re-run the arrival /sel scan so /sel sections that gate on
+	// `FinPuzzle = 255` fire immediately on win.  CHAPI012 line 129
+	// (`/sel(FinPuzzle=255)&(Vue=221)&(Flagtemp6=0)` -> /set(cinema=30)
+	// + hide/show NPCs + Flagtemp6=1) is the canonical case: without
+	// this re-scan the cinematic only triggers on the next natural
+	// place transition.  The puzzle-launch /sel
+	// (`/sel(vue=221)&(flagtemp6=0)` -> /set(Startpuzzle=0)) sits
+	// in the same scan but the cinema gate fires first (earlier in
+	// the CON file), sets Flagtemp6=1, and the puzzle-launch /sel's
+	// `flagtemp6=0` cond then fails — no recursive puzzle relaunch.
+	if (finPuzzle == 255 && _currentPlaceId != uint(-1))
+		runArrivalSelSections((int)_currentPlaceId, (int)_currentPlaceId);
+}
+
 void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 	const char *p = cmd.c_str();
 
@@ -331,6 +366,17 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 			      soundId, apcName.c_str());
 		}
 		delete apcFile;
+		return;
+	}
+
+	// startpuzzle=N — launch minigame N.  N is an enum of ~15 distinct
+	// puzzles (eclipse, sliding tile, hexa, serpent, crab, lion, throne,
+	// meta, …) referenced across chapters 12-79.  On completion the puzzle
+	// writes back FinPuzzle (255 = win; smaller values denote loss patterns,
+	// e.g. CHAPI018's chess puzzle uses 1/2 for "poor queen" / "poor hero"
+	// voice-line variants).
+	if (key == "startpuzzle") {
+		playPuzzle(value);
 		return;
 	}
 

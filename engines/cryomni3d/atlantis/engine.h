@@ -232,6 +232,11 @@ private:
 	void execConInitCommands();
 	// Apply one /set command string (e.g. "vue=12", "flagtemp3=1").
 	void execConSetCommand(const Common::String &cmd);
+	// CON /set(StartPuzzle=N) — run minigame N and write FinPuzzle back
+	// (255 = win; smaller values denote per-puzzle loss variants).  Puzzles
+	// without a handler auto-win so their CHAPI script chains keep
+	// progressing past the gate.
+	void playPuzzle(int puzzleId);
 	// Evaluate a /sel section's condition list (left-to-right short-circuit).
 	bool evalSelSection(const ConSection &sec, int departZone, int currentVue) const;
 	// Execute a fired section's body (its /set commands and /go redirect; the
@@ -434,7 +439,9 @@ private:
 	                      const uint8 *blend, int hotX, int hotY, uint16 transpKey);
 	void setWarpCursor(int group);  // set cursor group + reset animation
 	void tickWarpCursor();          // advance the animation frame (call each tick)
+public:
 	void setArrowCursor();          // plain arrow (CURSEURS.SPR sprite 8)
+private:
 	// Set the carried-item cursor to object `obj`'s icon; when overlayCursorFrame
 	// >= 0 that _cursorSprites frame (an action cursor) is composited on top.
 	void setItemCursor(const Object *obj, int overlayCursorFrame = -1);
