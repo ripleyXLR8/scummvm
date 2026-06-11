@@ -182,6 +182,24 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 		return;
 	}
 
+	// startmusik=N — select music track N (kMusicTrackNames) and loop it.
+	if (key == "startmusik") {
+		musicPlayTrack(value);
+		return;
+	}
+
+	// stopmusik=N — clear the music selection and stop playback.
+	if (key == "stopmusik") {
+		musicStop();
+		return;
+	}
+
+	// loadmusik=N / delmusik=N — the original pre-loads/frees the track's
+	// sample memory; our tracks load on demand, so both are no-ops.
+	// startmusik / stopmusik do the actual playback control.
+	if (key == "loadmusik" || key == "delmusik")
+		return;
+
 	// cinema=N — play the CINEM<NNN>.HNM cinematic full-screen (skippable).
 	if (key == "cinema") {
 		Common::String hnm = Common::String::format("CINEM%03d.HNM", value);

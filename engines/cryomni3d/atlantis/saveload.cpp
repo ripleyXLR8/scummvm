@@ -127,7 +127,9 @@ void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &save
 	}
 
 	out->writeUint32BE(_currentCONChapter);   // ext v2: active CHAPI*.CON
-	out->writeUint32BE(0);                     // ext v3: music track (not modelled yet)
+	// ext v3: the playing music track.  startmusik/stopmusik own the
+	// selection; it is not a game variable, so persist it explicitly.
+	out->writeUint32BE((uint32)_musicTrackId);
 	out->writeUint32BE(0);                     // ext v4: shown-perso count (not modelled yet)
 
 	out->finalize();
@@ -180,6 +182,7 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	Common::Array<SujState> savedSujEnabled;
 	Common::HashMap<Common::String, int> savedGameVars;
 	uint32 savedCONChapter = 0;
+	int savedMusicTrack = 0;
 	bool hasExt = (in->size() > kSaveSize);
 	if (hasExt) {
 		uint32 magic = in->readUint32BE();
@@ -214,7 +217,9 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 			}
 			if (ver >= 2 && !in->eos())
 				savedCONChapter = in->readUint32BE();
-			// ext v3 music + v4 shown-persos are not modelled yet — ignored.
+			if (ver >= 3 && !in->eos())
+				savedMusicTrack = (int)in->readUint32BE();
+			// ext v4 shown-persos is not modelled yet — ignored.
 		}
 	}
 	delete in;
@@ -260,6 +265,11 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 			if (isPersistentGameVar(kv._key))
 				_gameVars[kv._key] = kv._value;
 	}
+
+	// Restore the music selection last: setupChapterWAM() / loadConScript()
+	// above may have run musicStop(); musicUpdate() picks the saved track
+	// back up on the next frame.
+	_musicTrackId = savedMusicTrack;
 
 	// Apply the saved inventory now that setupChapterWAM/loadConScript (which
 	// can clear or repopulate it) have run.

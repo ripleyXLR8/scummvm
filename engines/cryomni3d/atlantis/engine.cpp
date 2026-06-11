@@ -89,6 +89,10 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_dialBaseAlpha(0.0),
 	_dialBaseAlphaValid(false),
 	_dialogGivenObjSprite(-1),
+	_musicCurrentFile(nullptr),
+	_musicRawData(nullptr),
+	_musicRawSize(0),
+	_musicTrackId(0),
 	_warpCursorGroup(0),
 	_warpCursorFrame(-1),
 	_warpCursorNextMs(0),
@@ -103,6 +107,8 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 }
 
 CryOmni3DEngine_Atlantis::~CryOmni3DEngine_Atlantis() {
+	_mixer->stopHandle(_musicHandle);
+	delete[] _musicRawData;
 	_cycloSurface.free();
 	_warpSurface.free();
 	delete[] _mainPalette;
@@ -430,6 +436,9 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 		if (_nextPlaceId != uint(-1)) {
 			uint fromVue = _currentPlaceId;
 			doPlaceChange();
+			// Music persists across places — only startmusik/stopmusik (run
+			// by the new place's arrival CON sections, if any) change it.
+			musicUpdate();
 			if (_currentPlace)
 				runArrivalSelSections((int)_currentPlaceId, (int)fromVue);
 		}
@@ -437,6 +446,7 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 			continue;
 
 		uint actionId = handleWarp();
+		musicUpdate();
 
 		// 66666 = handleWarp bailed (abort / menu / window close).
 		if (actionId == 66666) {
@@ -555,10 +565,14 @@ void CryOmni3DEngine_Atlantis::playQuitOutro() {
 	// 04GENERI.APC ("generique" = credits) is the authentic credits music;
 	// discs without it get silent credits.  We DO NOT substitute a different
 	// track: a 33INTRO fallback fights the chapter music and produces an
-	// obviously wrong soundscape.  (The original's GereGameOver path also
-	// stops sample playback before the first slide — that lands with the
-	// music layer.)
+	// obviously wrong soundscape.
 	static const char *const kMusicApc = "04GENERI.APC";
+
+	// Silence the chapter music first, regardless of whether the credits
+	// APC loads — the original game's GereGameOver path stops sample
+	// playback (FUN_0042b290 → _AIL_stop_sample_4) before drawing the
+	// first credit slide.
+	musicStop();
 
 	// --- Music (credits track if present) ----------------------------
 	Audio::SoundHandle musicHandle;

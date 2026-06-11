@@ -662,6 +662,7 @@ int CryOmni3DEngine_Atlantis::displayPlayerScreen() {
 		}
 
 		g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+		musicUpdate();
 		g_system->updateScreen();
 		g_system->delayMillis(10);
 	}
@@ -836,6 +837,7 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 			               entry == selected);
 		}
 		g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+		musicUpdate();
 		g_system->updateScreen();
 		g_system->delayMillis(10);
 	}
@@ -932,6 +934,7 @@ void CryOmni3DEngine_Atlantis::displayOptionsMenu(const Graphics::ManagedSurface
 			g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
 		}
 
+		musicUpdate();
 		g_system->updateScreen();
 		g_system->delayMillis(10);
 	}
@@ -1150,6 +1153,7 @@ void CryOmni3DEngine_Atlantis::displaySoundMenu(const Graphics::ManagedSurface &
 			drawFontMaxText(surf, it.text, x, it.anchorY, hover);
 		}
 		g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+		musicUpdate();
 		g_system->updateScreen();
 		g_system->delayMillis(10);
 	}
@@ -1230,6 +1234,7 @@ bool CryOmni3DEngine_Atlantis::confirmQuit(const Graphics::ManagedSurface &bg) {
 			return hovered == confirmIdx;
 		}
 
+		musicUpdate();
 		g_system->updateScreen();
 		g_system->delayMillis(10);
 	}
@@ -1355,6 +1360,7 @@ uint CryOmni3DEngine_Atlantis::displayInGameMenu() {
 			debugC(1, kDebugScript, "displayInGameMenu: action %d not handled", act);
 		}
 
+		musicUpdate();
 		g_system->updateScreen();
 		g_system->delayMillis(10);
 	}

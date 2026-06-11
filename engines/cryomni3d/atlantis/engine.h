@@ -339,6 +339,23 @@ private:
 	// Quit credits slideshow: CREDIT01..10.TGA + CREDITS.TXT overlay text
 	// (+ 04GENERI.APC on discs that have it), skippable by key or click.
 	void playQuitOutro();
+
+	// --- Music playlist (music.cpp) ----------------------------------------
+	// The CON commands startmusik=N / stopmusik own the *selection*
+	// (_musicTrackId); musicUpdate() keeps the mixer in sync every frame
+	// (pausing while music is muted, resuming the selected track on unmute
+	// or after a chapter change).
+	// Select and (re)play a numbered music track (1-based, matching the
+	// startmusik CON command IDs).  The track loops until changed.
+	void musicPlayTrack(int trackId);
+	// Clear the selection entirely and stop playback — stopmusik (CON),
+	// chapter change, and the credits sequence.
+	void musicStop();
+	// Stop mixer playback and free the decoded buffer without clearing the
+	// selected track — used for the mute state and before a track switch.
+	void musicHaltPlayback();
+	// Per-frame mixer sync (see above).
+	void musicUpdate();
 	// SPRMENU.SPR — the menu/toolbar decorative golden overlays.
 	void loadMenuSprites();
 	void blitMenuSprite(Graphics::ManagedSurface &dst, uint idx, int hx, int hy) const;
@@ -501,6 +518,15 @@ private:
 	int _dialogGivenObjSprite;
 	SubjSprite _inventoryBarSprite;   // OBJETS0.SPR bar background
 	Atlantis_Toolbar _toolbar;
+
+	// Music playlist state (music.cpp).  The raw APC bytes stay resident for
+	// the life of the looping stream; _musicTrackId survives a halt so a
+	// muted/halted track resumes on the next musicUpdate().
+	const char *_musicCurrentFile;
+	Audio::SoundHandle _musicHandle;
+	byte *_musicRawData;
+	uint32 _musicRawSize;
+	int _musicTrackId;   // selected startmusik track id (0 = stopped / none)
 
 	// FONTMAX gold menu font (FONTMAX.SPR) + its hover/highlight set
 	// (FONTMAX2.SPR).  Glyph index = char_code - 0x20.

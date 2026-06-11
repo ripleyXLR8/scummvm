@@ -41,6 +41,7 @@ MODULE_OBJS += \
 	atlantis/exetables.o \
 	atlantis/menu_layout.o \
 	atlantis/menus.o \
+	atlantis/music.o \
 	atlantis/navigation.o \
 	atlantis/place.o \
 	atlantis/saveload.o \
