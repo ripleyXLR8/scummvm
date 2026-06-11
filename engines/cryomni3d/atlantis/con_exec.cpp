@@ -245,6 +245,16 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 		return;
 	}
 
+	// abortdepart=1 — cancel the pending place departure.  Fired by the
+	// departure /sel sections that lock the player into an area (the
+	// catch-all pattern is /sel(departvue>0)&(vue>A)&(vue<B) -> a refusal
+	// bark + /set(abortdepart=1)); gameStep sees _nextPlaceId cleared and
+	// skips the transition.
+	if (key == "abortdepart") {
+		_nextPlaceId = uint(-1);
+		return;
+	}
+
 	// chapter=N — switch the active CON script to chapter N.  This is the
 	// story-progression command (e.g. CHAPI013's /014 section fires
 	// /set(chapter=14)); it is independent of the WAM — area changes go
