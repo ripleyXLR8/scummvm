@@ -25,10 +25,14 @@
 // on as their subsystems land.
 
 #include "common/debug.h"
+#include "common/memstream.h"
 #include "common/str.h"
 #include "common/system.h"
 #include "common/textconsole.h"
 #include "common/util.h"
+
+#include "audio/decoders/apc.h"
+#include "audio/mixer.h"
 
 #include "cryomni3d/objects.h"
 #include "cryomni3d/atlantis/engine.h"
@@ -278,6 +282,65 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 				if ((int)o.idOBJ() == value) { _inventory.setSelectedObject(&o); break; }
 		}
 		_gameVars["objetenmain"] = value;
+		return;
+	}
+
+	// newsound=N — play the ambient/SFX track identified by APC table index N
+	// (table extracted from atlantis.exe by loadAtlantisExeTables).  Always
+	// stops any active newsound before starting a new one, so blocked-zone
+	// feedback (e.g. CHAPI001 `/set(newsound=14)` at zones 150/168) doesn't
+	// pile up.  Played as one-shot SFX on the SFX channel.
+	if (key == "newsound") {
+		int soundId = value;
+		_gameVars["newsound"] = soundId;
+
+		if (_mixer->isSoundHandleActive(_newSoundHandle))
+			_mixer->stopHandle(_newSoundHandle);
+
+		// soundId is a 0-based index into the APC table extracted from
+		// atlantis.exe: empirically, CON `newsound=14` plays the 15th file in
+		// our enumeration (Toctoc.apc), so do NOT subtract 1 here.
+		if (soundId < 0 || (uint)soundId >= _newSoundApcNames.size()) {
+			if (!_newSoundApcNames.empty())
+				debugC(1, kDebugScript, "execConSetCommand: newsound=%d out of table range (0..%u)",
+				      soundId, _newSoundApcNames.size() - 1);
+			return;
+		}
+
+		const Common::String &apcName = _newSoundApcNames[soundId];
+		Common::SeekableReadStream *apcFile =
+		    openBigFileStream(kFileTypeSound, apcName);
+		if (!apcFile) {
+			debugC(1, kDebugScript, "execConSetCommand: newsound=%d '%s' not in BigFile",
+			      soundId, apcName.c_str());
+			return;
+		}
+
+		Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*apcFile);
+		if (apc) {
+			int64 remaining = apcFile->size() - apcFile->pos();
+			if (remaining > 0) {
+				byte *buf = new byte[remaining];
+				apcFile->read(buf, (uint32)remaining);
+				apc->queuePacket(new Common::MemoryReadStream(buf, remaining,
+				                                              DisposeAfterUse::YES));
+			}
+			apc->finish();
+			_mixer->playStream(Audio::Mixer::kSFXSoundType, &_newSoundHandle, apc);
+			debugC(1, kDebugScript, "execConSetCommand: newsound=%d playing '%s'",
+			      soundId, apcName.c_str());
+		}
+		delete apcFile;
+		return;
+	}
+
+	// stopsound=N — stop the currently playing newsound.  N is ignored: the
+	// original engine only tracks one ambient channel and any stopsound
+	// silences it.
+	if (key == "stopsound") {
+		_gameVars["newsound"] = 0;
+		if (_mixer->isSoundHandleActive(_newSoundHandle))
+			_mixer->stopHandle(_newSoundHandle);
 		return;
 	}
 

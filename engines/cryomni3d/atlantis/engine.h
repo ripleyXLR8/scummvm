@@ -528,6 +528,17 @@ private:
 	uint32 _musicRawSize;
 	int _musicTrackId;   // selected startmusik track id (0 = stopped / none)
 
+	// Ambient SFX playback driven by CON `/set(newsound=N)`.  The id-to-APC
+	// mapping lives in atlantis.exe at VA 0x004961e0: a pointer table that
+	// starts with 17 WAM names then continues with APC filenames.  newsound
+	// IDs are 0-based into the APC portion, so id N maps directly to
+	// _newSoundApcNames[N] (== file-table index N+17).  Verified empirically:
+	// CON `newsound=14` at CHAPI001/zone 168 plays Toctoc.apc, which is the
+	// 15th APC entry in the table (array index 14).  Loaded once at engine
+	// start by loadAtlantisExeTables().
+	Common::Array<Common::String> _newSoundApcNames;
+	Audio::SoundHandle _newSoundHandle;
+
 	// FONTMAX gold menu font (FONTMAX.SPR) + its hover/highlight set
 	// (FONTMAX2.SPR).  Glyph index = char_code - 0x20.
 	Common::Array<SubjSprite> _fontMaxSprites;
