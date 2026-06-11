@@ -115,6 +115,10 @@ void CryOmni3DEngine_Atlantis::setupWAMByName(const Common::String &wamName) {
 void CryOmni3DEngine_Atlantis::changeChapter(int chapter) {
 	_currentChapter = (uint)chapter;
 	musicStop();   // a new chapter's CON re-selects its music via startmusik
+	// A direct chapter start (new game) begins with no hidden NPCs; the CON
+	// /INIT block establishes the initial set.  In-game /set(chapter=N)
+	// switches deliberately do NOT clear this list (see loadConScript).
+	_hiddenPersos.clear();
 	// Arm the chapter checkpoint; doPlaceChange writes it once the start place
 	// is entered (the original autosaves as it enters a new chapter's place).
 	_autosavePending = true;

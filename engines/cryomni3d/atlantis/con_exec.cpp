@@ -71,9 +71,19 @@ void CryOmni3DEngine_Atlantis::loadConScript(int chapter) {
 				persist[kv._key] = kv._value;
 		_gameVars = persist;
 	}
-	// Sprite show/hide and subject-enable state are per-chapter; reset them
-	// with the variables.
-	_hiddenPersos.clear();
+	// Subject-enable state is per-chapter; reset it with the variables.
+	// The hidden-perso list PERSISTS across chapter switches — it is the
+	// exe's persistent list at 0x611010, distinct from the per-chapter CON
+	// variable array that FUN_00427634 zeroes.  A chapter's /INIT block
+	// carries only the DELTAS (the persos it newly shows/hides), not a
+	// complete re-statement: CHAPI001 hides ~42 persos, CHAPI002 re-lists
+	// only ~18 of them.  Clearing here would make the ~24 left out of
+	// CHAPI002's INIT pop back into view on every /set(chapter=N) — the
+	// concrete case is perso 587 (Anaan): hidden by CHAPI001, never re-shown
+	// until CHAPI056, but its SPW entry has startActive=true at vue 110 in
+	// chapters 17-24.  A genuine new game still starts clean: changeChapter()
+	// clears the list before the first loadConScript, and loadGame restores
+	// the saved list.
 	_sujEnabled.clear();
 
 	Common::String name = Common::String::format("CHAPI%03d.CON", chapter);
@@ -232,6 +242,34 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 	if (key == "vue") {
 		// Schedule a place change (gameStep enters it next iteration).
 		_nextPlaceId = (uint)value;
+		return;
+	}
+
+	// chapter=N — switch the active CON script to chapter N.  This is the
+	// story-progression command (e.g. CHAPI013's /014 section fires
+	// /set(chapter=14)); it is independent of the WAM — area changes go
+	// through changewam.  loadConScript keeps the 7 persistent variables,
+	// resets the transient ones and runs the new chapter's /INIT block.
+	if (key == "chapter") {
+		_gameVars["chapter"] = value;
+		if (value > 0 && (uint)value != _currentCONChapter) {
+			debugC(1, kDebugScript, "execConSetCommand: switching CON script to chapter %d", value);
+			_currentCONChapter = (uint)value;
+			loadConScript(value);
+			// Original-game autosave point: a real chapter advance rewrites
+			// the player's checkpoint.  Defer the write to doPlaceChange() so
+			// it captures the new chapter's first place (atlantis.exe
+			// FUN_00427634 saves as it enters that place).
+			_autosavePending = true;
+			// Fire the new chapter's intro /sel sections — canonical example
+			// is CHAPI014.CON section 10 (`/sel(initflag=0)` -> /set(Cinema=36)),
+			// the throw-success cinematic that plays right after CHAPI013
+			// fires /set(chapter=14).  Without this scan the chapter switches
+			// silently and the player just lands at the same vue with no
+			// cinematic.  Same-place arrival keeps (arriveevue>0) true.
+			if (_currentPlaceId != uint(-1))
+				runArrivalSelSections((int)_currentPlaceId, (int)_currentPlaceId);
+		}
 		return;
 	}
 
