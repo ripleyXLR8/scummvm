@@ -756,6 +756,102 @@ void CryOmni3DEngine_Atlantis::loadSpritePlaceList() {
 	      _spritePlaceList.size(), listFile.c_str());
 }
 
+// SPF list file (e.g. SPFATL1.TXT) lists, for each place-to-place
+// transition, which NPCs to show animated during the camera move:
+//
+//   fromPlace toPlace persoId spfFile
+//   001 002 600 a1001002.spf
+//   ...
+//   #014 016 612 a8014016.spf   <- '#' starts a comment / disabled entry
+//   FIN
+//
+// Stored verbatim into _spriteTransList; playTransitionVideo filters by
+// the active (fromPlace, toPlace) pair when a transition starts.
+void CryOmni3DEngine_Atlantis::loadSpfList() {
+	_spriteTransList.clear();
+
+	const Common::String &listFile = _wam.spfListFile;
+	if (listFile.empty()) {
+		debugC(1, kDebugVideo, "loadSpfList: WAM has no SPF list");
+		return;
+	}
+
+	Common::SeekableReadStream *s = openBigFileStream(kFileTypeSprite, listFile);
+	if (!s) {
+		warning("loadSpfList: cannot open '%s'", listFile.c_str());
+		return;
+	}
+
+	uint32 fileSize = (uint32)s->size();
+	byte *buf = new byte[fileSize + 1];
+	s->read(buf, fileSize);
+	buf[fileSize] = '\0';
+	delete s;
+
+	const char *p = (const char *)buf;
+	while (*p) {
+		while (*p == '\r' || *p == '\n' || *p == ' ' || *p == '\t') p++;
+		if (!*p) break;
+
+		// Skip comment / disabled lines (leading '#').
+		if (*p == '#') {
+			while (*p && *p != '\r' && *p != '\n') p++;
+			continue;
+		}
+
+		const char *eol = p;
+		while (*eol && *eol != '\r' && *eol != '\n') eol++;
+		Common::String line(p, (uint32)(eol - p));
+		p = eol;
+
+		if (line.equalsIgnoreCase("FIN")) break;
+
+		Common::Array<Common::String> tok;
+		const char *tp = line.c_str();
+		while (*tp) {
+			while (*tp == ' ' || *tp == '\t') tp++;
+			if (!*tp) break;
+			const char *te = tp;
+			while (*te && *te != ' ' && *te != '\t') te++;
+			tok.push_back(Common::String(tp, (uint32)(te - tp)));
+			tp = te;
+		}
+
+		if (tok.size() < 4) continue;
+		SpriteTransEntry entry;
+		entry.fromPlace = (uint16)atoi(tok[0].c_str());
+		entry.toPlace   = (uint16)atoi(tok[1].c_str());
+		entry.persoId   = atoi(tok[2].c_str());
+		entry.spfFile   = tok[3];
+		_spriteTransList.push_back(entry);
+		debugC(3, kDebugVideo, "  spf: %u->%u perso=%d file=%s",
+		      entry.fromPlace, entry.toPlace, entry.persoId, entry.spfFile.c_str());
+	}
+
+	delete[] buf;
+	debugC(1, kDebugVideo, "loadSpfList: %u entries from '%s'",
+	      _spriteTransList.size(), listFile.c_str());
+}
+
+// SPF files share the SPW on-disk format (file_size / num_frames / format
+// header followed by per-frame palette + RLE pixel stream), so we drive
+// the same decoder against the transition video's 640×480 frame surface.
+// Out-of-range frameIdx (transition video longer than the SPF animation)
+// clamps: the SPF's last frame stays on screen instead of glitching.
+void CryOmni3DEngine_Atlantis::compositeSpfFrame(Common::SeekableReadStream *spf,
+                                                  uint frameIdx,
+                                                  Graphics::Surface &dst) {
+	if (!spf) return;
+
+	// Bounds check against header[0x04] = num_frames.
+	if (!spf->seek(4)) return;
+	uint32 numFrames = spf->readUint32LE();
+	if (!numFrames) return;
+	if (frameIdx >= numFrames) frameIdx = numFrames - 1;
+
+	decodeSPWPixels(spf, dst, frameIdx);
+}
+
 void CryOmni3DEngine_Atlantis::rebuildNpcPlaceBounds() {
 	// Always clear, even if !_warpLoaded, so stale bounds from the previous
 	// place can't false-positive a hit-test before the new place is composited.

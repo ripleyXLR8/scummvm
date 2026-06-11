@@ -76,6 +76,20 @@ struct LevelInitialState {
 	float beta;
 };
 
+// One entry from the WAM's SPF transition-sprite list (e.g. SPFATL1.TXT).
+// Format per line: `fromPlace toPlace persoId spfFile`.  During a transition
+// from fromPlace to toPlace the engine composites the matching SPF's frames
+// onto the HNM transition video so NPCs remain visible as the camera moves.
+// SPF on-disk format is identical to SPW (same header, frame table, RLE
+// pixel stream), just authored against the 640×480 video frame instead of
+// the 2048-wide cyclo panorama.
+struct SpriteTransEntry {
+	uint16 fromPlace;
+	uint16 toPlace;
+	int    persoId;
+	Common::String spfFile;
+};
+
 // One entry from the WAM's SPW sprite list (e.g. SPWATL1.TXT).
 // NPC entries have type==0 and persoId>0; animated props (torches) have type!=0.
 struct SpritePlaceEntry {
@@ -411,6 +425,9 @@ private:
 	// --- NPC / prop scene sprites (sprite_renderer.cpp) -------------------
 	// Parse the WAM's SPW sprite list (e.g. SPWATL1.TXT) into _spritePlaceList.
 	void loadSpritePlaceList();
+	// Parse the WAM's SPF transition-sprite list (e.g. SPFATL1.TXT) into
+	// _spriteTransList.  Run once per chapter alongside loadSpritePlaceList.
+	void loadSpfList();
 	// Reset each current-place sprite to its baseline, then (re)build the NPC
 	// hit-test bounds and composite the sprite layer onto _warpSurface.  Called
 	// after loadCycloHNM() enters a place.
@@ -427,7 +444,12 @@ private:
 	// Full-screen HNM playback for UBB_VUE place-to-place transitions and the
 	// CINEM/intro cinematics, with the matching WAV\*.APC track when the disc
 	// has one (AT*.HNM transitions are silent by design).  SPACE skips.
-	void playTransitionVideo(const Common::String &videoName);
+	// When (fromPlace, toPlace) name a real transition, the SPF walk-on
+	// sprites listed for that pair composite onto each video frame so NPCs
+	// remain visible as the camera moves between the two places.
+	void playTransitionVideo(const Common::String &videoName,
+	                         uint fromPlace = uint(-1),
+	                         uint toPlace   = uint(-1));
 
 	static const LevelInitialState kChapterInitialStates[];
 
@@ -499,6 +521,17 @@ private:
 	// NPC / prop scene sprites for the current chapter (parsed from the WAM's
 	// SPW list) and the per-place NPC click-target bounds.
 	Common::Array<SpritePlaceEntry> _spritePlaceList;
+
+	// Parsed SPF transition-sprite list (e.g. SPFATL1.TXT).
+	Common::Array<SpriteTransEntry> _spriteTransList;
+
+	// Decode a single frame of an SPF transition sprite stream and composite
+	// it onto `dst`.  The SPF format is identical to SPW (same header / RLE
+	// pixel stream), so the same flat-buffer decoder is reused — but here
+	// the surface width matches the transition video (640) rather than the
+	// 2048-wide cyclo panorama.  Implemented in sprite_renderer.cpp.
+	void compositeSpfFrame(Common::SeekableReadStream *spf, uint frameIdx,
+	                       Graphics::Surface &dst);
 	struct NPCBound {
 		int persoId;
 		Common::Rect panoBounds;  // panoramic coords (Y=0 at top, exclusive right/bottom)

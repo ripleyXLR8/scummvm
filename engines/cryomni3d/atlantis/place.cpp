@@ -80,8 +80,10 @@ void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 	_currentWAMName = kWAMNames[chapter];
 	debugC(1, kDebugScript, "Loaded WAM for chapter %d: %u places", chapter, _wam.getPlaces().size());
 
-	// Per-chapter NPC / prop scene-sprite list (SPW).
+	// Per-chapter NPC / prop scene-sprite list (SPW) and the transition
+	// walk-on list (SPF).
 	loadSpritePlaceList();
+	loadSpfList();
 	// The carried inventory persists across chapters; only a new game (chapter 1)
 	// starts empty.  The CON /INIT then repopulates chapter 1's starting items.
 	if (chapter == 1)
@@ -102,9 +104,11 @@ void CryOmni3DEngine_Atlantis::setupWAMByName(const Common::String &wamName) {
 	}
 	_wam.loadStream(*s);
 	_currentWAMName = wamName;
-	// Each WAM references its own SPW list; reload it so the new area's NPCs
-	// composite.  (Inventory and CON script are untouched by a sub-WAM swap.)
+	// Each WAM references its own SPW/SPF lists; reload them so the new
+	// area's NPCs composite.  (Inventory and CON script are untouched by a
+	// sub-WAM swap.)
 	loadSpritePlaceList();
+	loadSpfList();
 	debugC(1, kDebugScript, "Loaded WAM '%s': %u places", wamName.c_str(), _wam.getPlaces().size());
 }
 
@@ -177,7 +181,7 @@ void CryOmni3DEngine_Atlantis::executeTransition(uint nextPlaceId) {
 
 	const AtlantisTransition *trans = _currentPlace->findTransition((uint16)nextPlaceId);
 	if (trans) {
-		playTransitionVideo(trans->videoName);
+		playTransitionVideo(trans->videoName, _currentPlaceId, nextPlaceId);
 		_omni3dMan.setAlpha(trans->dstAlpha);
 		_omni3dMan.setBeta(trans->dstBeta);
 	}
@@ -210,7 +214,8 @@ void CryOmni3DEngine_Atlantis::executeTransition(uint nextPlaceId) {
 	_nextPlaceId = nextPlaceId;
 }
 
-void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoName) {
+void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoName,
+                                                    uint fromPlace, uint toPlace) {
 #ifdef USE_HNM
 	// WAM records use .UBB extension but the BigFile stores them as .HNM.
 	Common::String hnmName = videoName;
@@ -224,6 +229,32 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 	if (!stream) {
 		debugC(1, kDebugScript, "playTransitionVideo: '%s' not found", hnmName.c_str());
 		return;
+	}
+
+	// Open SPF transition-sprite streams that apply to this (from, to) pair.
+	// Matches the original engine's FUN_0041b81c: scan the SPF table for
+	// entries keyed by (current place, target place) and load each.  Streams
+	// stay open for the duration of the transition so per-frame decode is
+	// cheap; closed afterwards.  A no-op when either place ID is unknown
+	// (cinematics played via the single-arg form).
+	Common::Array<Common::SeekableReadStream *> spfStreams;
+	if (fromPlace != uint(-1) && toPlace != uint(-1)) {
+		for (const SpriteTransEntry &e : _spriteTransList) {
+			if (e.fromPlace != fromPlace || e.toPlace != toPlace) continue;
+			// Honour the hidden-perso list so /set(HidePerso=N) suppresses
+			// transition sprites for that NPC just like static sprites.
+			bool hidden = false;
+			for (int h : _hiddenPersos)
+				if (h == e.persoId) { hidden = true; break; }
+			if (hidden) continue;
+			Common::SeekableReadStream *spf =
+			    openBigFileStream(kFileTypeSpriteUbb, e.spfFile);
+			if (spf) {
+				spfStreams.push_back(spf);
+				debugC(2, kDebugScript, "playTransitionVideo: opened SPF '%s' (perso=%d)",
+				      e.spfFile.c_str(), e.persoId);
+			}
+		}
 	}
 
 	Graphics::PixelFormat screenFmt = g_system->getScreenFormat();
@@ -274,15 +305,40 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 		}
 	}
 
+	uint spfFrameIdx = 0;
+	Graphics::Surface composite;  // per-frame scratch when sprites are active
 	while (!shouldAbort() && !decoder->endOfVideo()) {
 		if (decoder->needsUpdate()) {
 			const Graphics::Surface *frame = decoder->decodeNextFrame();
 			if (frame) {
 				if (decoder->hasDirtyPalette())
 					setPalette(decoder->getPalette(), 0, 256);
-				g_system->copyRectToScreen(frame->getPixels(), frame->pitch,
-				                           0, 0, frame->w, frame->h);
+
+				const Graphics::Surface *toBlit = frame;
+				if (!spfStreams.empty() && fmt.bytesPerPixel >= 2) {
+					// Composite the SPF sprites for this frame into a
+					// throwaway copy of the video frame.  The SPF pixel
+					// stream is RGB565, so this only happens when the
+					// target surface is at least 16bpp — at 8bpp the
+					// formats don't mix and the raw video shows instead.
+					if (composite.w != frame->w || composite.h != frame->h
+					 || composite.format != fmt) {
+						composite.free();
+						composite.create(frame->w, frame->h, fmt);
+					}
+					const uint rowBytes = (uint)frame->w * fmt.bytesPerPixel;
+					for (int row = 0; row < frame->h; ++row)
+						memcpy(composite.getBasePtr(0, row),
+						       frame->getBasePtr(0, row), rowBytes);
+					for (Common::SeekableReadStream *spf : spfStreams)
+						compositeSpfFrame(spf, spfFrameIdx, composite);
+					toBlit = &composite;
+				}
+
+				g_system->copyRectToScreen(toBlit->getPixels(), toBlit->pitch,
+				                           0, 0, toBlit->w, toBlit->h);
 				g_system->updateScreen();
+				++spfFrameIdx;
 			}
 		}
 		pollEvents();
@@ -292,6 +348,9 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 	}
 	_mixer->stopHandle(apcHandle);
 	delete decoder;
+	for (Common::SeekableReadStream *spf : spfStreams)
+		delete spf;
+	composite.free();
 #else
 	debugC(1, kDebugScript, "playTransitionVideo: %s (HNM not compiled)", videoName.c_str());
 #endif
