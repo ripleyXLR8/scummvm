@@ -353,14 +353,32 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	uint nextStep = 0;
 	int bootSlot = ConfMan.getInt("save_slot");
 	if (bootSlot >= 0) {
+		// Launched directly into a save from the ScummVM launcher: skip the
+		// player screen and take the player from the save slot's block.
+		_currentPlayer = bootSlot / (int)kPlayerSlotStride;
 		_loadedSave = (uint)bootSlot + 1;
 		nextStep = 28;
 	}
 	bool stopGame = false;
 	while (!stopGame && !shouldQuit()) {
 		if (nextStep == 0) {
-			_isPlaying = false;          // startup main menu (New / Load / Quit)
-			nextStep = displayOptions();
+			_isPlaying = false;
+			// Original-style startup player select / create / delete screen.
+			// An existing player resumes their current episode (the latest
+			// per-chapter checkpoint); a brand-new player starts a new game.
+			// Either way the game begins at once — there is no New/Load/Quit
+			// menu in the original.
+			int chosen = displayPlayerScreen();
+			if (chosen < 0)
+				break;                    // quit (Escape / window close)
+			_currentPlayer = chosen;
+			uint resume = playerResumeSave((uint)chosen);
+			if (resume) {
+				_loadedSave = resume;
+				nextStep = 28;
+			} else {
+				nextStep = 27;
+			}
 		}
 		if (nextStep == 40 || shouldQuit())
 			break;                        // quit

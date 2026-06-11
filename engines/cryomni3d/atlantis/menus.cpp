@@ -450,6 +450,226 @@ void CryOmni3DEngine_Atlantis::drawPlayerText(Graphics::ManagedSurface &dst,
 	}
 }
 
+// Player-management screen — the original game's startup select / create /
+// delete-player flow.  The PREINTRO.TGA artwork and the SELEMENU.TXT frame
+// ("SELECT PLAYER NAME" / "DELETE PLAYER NAME" / "OK") form the backdrop.
+// Existing players and a "New Player" entry are listed in FONTMIN; creating a
+// player shows a dotted name field above the list.  Returns the chosen player
+// id, or -1 if quit.
+int CryOmni3DEngine_Atlantis::displayPlayerScreen() {
+	Graphics::PixelFormat fmt = g_system->getScreenFormat();
+
+	// Backdrop: the PREINTRO.TGA menu artwork (the "Atlantis" title scene),
+	// with the SELEMENU.TXT ornaments and labels composited on top — the same
+	// background the main menu uses.
+	Graphics::ManagedSurface bg;
+	{
+		Graphics::Surface *raw = loadTGA(kFileTypeImages, "PREINTRO.TGA");
+		if (raw) {
+			bg.copyFrom(*raw);
+			raw->free();
+			delete raw;
+		} else {
+			bg.create(640, 480, fmt);
+			bg.fillRect(Common::Rect(0, 0, 640, 480), fmt.RGBToColor(0, 0, 0));
+		}
+	}
+	MenuLayout decor;
+	loadMenuLayout("SELEMENU.TXT", decor);
+	Common::Array<Common::Rect> decorRects;
+	// Locate the interactive "OK" and "DELETE PLAYER NAME" labels so they can
+	// be hover-lit and hit-tested each frame — "OK" validates a name being
+	// typed, "DELETE PLAYER NAME" toggles delete mode.
+	int okIdx = -1, delIdx = -1;
+	for (uint i = 0; i < decor.items.size(); i++) {
+		if (decor.items[i].kind != MenuItem::kText)
+			continue;
+		if (decor.items[i].text == "OK")
+			okIdx = (int)i;
+		else if (decor.items[i].text == "DELETE PLAYER NAME")
+			delIdx = (int)i;
+	}
+	// Player-row layout — the exact grid the original hit-tests with
+	// (atlantis.exe FUN_004211f0, captured live): a row's clickable cell is
+	// [kGridY0 + j*kGridStep, kGridY0 + (j+1)*kGridStep) x [kGridX0, +kGridW).
+	// The FONTMAX baseline sits on the cell bottom.
+	static const int kGridX0   = 175;
+	static const int kGridW    = 320;
+	static const int kGridY0   = 248;
+	static const int kGridStep = 22;
+	// The dotted name-entry field's fixed anchor, above the list
+	// (atlantis.exe FUN_00420f60 caller at 0x41e3df: EAX=0xA0, EDX=0xBE).
+	static const int kEditFieldX = 160;
+	static const int kEditFieldY = 190;
+
+	Graphics::ManagedSurface surf;
+	surf.create(640, 480, fmt);
+	// Render the SELEMENU frame once so decorRects is populated before the
+	// first hit-test; it is re-rendered with hover state inside the loop.
+	renderMenuLayout(surf, decor, -1, decorRects);
+
+	int  editing    = -1;          // storage slot being typed into, or -1
+	int  selected   = -1;          // existing player picked, shown above list
+	Common::String editBuf;
+	int  result     = -2;          // -2 running, -1 quit, >=0 chosen player
+	uint32 lastClickMs = 0;        // press time of the last player-row click
+	const uint32 kDoubleClickMs = 500;
+
+	clearKeys();
+	showMouse(true);
+	setArrowCursor();
+
+	while (result == -2 && !shouldAbort()) {
+		pollEvents();
+
+		// Build the visible row list: existing players, then a "New Player"
+		// entry while there is still room.  The dotted name-entry field is
+		// drawn separately, above the list (see the redraw below).
+		const int kRowNew = -2;
+		int  rowSlot[kMaxPlayers + 1];
+		int  numRows = 0;
+		uint numPlayers = 0;
+		for (uint i = 0; i < kMaxPlayers; i++) {
+			if (!_players[i].empty()) {
+				rowSlot[numRows++] = (int)i;
+				numPlayers++;
+			}
+		}
+		if ((editing >= 0 ? numPlayers + 1 : numPlayers) < kMaxPlayers)
+			rowSlot[numRows++] = kRowNew;
+
+		// Keyboard: while creating a player, capture the typed name.
+		Common::KeyState k = getNextKey();
+		if (k.keycode != Common::KEYCODE_INVALID) {
+			if (editing >= 0) {
+				if (k.keycode == Common::KEYCODE_ESCAPE) {
+					editing = -1;
+					editBuf.clear();
+				} else if (k.keycode == Common::KEYCODE_RETURN
+				        || k.keycode == Common::KEYCODE_KP_ENTER) {
+					if (!editBuf.empty()) {
+						_players[editing] = editBuf;
+						savePlayers();
+						result = editing;   // the new player becomes current
+					}
+				} else if (k.keycode == Common::KEYCODE_BACKSPACE) {
+					if (!editBuf.empty())
+						editBuf.deleteLastChar();
+				} else if (k.ascii >= 0x20 && k.ascii < 0x7f
+				        && editBuf.size() < kPlayerNameLen) {
+					// The original rejects a leading space or period.
+					if (!(editBuf.empty() && (k.ascii == ' ' || k.ascii == '.')))
+						editBuf += (char)k.ascii;
+				}
+			} else if (k.keycode == Common::KEYCODE_ESCAPE) {
+				result = -1;
+				break;
+			}
+		}
+
+		// Mouse hover / click.
+		Common::Point mouse = getMousePos();
+		int hovered = -1;
+		for (int j = 0; j < numRows; j++) {
+			Common::Rect r(kGridX0, kGridY0 + j * kGridStep,
+			               kGridX0 + kGridW, kGridY0 + (j + 1) * kGridStep);
+			if (r.contains(mouse)) {
+				hovered = j;
+				break;
+			}
+		}
+		// Hover state for the interactive SELEMENU labels.
+		bool okHover  = (okIdx  >= 0) && decorRects[okIdx].contains(mouse);
+		bool delHover = (delIdx >= 0) && decorRects[delIdx].contains(mouse);
+
+		if (getCurrentMouseButton() == 1) {
+			uint32 now = g_system->getMillis();
+			waitMouseRelease();
+			if (editing >= 0) {
+				// While creating a player, clicking OK validates the typed
+				// name — the same as pressing Return.
+				if (okHover && !editBuf.empty()) {
+					_players[editing] = editBuf;
+					savePlayers();
+					result = editing;   // the new player becomes current
+				}
+			} else if (delHover) {
+				// Delete the selected player after a confirmation dialog.
+				// confirmQuit() shows the SUREMENU prompt over the bare title
+				// backdrop (bg) rather than the live player screen, so the
+				// list, "SELECT PLAYER NAME" / "DELETE PLAYER NAME" / "OK"
+				// labels all vanish behind "ARE YOU SURE ?" — matching the
+				// original.  SUREMENU.TXT carries its own ornament sprites.
+				if (selected >= 0 && confirmQuit(bg)) {
+					_players[selected].clear();
+					deletePlayerSaves((uint)selected);
+					savePlayers();
+					selected = -1;
+				}
+			} else if (okHover) {
+				// OK starts the game for the selected existing player.
+				if (selected >= 0)
+					result = selected;
+			} else if (hovered >= 0) {
+				int slot = rowSlot[hovered];
+				if (slot >= 0) {                  // an existing player
+					if (selected == slot
+					        && now - lastClickMs < kDoubleClickMs) {
+						result = slot;            // double-click → play
+					} else {
+						selected = slot;          // single click → show name
+						lastClickMs = now;
+					}
+				} else if (slot == kRowNew) {
+					// Create: type into the first free storage slot.
+					for (uint i = 0; i < kMaxPlayers; i++) {
+						if (_players[i].empty()) {
+							editing = (int)i;
+							editBuf.clear();
+							selected = -1;
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		// Redraw.  The SELEMENU frame is re-rendered each frame so the "OK"
+		// and "DELETE PLAYER NAME" labels can light up on hover.
+		surf.blitFrom(bg);
+		renderMenuLayout(surf, decor, okHover ? okIdx
+		                              : (delHover ? delIdx : -1), decorRects);
+		// Player rows use FONTMIN (FONTMIN2 for the hovered row), left-aligned
+		// at the grid's X origin.
+		for (int j = 0; j < numRows; j++) {
+			int slot = rowSlot[j];
+			Common::String label = (slot == kRowNew)
+			    ? Common::String("New Player") : _players[slot];
+			bool hot = (j == hovered) || (slot >= 0 && slot == selected);
+			drawPlayerText(surf, label, kGridX0,
+			               kGridY0 + (j + 1) * kGridStep, hot);
+		}
+		// The name area above the list shows either the new name being typed
+		// (with the dotted placeholder), or — once an existing player has been
+		// picked — that player's name, plain and not editable.
+		if (editing >= 0) {
+			Common::String field = editBuf;
+			while (field.size() < kPlayerNameLen)
+				field += '.';
+			drawPlayerText(surf, field, kEditFieldX, kEditFieldY, true);
+		} else if (selected >= 0) {
+			drawPlayerText(surf, _players[selected], kEditFieldX, kEditFieldY, true);
+		}
+
+		g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+		g_system->updateScreen();
+		g_system->delayMillis(10);
+	}
+
+	clearKeys();
+	return result == -2 ? -1 : result;
+}
+
 // LOAD screen (LOADMENU.TXT): the current player's per-episode saves listed by
 // their EPI.TXT names, with RESTART EPISODE / OK / Cancel and a draggable
 // scrollbar (atlantis.exe FUN_0041cf78).  Returns the 1-based slot to load, or

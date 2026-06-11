@@ -183,6 +183,7 @@ private:
 	// players each own the absolute slot block [id*stride, id*stride+stride);
 	// chapter N's save is local slot N of the block.
 	static const uint kMaxPlayers       = 5;
+	static const uint kPlayerNameLen    = 16;
 	static const uint kPlayerSlotStride = 100;
 	int episodeSaveSlot(uint player, uint chapter) const {
 		return (int)(player * kPlayerSlotStride + chapter);
@@ -355,6 +356,9 @@ private:
 	// Render player/save-row text in FONTMIN with the exe's player width table.
 	void drawPlayerText(Graphics::ManagedSurface &dst, const Common::String &text,
 	                    int anchorX, int anchorY, bool hover) const;
+	// Startup player select / create / delete screen (SELEMENU.TXT over the
+	// PREINTRO.TGA title art).  Returns the chosen player id, or -1 to quit.
+	int displayPlayerScreen();
 
 	// Game-over screen: full-screen IMAGES\GOVER<NN>.TGA + the narrator's
 	// verdict (APC track + subtitle), then return so the caller reloads the
