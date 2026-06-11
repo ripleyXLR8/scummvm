@@ -455,6 +455,19 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 			continue;
 		}
 
+		// Script-initiated transition: handleWarp returned a destination set by
+		// /set(vue=N) inside a dialog or timer section (it left _nextPlaceId
+		// equal to the returned actionId).  Skip the user-click pipeline — no
+		// departure /sel scan, no abortdepart gate — the exe schedules
+		// script-set places directly, independent of the area-lock sections
+		// that fire on player navigation clicks.
+		if (actionId > 0 && _nextPlaceId == actionId) {
+			uint dest = _nextPlaceId;
+			_nextPlaceId = uint(-1);
+			executeTransition(dest);
+			continue;
+		}
+
 		// A zone action in the place-id range is a navigation click: run the
 		// departure /sel sections (which may abort the move by clearing
 		// _nextPlaceId, or redirect it via /set(vue=N)), then transition.
