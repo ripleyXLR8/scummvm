@@ -32,6 +32,8 @@
 #include "common/util.h"
 #include "engines/util.h"
 
+#include "audio/mixer.h"
+
 #ifdef USE_HNM
 #include "video/hnm_decoder.h"
 #endif
@@ -94,6 +96,8 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_propAnimFrame(0),
 	_propAnimNextMs(0) {
 	_placeVisits.resize(1500, 0);
+	for (int i = 0; i < 4; i++)
+		_sonMenuKnobX[i] = 0;
 }
 
 CryOmni3DEngine_Atlantis::~CryOmni3DEngine_Atlantis() {
@@ -159,6 +163,25 @@ void CryOmni3DEngine_Atlantis::setupPalette(const byte *colors, uint start, uint
 	// Atlantis runs in 16bpp true colour; the base palette helpers are
 	// no-ops in that mode (see CryOmni3DEngine::setPalette).
 	setPalette(colors, start, num);
+}
+
+void CryOmni3DEngine_Atlantis::syncSoundSettings() {
+	CryOmni3DEngine::syncSoundSettings();
+
+	// Scale every channel by the SONMENU "Volume" master slider, which the base
+	// class knows nothing about.  Absent key → full volume (no-op).
+	const int maxVol = Audio::Mixer::kMaxMixerVolume;
+	int master = ConfMan.hasKey("atlantis_master_volume")
+	             ? ConfMan.getInt("atlantis_master_volume") : maxVol;
+	master = CLIP(master, 0, maxVol);
+	static const Audio::Mixer::SoundType kTypes[] = {
+		Audio::Mixer::kMusicSoundType,
+		Audio::Mixer::kSFXSoundType,
+		Audio::Mixer::kSpeechSoundType,
+	};
+	for (int i = 0; i < 3; i++)
+		_mixer->setVolumeForSoundType(kTypes[i],
+		    _mixer->getVolumeForSoundType(kTypes[i]) * master / maxVol);
 }
 
 bool CryOmni3DEngine_Atlantis::shouldAbort() {

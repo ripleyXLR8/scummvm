@@ -147,6 +147,8 @@ public:
 
 	// CryOmni3DEngine interface.
 	void setupPalette(const byte *colors, uint start, uint num) override;
+	// Scale the per-channel mixer volumes by the SONMENU master slider.
+	void syncSoundSettings() override;
 	void makeTranslucent(Graphics::Surface &dst, const Graphics::Surface &src) const override;
 	bool displayToolbar(const Graphics::Surface *original) override { return _toolbar.displayToolbar(original); }
 	bool hasPlaceDocumentation() override { return false; }
@@ -335,6 +337,13 @@ private:
 	bool confirmQuit(const Graphics::ManagedSurface &bg);
 	// Options menu over `bg`: SUBTITLES + OMNI 3D (look-Y) toggles, persisted.
 	void displayOptionsMenu(const Graphics::ManagedSurface &bg);
+	// Sound menu over `bg`: four draggable volume sliders (master/music/sfx/
+	// voices), Left/Right channel test, OK/Cancel.  OK persists and applies
+	// the knob-derived volumes (exe formula round((X-305)/213*127)).
+	void displaySoundMenu(const Graphics::ManagedSurface &bg);
+	// Sound-menu knob X positions, session-persistent like the original's
+	// menu record table; 0 = not seeded from SONMENU.TXT yet.
+	int _sonMenuKnobX[4];
 	// True when the OMNI 3D option inverts the vertical look.
 	bool omni3dInvertY() const;
 	// LOAD screen: the player's per-episode saves listed by EPI.TXT name, plus

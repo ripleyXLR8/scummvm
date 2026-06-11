@@ -692,8 +692,11 @@ void CryOmni3DEngine_Atlantis::displayOptionsMenu(const Graphics::ManagedSurface
 			if (hovered == okIdx) {
 				done = true;
 			} else if (hovered == soundIdx) {
-				// The SOUND OPTIONS sub-menu lands in a later commit.
-				debugC(1, kDebugScript, "displayOptionsMenu: sound menu not yet available");
+				// The original leaves the options screen for good when SOUND
+				// OPTIONS is clicked: FUN_0041d5f4's loop exits on item 1, runs
+				// the sound menu and returns to the in-game menu.
+				displaySoundMenu(bg);
+				done = true;
 			} else {
 				MenuItem &tog = layout.items[hovered];
 				if (!tog.options.empty())
@@ -715,6 +718,242 @@ void CryOmni3DEngine_Atlantis::displayOptionsMenu(const Graphics::ManagedSurface
 
 	ConfMan.flushToDisk();
 	clearKeys();
+}
+
+static const char *const kMasterVolKey = "atlantis_master_volume";
+
+// Sound menu (SONMENU.TXT — atlantis.exe FUN_0041d940, applied in
+// FUN_0041d5f4 @ 0x41d7e2).  Layout records, in file order:
+//   0       centred "SOUND OPTIONS" title
+//   1..4    slider tracks   /spr=3,285,Y,290,37
+//   5..8    slider knobs    /spr=13,X,Y,32,32   (X is the live value store)
+//   9       speaker icon    /spr=0,320,370,60,53 (decorative)
+//   10..13  Volume / Music / Effects / Voices labels
+//   14/15   Left / Right channel test    16/17  OK / Cancel
+//
+// Original semantics, all exe-verified:
+//  - A mouse press latches the record under the cursor (WM_LBUTTONDOWN @
+//    0x419c47).  While held with a *track* (1..4) latched, the matching
+//    knob X follows mouseX-10, but only while 315 < mouseX < 528.
+//  - Knob X positions live in the per-menu record table for the whole
+//    session: first open takes the TXT defaults (460/465/470/490), dragging
+//    updates them, and they are NEVER recomputed from the active volumes.
+//  - OK converts each knob X with round((X - 305) / 213 * 127) (FPU consts
+//    @ 0x4bc35b/0x4bc35f/0x4bc363) into the AIL 0..127 volumes, in order
+//    master / music / effects / voices; Cancel applies nothing.
+//  - Left/Right plays WAV\VAGUE_10.APC hard-panned (AIL pan 0 / 0x7f) at the
+//    *applied* effects volume, frozen-screen, until the next click.
+//  - Clicking a knob record itself (reachable only on its 1-px sliver above
+//    the track rect) does nothing; the original toggles a write-only global
+//    there (DAT_004960b0), dead code we do not reproduce.
+//  - No keyboard handling: the loop only exits on an OK/Cancel click.
+void CryOmni3DEngine_Atlantis::displaySoundMenu(const Graphics::ManagedSurface &bg) {
+	MenuLayout layout;
+	if (!loadMenuLayout("SONMENU.TXT", layout))
+		return;
+
+	// Track records then knob records, in file order.
+	int trackItem[4], knobItem[4], nTrack = 0, nKnob = 0;
+	for (uint i = 0; i < layout.items.size(); i++) {
+		if (layout.items[i].kind != MenuItem::kSprite)
+			continue;
+		if (nTrack < 4) trackItem[nTrack++] = (int)i;
+		else if (nKnob < 4) knobItem[nKnob++] = (int)i;
+	}
+	if (nTrack < 4 || nKnob < 4)
+		return;
+	const int knobSpr = layout.items[knobItem[0]].sprIdx;
+
+	// Knob X state persists across menu opens (the original's record table is
+	// only seeded from the TXT when a slot is still zero — FUN_004207c0).
+	for (int t = 0; t < 4; t++) {
+		if (_sonMenuKnobX[t] == 0)
+			_sonMenuKnobX[t] = layout.items[knobItem[t]].hx;
+	}
+
+	// Text records by ordinal: 0 title, 1..4 slider labels, 5 Left, 6 Right,
+	// 7 OK, 8 Cancel.
+	int leftIdx = -1, rightIdx = -1, okIdx = -1, cancelIdx = -1, titleIdx = -1;
+	int textOrd = 0;
+	for (uint i = 0; i < layout.items.size(); i++) {
+		if (layout.items[i].kind != MenuItem::kText)
+			continue;
+		if (textOrd == 0)      titleIdx  = (int)i;
+		else if (textOrd == 5) leftIdx   = (int)i;
+		else if (textOrd == 6) rightIdx  = (int)i;
+		else if (textOrd == 7) okIdx     = (int)i;
+		else if (textOrd == 8) cancelIdx = (int)i;
+		textOrd++;
+	}
+
+	// Exe-exact hit-test: first strict-inside record in file order wins
+	// (FUN_004210c0).  Sprite rects are the /spr W/H size hints; knob rects
+	// follow the dragged X.
+	auto hitTest = [&](const Common::Point &m) {
+		for (uint i = 0; i < layout.items.size(); i++) {
+			const MenuItem &it = layout.items[i];
+			int rx, ry, rw, rh;
+			if (it.kind == MenuItem::kSprite) {
+				rx = it.hx;
+				ry = it.hy;
+				for (int t = 0; t < 4; t++)
+					if ((int)i == knobItem[t])
+						rx = _sonMenuKnobX[t];
+				rw = it.w;
+				rh = it.h;
+			} else {
+				int x = it.centerX ? (640 - fontMaxMeasureWidth(it.text)) / 2
+				                   : it.anchorX;
+				Common::Rect r = menuTextHitRect(it, x);
+				if (r.contains(m))
+					return (int)i;
+				continue;
+			}
+			if (m.x > rx && m.x < rx + rw && m.y > ry && m.y < ry + rh)
+				return (int)i;
+		}
+		return -1;
+	};
+
+	Graphics::PixelFormat fmt = g_system->getScreenFormat();
+	Graphics::ManagedSurface base(640, 480, fmt);
+	base.blitFrom(bg);
+	for (uint i = 0; i < layout.items.size(); i++) {
+		const MenuItem &it = layout.items[i];
+		bool isKnob = false;
+		for (int t = 0; t < 4; t++)
+			if ((int)i == knobItem[t])
+				isKnob = true;
+		if (it.kind == MenuItem::kSprite && !isKnob)
+			blitMenuSprite(base, (uint)it.sprIdx, it.hx, it.hy);
+	}
+
+	// Left/Right channel test (FUN_0041db4c / FUN_0041dcf8): play
+	// WAV\VAGUE_10.APC hard left or right and block, screen frozen, until the
+	// next press.  The original frees the sample after the click rather than
+	// stopping it; a short wave simply plays out, so we leave it running too.
+	Audio::SoundHandle testHandle;
+	auto channelTest = [&](bool rightChannel) {
+		_mixer->stopHandle(testHandle);   // AIL_stop_sample before reuse
+		Common::SeekableReadStream *f = openBigFileStream(kFileTypeSound, "VAGUE_10.APC");
+		if (f) {
+			Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*f);
+			if (apc) {
+				int64 remaining = f->size() - f->pos();
+				if (remaining > 0) {
+					byte *buf = new byte[remaining];
+					f->read(buf, (uint32)remaining);
+					apc->queuePacket(new Common::MemoryReadStream(buf, remaining,
+					                                              DisposeAfterUse::YES));
+				}
+				apc->finish();
+				_mixer->playStream(Audio::Mixer::kSFXSoundType, &testHandle, apc, -1,
+				                   Audio::Mixer::kMaxChannelVolume,
+				                   rightChannel ? 127 : -127);
+			}
+			delete f;
+		}
+		// Wait for the next press (the original spins on its click flag).
+		bool prev = (getCurrentMouseButton() == 1);
+		while (!shouldAbort()) {
+			pollEvents();
+			bool now = (getCurrentMouseButton() == 1);
+			if (now && !prev)
+				break;
+			prev = now;
+			g_system->delayMillis(10);
+		}
+	};
+
+	Graphics::ManagedSurface surf(640, 480, fmt);
+	int  grabbed = -1;       // record latched at press (DAT_006cd844)
+	bool wasDown = false;
+	bool done = false, commit = false;
+
+	clearKeys();
+	showMouse(true);
+	setArrowCursor();
+
+	while (!done && !shouldAbort()) {
+		pollEvents();
+		getNextKey();   // drain; the original menu has no keyboard handling
+
+		Common::Point mouse = getMousePos();
+		int hit = hitTest(mouse);
+
+		bool down = (getCurrentMouseButton() == 1);
+		bool pressEdge = down && !wasDown;
+		wasDown = down;
+		if (pressEdge)
+			grabbed = hit;        // WM_LBUTTONDOWN latch
+		else if (!down)
+			grabbed = -1;         // WM_LBUTTONUP release
+
+		// Knob drag: a latched track (records 1..4 = trackItem[0..3]) drives
+		// its knob to mouseX-10 while 315 < mouseX < 528 (exe @ 0x41d9ae).
+		if (down && grabbed >= 0) {
+			for (int t = 0; t < 4; t++) {
+				if (grabbed == trackItem[t] && mouse.x > 315 && mouse.x < 528)
+					_sonMenuKnobX[t] = mouse.x - 10;
+			}
+		}
+
+		if (pressEdge) {
+			if (hit >= 0 && (hit == leftIdx || hit == rightIdx)) {
+				channelTest(hit == rightIdx);
+				// The press ending the test latches like any other press: a
+				// track keeps dragging, buttons do not fire (their click flag
+				// was consumed inside the wait loop).
+				grabbed = hitTest(getMousePos());
+				wasDown = true;
+			} else if (hit >= 0 && hit == okIdx) {
+				commit = true;
+				done = true;
+			} else if (hit >= 0 && hit == cancelIdx) {
+				done = true;
+			}
+		}
+
+		surf.blitFrom(base);
+		for (int t = 0; t < 4; t++)
+			blitMenuSprite(surf, (uint)knobSpr, _sonMenuKnobX[t],
+			               layout.items[knobItem[t]].hy);
+		for (uint i = 0; i < layout.items.size(); i++) {
+			const MenuItem &it = layout.items[i];
+			if (it.kind != MenuItem::kText)
+				continue;
+			int x = it.centerX ? (640 - fontMaxMeasureWidth(it.text)) / 2
+			                   : it.anchorX;
+			// Any hovered text record highlights except the title (record 0
+			// never highlights outside the main menu — FUN_0041fb6c).
+			bool hover = ((int)i == hit) && ((int)i != titleIdx);
+			drawFontMaxText(surf, it.text, x, it.anchorY, hover);
+		}
+		g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+		g_system->updateScreen();
+		g_system->delayMillis(10);
+	}
+
+	waitMouseRelease();
+	clearKeys();
+
+	if (commit) {
+		// OK applies round((knobX - 305) / 213 * 127) per slider — the AIL
+		// 0..127 volumes — rescaled here to ScummVM's 0..kMaxMixerVolume.
+		int v[4];
+		for (int t = 0; t < 4; t++) {
+			double ail = ((double)(_sonMenuKnobX[t] - 305)) / 213.0 * 127.0;
+			int a = (int)(ail + 0.5);
+			a = CLIP(a, 0, 127);
+			v[t] = a * Audio::Mixer::kMaxMixerVolume / 127;
+		}
+		ConfMan.setInt(kMasterVolKey,   v[0]);
+		ConfMan.setInt("music_volume",  v[1]);
+		ConfMan.setInt("sfx_volume",    v[2]);
+		ConfMan.setInt("speech_volume", v[3]);
+		ConfMan.flushToDisk();
+		syncSoundSettings();
+	}
 }
 
 // "ARE YOU SURE ?" quit confirmation (SUREMENU.TXT) over the menu backdrop.
