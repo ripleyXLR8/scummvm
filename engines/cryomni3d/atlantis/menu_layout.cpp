@@ -145,6 +145,7 @@ bool MenuLayout::loadFromStream(Common::ReadStream &s) {
 			it.anchorX = ax;
 			it.anchorY = ay;
 			it.text    = Common::String(p);
+			it.rawLen  = (int)it.text.size();
 			// Strip stray trailing whitespace.
 			while (!it.text.empty()) {
 				char c = it.text[it.text.size() - 1];

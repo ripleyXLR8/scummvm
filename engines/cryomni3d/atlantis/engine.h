@@ -297,8 +297,6 @@ private:
 	void loadFontSpriteSet(const char *spr, Common::Array<SubjSprite> &out);
 	// Load FONTMAX.SPR (+ FONTMAX2.SPR hover) — the gold menu font.
 	void loadFontMaxSprites();
-	int  fontMaxCharAdvance(unsigned char c) const;
-	int  fontMaxStringWidth(const Common::String &text) const;
 	// Shared glyph-sprite blitter: layoutGlyphs drive the pen advance, drawGlyphs
 	// supply the pixels (so a hover swap recolours without reflowing).
 	void drawSprFontText(Graphics::ManagedSurface &dst, const Common::String &text,

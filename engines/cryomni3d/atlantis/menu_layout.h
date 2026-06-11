@@ -56,6 +56,11 @@ struct MenuItem {
 	bool centerX;       // true → ignore anchorX and centre on screen.
 	int  anchorX;
 	int  anchorY;       // y_txt baseline.
+	// Character count after '>' up to end of line, BEFORE any trimming or
+	// toggle splitting (for "//A&&B" toggles this counts the whole spec).
+	// The original sizes a positioned text item's hit rect as 22 px per raw
+	// character (atlantis.exe FUN_0041fb6c: W = chars_to_CR * 0x16).
+	int  rawLen;
 
 	// Sprite item fields.  w/h come from the /spr size hint.
 	int sprIdx;
@@ -68,7 +73,7 @@ struct MenuItem {
 	int selected;
 
 	MenuItem()
-	    : kind(kText), centerX(false), anchorX(0), anchorY(0),
+	    : kind(kText), centerX(false), anchorX(0), anchorY(0), rawLen(0),
 	      sprIdx(0), hx(0), hy(0), w(0), h(0), selected(0) {}
 };
 

@@ -45,29 +45,47 @@
 namespace CryOmni3D {
 namespace Atlantis {
 
-// Space advance from the exe width table at 0x4965eb[' '] = 22.
+// Space advance from the exe width table at 0x4965ee[' '] = 22.
 static const int kFontMaxSpaceAdvance = 22;
 static const int kFontMinSpaceAdvance = 18;
 
-// FONTMAX text item hit-box: glyphs render with their bottom near anchorY, so
-// the click rect spans [anchorY - 32, anchorY + 4].
-static const int kFontMaxHitTop    = 32;
-static const int kFontMaxHitBottom = 4;
+// FONTMAX *measuring* width table (atlantis.exe @ 0x4965ee, glyph idx = char).
+// The original uses it only to centre "<>,Y>" labels and size their hit rects
+// (FUN_004206c8); pen advance while drawing comes from the glyph sprites.
+static const uint8 kFontMaxMeasureWidths[137] = {
+	22,10,15,15,16,24,20, 8,16,24,13, 8, 8,24, 7,14,20, 9,19,19,
+	17,16,18,17,20,18, 7, 8, 8, 8, 8,18, 8,21,23,21,23,19,20,22,
+	22,14,15,20,19,28,24,28,20,27,21,19,24,23,21,28,26,22,21, 8,
+	19, 8,11, 8, 8,18,19,17,19,18,14,19,19,10,11,18,10,23,20,20,
+	19,19,15,15,12,20,18,23,20,19,17,18, 7,20,13,18,21,20,18,18,
+	18,18,18,19,18,18,18,13,11,13,21,21,19,26,32,20,20,20,20,20,
+	19,28,23,17,24, 0,25,20,18,13,20,20,20,24, 2,12,16
+};
 
-int CryOmni3DEngine_Atlantis::fontMaxCharAdvance(unsigned char c) const {
-	if (c == ' ')
-		return kFontMaxSpaceAdvance;
-	int idx = (int)c - 0x20;
-	if (idx < 0 || idx >= (int)_fontMaxSprites.size())
-		return 0;
-	return _fontMaxSprites[idx].w;
+static int fontMaxMeasureWidth(const Common::String &text) {
+	int w = 0;
+	for (uint i = 0; i < text.size(); ++i) {
+		int idx = (int)(unsigned char)text[i] - 0x20;
+		if (idx >= 0 && idx < (int)ARRAYSIZE(kFontMaxMeasureWidths))
+			w += kFontMaxMeasureWidths[idx];
+	}
+	return w;
 }
 
-int CryOmni3DEngine_Atlantis::fontMaxStringWidth(const Common::String &text) const {
-	int w = 0;
-	for (uint i = 0; i < text.size(); ++i)
-		w += fontMaxCharAdvance((unsigned char)text[i]);
-	return w;
+// Exe-exact menu text hit rect (FUN_0041fb6c).  A text record's clickable box
+// is X-11 / Y-28, height 28; width is the measured string for centred items
+// but 22 px per raw spec character for positioned ones.  The original tests
+// strict inside (left < x < left+W), which a Common::Rect reproduces with its
+// bounds shrunk by one on the left/top.
+static Common::Rect menuTextHitRect(const MenuItem &it, int drawX) {
+	int w;
+	if (it.centerX)
+		w = fontMaxMeasureWidth(it.text);
+	else
+		w = it.rawLen * 22;
+	int left = drawX - 11;
+	int top  = it.anchorY - 28;
+	return Common::Rect(left + 1, top + 1, left + w, top + 28);
 }
 
 // Glyph-sprite text blitter.  `layoutGlyphs` drive the pen advance so a hover
@@ -333,11 +351,11 @@ void CryOmni3DEngine_Atlantis::renderMenuLayout(Graphics::ManagedSurface &dst,
 			continue;
 		}
 
-		int w = fontMaxStringWidth(label);
-		int x = it.centerX ? (640 - w) / 2 : it.anchorX;
+		// Centred labels are positioned with the exe's measuring table, not the
+		// glyph-sprite advances (atlantis.exe FUN_004206c8: (640 - w) / 2).
+		int x = it.centerX ? (640 - fontMaxMeasureWidth(label)) / 2 : it.anchorX;
 		drawFontMaxText(dst, label, x, it.anchorY, (int)i == hoveredTextIdx);
-		hitRectsOut[i] = Common::Rect(x, it.anchorY - kFontMaxHitTop,
-		                              x + w, it.anchorY + kFontMaxHitBottom);
+		hitRectsOut[i] = menuTextHitRect(it, x);
 	}
 }
 
