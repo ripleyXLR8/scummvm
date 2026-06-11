@@ -415,6 +415,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		                   || item.line.params.equalsIgnoreCase("off1");
 
 		Common::String vid;
+		Common::String spfBase;
 		if (persoId > 0 && !isOffCam) {
 			Common::HashMap<int, DialInitEntry>::const_iterator it =
 			    _dialInitData.find(persoId);
@@ -424,6 +425,10 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 					fn.toUppercase();
 					vid = Common::String("PERSO\\") + fn + ".UBB";
 				}
+				// Per-cam SPF overlay (INITDIAL columns 10..13).  The parser
+				// already strips "none" to empty, so a non-empty basename
+				// here means we have an overlay to composite.
+				spfBase = it->_value.camSPF[camNum - 2];
 			}
 		}
 		// Remember for the next line so consecutive lines don't repeat a cam.
@@ -456,11 +461,12 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		// change is skipped while the line still plays as voiceover.
 		const int effCamNum = isOffCam ? 0 : camNum;
 		debugC(2, kDebugScript, "playConSection: speaker='%s' params='%s' persoId=%d "
-		         "cam=%d vid='%s' angle=(%d,%d)%s",
+		         "cam=%d vid='%s' spf='%s' angle=(%d,%d)%s",
 		      item.line.speaker.c_str(), item.line.params.c_str(), persoId,
-		      effCamNum, vid.c_str(), effAngleX, effAngleY,
+		      effCamNum, vid.c_str(), spfBase.c_str(), effAngleX, effAngleY,
 		      effHasAngle ? "" : " (none)");
 		playSingleConLine(sec.id, (char)('A' + lineIdx++), item.line.text, vid,
+		                  spfBase,
 		                  effHasAngle, effAngleX, effAngleY, effCamNum,
 		                  /*interactiveDialog=*/sec.isCon);
 	}
@@ -530,6 +536,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
                                                   const Common::String &text,
                                                   const Common::String &videoName,
+                                                  const Common::String &spfBaseName,
                                                   bool hasAngle,
                                                   int angleX, int angleY,
                                                   int camNum,
@@ -587,6 +594,69 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 				      videoName.c_str(), bgDecoder->getWidth(), bgDecoder->getHeight());
 			}
 		}
+	}
+
+	// Optional per-cam SPF overlay — the dialog mouth animation that the
+	// original engine composites on top of the talking head every UBB frame.
+	// The UBB stream has the mouth region painted as palette index 0 (the
+	// canonical Cryo chroma key); the SPF fills it in.  Files live alongside
+	// the UBB at `DIALOG\PERSO\<base>.SPF` (24 of them on the shipped CD),
+	// NOT under `SPRITE\UBB\` (that prefix holds the 205 transition-video
+	// SPFs used by playTransitionVideo for navigation walk-ons).  Only ~24
+	// dialog cams have a mouth SPF — for the rest, the mouth is baked into
+	// the UBB itself, so a missing file is normal and not a warning.
+	Common::SeekableReadStream *spfStream = nullptr;
+	uint spfFrameCount = 0;
+	uint spfFrameIdx = 0;
+	// SPF screen bbox — the rectangle the overlay actually paints into on
+	// screen.  The dialog SPF frame headers we sampled (BAPAN1K3.SPF,
+	// GRDAN1C5.SPF) have ZEROED (x1, y_bot, x2, y_top) fields, unlike
+	// navigation SPFs: they position themselves entirely via ROW_SEP opcodes
+	// in the flat-buffer pixel stream, so the bbox only emerges from
+	// rendering.  Probe by compositing frame[0] onto a scratch surface
+	// seeded with a sentinel colour the SPF can never emit, then scan for
+	// non-sentinel pixels.  Diagnostics only.
+	int spfBboxX1 = -1, spfBboxY1 = -1, spfBboxX2 = -1, spfBboxY2 = -1;
+	if (!spfBaseName.empty()) {
+		Common::String spfFile = spfBaseName;
+		spfFile.toUppercase();
+		Common::String spfPath = Common::String("PERSO\\") + spfFile + ".SPF";
+		spfStream = openBigFileStream(kFileTypeDialog, spfPath);
+		if (spfStream) {
+			if (spfStream->seek(4))
+				spfFrameCount = spfStream->readUint32LE();
+			// Composite frame[0] onto a scratch RGB565 surface seeded with
+			// 0xFFFE.  SPF palettes emit RGB565 colours; 0xFFFE is reserved
+			// (kSprTransp is 0x0001 and pure white is 0xFFFF), so any pixel
+			// left at 0xFFFE was untouched and any other value was painted
+			// by the SPF.
+			Graphics::PixelFormat probeFmt(2, 5, 6, 5, 0, 11, 5, 0, 0);
+			Graphics::Surface probe;
+			probe.create(640, 480, probeFmt);
+			const uint16 sentinel = 0xFFFE;
+			uint16 *probePix = (uint16 *)probe.getPixels();
+			for (int i = 0; i < 640 * 480; i++) probePix[i] = sentinel;
+			compositeSpfFrame(spfStream, 0, probe);
+			for (int py = 0; py < 480; py++) {
+				const uint16 *row = (const uint16 *)probe.getBasePtr(0, py);
+				for (int px = 0; px < 640; px++) {
+					if (row[px] != sentinel) {
+						if (spfBboxX1 < 0 || px < spfBboxX1) spfBboxX1 = px;
+						if (spfBboxX2 < 0 || px > spfBboxX2) spfBboxX2 = px;
+						if (spfBboxY1 < 0 || py < spfBboxY1) spfBboxY1 = py;
+						if (spfBboxY2 < 0 || py > spfBboxY2) spfBboxY2 = py;
+					}
+				}
+			}
+			probe.free();
+			spfStream->seek(0);
+		}
+		debugC(1, kDebugScript, "playSingleConLine: SPF overlay '%s' %s "
+		         "(%u frames, screen bbox [%d,%d]-[%d,%d])",
+		      spfPath.c_str(),
+		      spfStream ? "loaded" : "absent (mouth baked in UBB)",
+		      spfFrameCount,
+		      spfBboxX1, spfBboxY1, spfBboxX2, spfBboxY2);
 	}
 #endif
 
@@ -727,10 +797,32 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 					}
 				}
 
+				// Per-cam SPF overlay (INITDIAL columns 10..13).  The
+				// original engine composites the matching SPF frame on top
+				// of every UBB frame in the dialog playback loop at
+				// FUN_0042f9e8 (atlantis.exe.c:26609-26734), sharing the
+				// UBB's frame counter.  We mirror that exactly, plus a
+				// modulo so the SPF LOOPS when the UBB outlives it —
+				// compositeSpfFrame clamps to the last frame on its own,
+				// which freezes the overlay while the head keeps talking
+				// (visible on EnnemiPilot whose UBB runs 30+ frames against
+				// a much shorter SPF).  Drawn on top of the UBB head.
+				if (spfStream) {
+					const uint sfi = (spfFrameCount > 0)
+					    ? (spfFrameIdx % spfFrameCount)
+					    : spfFrameIdx;
+					compositeSpfFrame(spfStream, sfi, ubbConvFrame);
+				}
+
 				// "Just received" item icon: an NPC that gave the player an
 				// object this dialog shows its icon centre-bottom over the head.
 				if (fmt.bytesPerPixel == 2)
 					drawGivenObject(ubbConvFrame);
+
+				// Advance the SPF frame counter once per fresh UBB frame —
+				// the same one-to-one mapping the original engine uses
+				// (atlantis.exe.c FUN_0042f9e8:26710).
+				++spfFrameIdx;
 			}
 		} else
 #endif
@@ -877,6 +969,7 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 
 #ifdef USE_HNM
 	delete bgDecoder;
+	delete spfStream;
 	ubbConvFrame.free();
 #endif
 	if (fovChanged)

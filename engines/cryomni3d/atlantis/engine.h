@@ -264,13 +264,16 @@ private:
 	int pickDialCam(int persoId, int explicitCam);
 	// Play one dialog line: stream its UBB talking-head video over the warp
 	// panorama (or just the panorama when off-camera), play the matching APC
-	// speech track and overlay the subtitle.  `camNum` (2..5) selects the
+	// speech track and overlay the subtitle.  `spfBaseName` names the per-cam
+	// DIALOG\PERSO\<base>.SPF mouth/veil overlay composited onto every UBB
+	// frame (empty = mouth baked into the UBB).  `camNum` (2..5) selects the
 	// per-cam zoom; `hasAngle`/angleX/angleY rotate the panorama under the
 	// head; `interactiveDialog` is reserved for the sprite-hiding the NPC
-	// layer adds later.  The F3DC mouth pipeline and SPF overlays layer on
-	// top once those subsystems land.
+	// layer adds later.  The F3DC mouth pipeline layers on top once that
+	// subsystem lands.
 	void playSingleConLine(int sectionId, char track, const Common::String &text,
 	                       const Common::String &videoName = "",
+	                       const Common::String &spfBaseName = "",
 	                       bool hasAngle = false, int angleX = 0, int angleY = 0,
 	                       int camNum = 2, bool interactiveDialog = true);
 	// True when subtitles are enabled in the ScummVM options.
