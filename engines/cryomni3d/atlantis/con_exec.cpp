@@ -37,6 +37,7 @@
 #include "cryomni3d/objects.h"
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/puzzle_eclipse.h"
+#include "cryomni3d/atlantis/puzzle_ogregame.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
@@ -138,6 +139,12 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 	case 0: {
 		// Celestial alignment ("eclipse on Atlantis") at CHAPI012 vue 221.
 		EclipsePuzzle puz(this);
+		finPuzzle = puz.run();
+		break;
+	}
+	case 2: {
+		// The rat-hunter's "ogre & hero" board pursuit at CHAPI018 place 290.
+		OgreGamePuzzle puz(this);
 		finPuzzle = puz.run();
 		break;
 	}
