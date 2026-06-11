@@ -25,12 +25,21 @@
 // on as their subsystems land.
 
 #include "common/debug.h"
+#include "common/memstream.h"
 #include "common/ptr.h"
 #include "common/scummsys.h"
 #include "common/str.h"
 #include "common/system.h"
 #include "common/textconsole.h"
 #include "common/util.h"
+
+#include "audio/mixer.h"
+#include "audio/decoders/apc.h"
+#include "graphics/paletteman.h"
+
+#ifdef USE_HNM
+#include "video/hnm_decoder.h"
+#endif
 
 #include "cryomni3d/omni3d.h"
 
@@ -155,10 +164,137 @@ void CryOmni3DEngine_Atlantis::doPlaceChange() {
 }
 
 void CryOmni3DEngine_Atlantis::executeTransition(uint nextPlaceId) {
-	// The UBB_VUE place-to-place transition video is played here once the
-	// video layer lands; for now this is a direct change — gameStep() enters
-	// the new place on its next iteration.
+	// _currentPlace can be null after /set(changewam=...) — the script's
+	// next /set(vue=N) is the destination, and there is no transition video
+	// between the old and new WAMs anyway.  Skip the transition lookup and
+	// the cross-WAM hand-off (the new WAM is already loaded) and just hand
+	// the destination to gameStep's outer loop via _nextPlaceId so
+	// doPlaceChange runs.
+	if (!_currentPlace) {
+		_nextPlaceId = nextPlaceId;
+		return;
+	}
+
+	const AtlantisTransition *trans = _currentPlace->findTransition((uint16)nextPlaceId);
+	if (trans) {
+		playTransitionVideo(trans->videoName);
+		_omni3dMan.setAlpha(trans->dstAlpha);
+		_omni3dMan.setBeta(trans->dstBeta);
+	}
+
+	// Cross-WAM transition: sub-WAMs hot-swap the navigation map when a
+	// (src, dst) pair crosses into a different WAM.  Even chapter-named WAMs
+	// (atlan2/3/4/5.wam) are hot-swapped here without resetting chapter
+	// state — those WAMs serve as sub-areas of chapter 1.  Actual chapter
+	// progression is driven by CON `/set(chapter=N)` once gameplay in the
+	// new sub-area triggers it (e.g. arriving at vue=14 advances chapter 1
+	// to chapter 2 via CHAPI001.CON section 10).
+	for (const AtlantisSubWAM &sub : _wam.getSubWAMs()) {
+		if (sub.srcPlaceId == _currentPlaceId && sub.dstPlaceId == nextPlaceId) {
+			// Copy fields to locals BEFORE setupWAMByName: that call invokes
+			// _wam.clear() which destroys _subWAMs, making sub a dangling ref.
+			Common::String wamName = sub.wamName;
+			uint16 dstPlaceId     = sub.dstPlaceId;
+
+			debugC(1, kDebugScript, "Sub-WAM transition: place %u → WAM '%s' place %u",
+			      nextPlaceId, wamName.c_str(), dstPlaceId);
+			setupWAMByName(wamName);
+			// _wam._places was cleared; _currentPlace is now a dangling pointer.
+			_currentPlace   = nullptr;
+			_currentPlaceId = uint(-1);
+			_nextPlaceId    = dstPlaceId;
+			return;
+		}
+	}
+
 	_nextPlaceId = nextPlaceId;
+}
+
+void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoName) {
+#ifdef USE_HNM
+	// WAM records use .UBB extension but the BigFile stores them as .HNM.
+	Common::String hnmName = videoName;
+	{
+		const char *dot = strrchr(hnmName.c_str(), '.');
+		if (dot && !scumm_stricmp(dot, ".UBB"))
+			hnmName = Common::String(hnmName.c_str(), dot - hnmName.c_str()) + ".HNM";
+	}
+
+	Common::SeekableReadStream *stream = openBigFileStream(kFileTypeTransition, hnmName);
+	if (!stream) {
+		debugC(1, kDebugScript, "playTransitionVideo: '%s' not found", hnmName.c_str());
+		return;
+	}
+
+	Graphics::PixelFormat screenFmt = g_system->getScreenFormat();
+	Graphics::PixelFormat fmt = (screenFmt.bytesPerPixel == 1)
+	    ? Graphics::PixelFormat::createFormatCLUT8()
+	    : screenFmt;
+	byte *savedPalette = nullptr;
+	if (screenFmt.bytesPerPixel == 1) {
+		savedPalette = new byte[3 * 256];
+		g_system->getPaletteManager()->grabPalette(savedPalette, 0, 256);
+	}
+
+	// HNMDecoder takes ownership of savedPalette and (via loadStream) stream.
+	Video::HNMDecoder *decoder = new Video::HNMDecoder(fmt, false, savedPalette);
+	decoder->setSoundType(Audio::Mixer::kSFXSoundType);
+	if (!decoder->loadStream(stream)) {
+		delete decoder;
+		return;
+	}
+
+	decoder->start();
+
+	// Play matching APC audio if present (e.g. WAV\CINEM020.APC for
+	// CINEM020.HNM).  AT*.HNM place-to-place transitions are intentionally
+	// silent — they have no APC on the disc.
+	Audio::SoundHandle apcHandle;
+	{
+		const char *dot = strrchr(hnmName.c_str(), '.');
+		Common::String apcName = dot
+		    ? Common::String(hnmName.c_str(), dot - hnmName.c_str()) + ".APC"
+		    : hnmName + ".APC";
+		Common::SeekableReadStream *apcFile = openBigFileStream(kFileTypeSound, apcName);
+		if (apcFile) {
+			// makeAPCStream reads the file header; queue remaining bytes as one packet.
+			Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*apcFile);
+			if (apc) {
+				int64 remaining = apcFile->size() - apcFile->pos();
+				if (remaining > 0) {
+					byte *buf = new byte[remaining];
+					apcFile->read(buf, (uint32)remaining);
+					apc->queuePacket(new Common::MemoryReadStream(buf, remaining,
+					                                              DisposeAfterUse::YES));
+				}
+				apc->finish();
+				_mixer->playStream(Audio::Mixer::kSFXSoundType, &apcHandle, apc);
+			}
+			delete apcFile;
+		}
+	}
+
+	while (!shouldAbort() && !decoder->endOfVideo()) {
+		if (decoder->needsUpdate()) {
+			const Graphics::Surface *frame = decoder->decodeNextFrame();
+			if (frame) {
+				if (decoder->hasDirtyPalette())
+					setPalette(decoder->getPalette(), 0, 256);
+				g_system->copyRectToScreen(frame->getPixels(), frame->pitch,
+				                           0, 0, frame->w, frame->h);
+				g_system->updateScreen();
+			}
+		}
+		pollEvents();
+		if (checkKeysPressed(1, Common::KEYCODE_SPACE))
+			break;
+		g_system->delayMillis(10);
+	}
+	_mixer->stopHandle(apcHandle);
+	delete decoder;
+#else
+	debugC(1, kDebugScript, "playTransitionVideo: %s (HNM not compiled)", videoName.c_str());
+#endif
 }
 
 } // End of namespace Atlantis

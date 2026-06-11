@@ -424,6 +424,10 @@ private:
 	// Decode the first frame of a panoramic cyclorama HNM into _warpSurface
 	// (and a clean copy in _cycloSurface), updating _mainPalette.
 	bool loadCycloHNM(const Common::String &name);
+	// Full-screen HNM playback for UBB_VUE place-to-place transitions and the
+	// CINEM/intro cinematics, with the matching WAV\*.APC track when the disc
+	// has one (AT*.HNM transitions are silent by design).  SPACE skips.
+	void playTransitionVideo(const Common::String &videoName);
 
 	static const LevelInitialState kChapterInitialStates[];
 

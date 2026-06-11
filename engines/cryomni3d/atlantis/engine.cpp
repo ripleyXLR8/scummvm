@@ -354,6 +354,12 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	// skip the menu and load it.
 	uint nextStep = 0;
 	int bootSlot = ConfMan.getInt("save_slot");
+	// Cryo logo and pre-intro cinematics before the player screen (skipped
+	// when launched directly into a save).
+	if (bootSlot < 0) {
+		playTransitionVideo("LOGO15N.HNM");
+		playTransitionVideo("PREINTRO.HNM");
+	}
 	if (bootSlot >= 0) {
 		// Launched directly into a save from the ScummVM launcher: skip the
 		// player screen and take the player from the save slot's block.

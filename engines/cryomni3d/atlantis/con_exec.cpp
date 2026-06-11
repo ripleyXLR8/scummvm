@@ -182,6 +182,14 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 		return;
 	}
 
+	// cinema=N — play the CINEM<NNN>.HNM cinematic full-screen (skippable).
+	if (key == "cinema") {
+		Common::String hnm = Common::String::format("CINEM%03d.HNM", value);
+		debugC(1, kDebugScript, "execConSetCommand: cinema=%d -> %s", value, hnm.c_str());
+		playTransitionVideo(hnm);
+		return;
+	}
+
 	// hideperso=N / disableperso=N — deactivate every sprite for perso N and
 	// add it to the persistent hidden list (atlantis.exe FUN_00427bd0).
 	if (key == "hideperso" || key == "disableperso") {
