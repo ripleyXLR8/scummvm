@@ -29,6 +29,7 @@
 #include "common/textconsole.h"
 
 #include "cryomni3d/atlantis/engine.h"
+#include "cryomni3d/atlantis/inventory.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
@@ -79,22 +80,16 @@ void CryOmni3DEngine_Atlantis::loadAtlantisExeTables() {
 		      _newSoundApcNames.size());
 	}
 
-	// Inventory-icon table at VA 0x004967b0: a zero-terminated int32 array
-	// where index i is the sprite slot in SPRITE\2D\OBJETS1.SPR and the value
-	// is the world object id that uses that sprite as its inventory icon.
-	// Empirically 39 entries + a 0 terminator for the English build; the loop
-	// stops at the first non-positive value or a generous upper bound so an
-	// unexpected build can't run off the data section.
+	// Inventory-icon table at VA 0x004967b0: index i is the sprite slot in
+	// SPRITE\2D\OBJETS1.SPR, the value the object id that uses that sprite.
+	// atlantis.exe FUN_0042b328 scans it up to the -1 terminator: 51 entries,
+	// with 0 placeholders at 39, 46 and 47.  See atlantis-re:
+	// functions/graphics-FUN_0042b328.md.
 	const uint32 kInvTableVA = 0x004967b0;
 	const uint32 kInvTableFileOff =
 	    (kInvTableVA - kImageBase - kDgroupVaddr) + kDgroupRawPtr;
 	exe.seek(kInvTableFileOff);
-	for (int i = 0; i < 64 && !exe.eos(); i++) {
-		int32 id = exe.readSint32LE();
-		if (id <= 0)
-			break;
-		_inventoryObjectIds.push_back((uint)id);
-	}
+	readInventoryIconTable(exe, _inventoryObjectIds);
 	debugC(1, kDebugScript, "loadAtlantisExeTables: %u inventory object ids from atlantis.exe",
 	      _inventoryObjectIds.size());
 
@@ -113,12 +108,9 @@ void CryOmni3DEngine_Atlantis::loadAtlantisExeTables() {
 void CryOmni3DEngine_Atlantis::setupObjects() {
 	// Build the object catalogue in the canonical OBJETS1.SPR sprite order, so
 	// _objects[i] is the icon at sprite slot i — the invariant the inventory
-	// icon drawing depends on.  rename() stamps the world object id onto each
-	// slot; lookups below match on that id.
-	_objects.clear();
-	_objects.resize(_inventoryObjectIds.size());
-	for (uint i = 0; i < _inventoryObjectIds.size(); i++)
-		_objects[i].rename(_inventoryObjectIds[i]);
+	// icon drawing depends on.  The objects are valid so the toolbar lets the
+	// player take them.  _sprites has no sprite map: idCA() is the index.
+	buildInventoryCatalogue(_sprites, _inventoryObjectIds, _objects);
 }
 
 } // End of namespace Atlantis

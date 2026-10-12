@@ -36,6 +36,7 @@
 
 #include "cryomni3d/objects.h"
 #include "cryomni3d/atlantis/engine.h"
+#include "cryomni3d/atlantis/inventory.h"
 #include "cryomni3d/atlantis/puzzle_eclipse.h"
 #include "cryomni3d/atlantis/puzzle_ogregame.h"
 
@@ -341,27 +342,25 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 	}
 
 	// inventN=1 — add object N to the inventory; inventN=0 — remove it.
-	// (Match objects by their world id, stamped onto _objects by setupObjects.)
+	// atlantis.exe FUN_0042b328 appends a record without a duplicate check;
+	// FUN_0042b3ec removes the first record with that id and shifts the rest
+	// down.  See atlantis-re: functions/graphics-FUN_0042b328.md.
 	if (key.hasPrefix("invent") && key.size() > 6 && Common::isDigit(key[6])) {
 		uint objId = (uint)atoi(key.c_str() + 6);
 		if (value) {
-			Object *obj = nullptr;
-			for (Object &o : _objects)
-				if (o.idOBJ() == objId) { obj = &o; break; }
+			Object *obj = findInventoryObject(_objects, objId);
 			if (obj) {
-				if (!_inventory.inInventoryByNameID(objId))
-					_inventory.add(obj);
+				inventoryAppend(_inventory, obj);
 				// Remember the just-given object so it shows centre-bottom for
 				// the rest of the dialog (atlantis.exe DAT_0049619c); the sprite
 				// index is the object's slot in _objects (parallel to _objSprites).
-				if (!_objects.empty())
-					_dialogGivenObjSprite = (int)(obj - &_objects.front());
+				_dialogGivenObjSprite = (int)(obj - &_objects.front());
 				debugC(1, kDebugScript, "execConSetCommand: added object %u to inventory", objId);
 			} else {
 				debugC(1, kDebugScript, "execConSetCommand: invent%u=1 — object not defined", objId);
 			}
 		} else {
-			_inventory.removeByNameID(objId);
+			inventoryRemove(_inventory, objId);
 			Object *sel = _inventory.selectedObject();
 			if (sel && sel->idOBJ() == objId)
 				_inventory.deselectObject();

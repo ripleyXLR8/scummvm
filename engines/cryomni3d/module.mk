@@ -39,6 +39,7 @@ MODULE_OBJS += \
 	atlantis/dialog.o \
 	atlantis/engine.o \
 	atlantis/exetables.o \
+	atlantis/inventory.o \
 	atlantis/menu_layout.o \
 	atlantis/menus.o \
 	atlantis/music.o \

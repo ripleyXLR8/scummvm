@@ -31,6 +31,7 @@
 #include "cryomni3d/objects.h"
 #include "cryomni3d/omni3d.h"
 #include "cryomni3d/atlantis/engine.h"
+#include "cryomni3d/atlantis/inventory.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
@@ -279,6 +280,8 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 			objId = uint(-1);
 		_inventory[i] = (objId != uint(-1)) ? (_objects.begin() + objId) : nullptr;
 	}
+	// Saves written before the inventory became a compact list can have holes.
+	inventoryCompact(_inventory);
 
 	_autosavePending = false;   // a load is not itself a chapter transition
 	_inventory.deselectObject();

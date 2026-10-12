@@ -44,6 +44,7 @@
 #include "cryomni3d/omni3d.h"
 
 #include "cryomni3d/atlantis/engine.h"
+#include "cryomni3d/atlantis/inventory.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
@@ -84,10 +85,12 @@ void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 	// walk-on list (SPF).
 	loadSpritePlaceList();
 	loadSpfList();
-	// The carried inventory persists across chapters; only a new game (chapter 1)
-	// starts empty.  The CON /INIT then repopulates chapter 1's starting items.
+	// The carried inventory persists across chapters; a new game (chapter 1)
+	// starts from the record atlantis.exe FUN_0042c054 sets up before the
+	// player menu: object 257 alone.  See atlantis-re:
+	// functions/graphics-FUN_0042b328.md.
 	if (chapter == 1)
-		_inventory.clear();
+		inventoryReset(_inventory, _objects);
 
 	if ((uint)chapter != _currentCONChapter) {
 		_currentCONChapter = (uint)chapter;
