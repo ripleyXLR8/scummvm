@@ -179,27 +179,35 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 		break;
 	}
 	_gameVars["finpuzzle"] = finPuzzle;
-	// Puzzle launches are often gated behind a click on a sentinel zone
-	// (CHAPI012 vue 221 zone.action=1000 — "1000" is not a real place,
-	// just a hotspot trigger for /sel(vue=221)&(flagtemp6=0)).  The /sel
-	// itself doesn't /set(abortdepart=1), so the pending departure to
-	// place 1000 would still fire after the puzzle returns — emitting a
-	// "place 1000 not found" warning and stranding the player.  Cancel
-	// any pending departure here so the puzzle's caller stays put.
-	_nextPlaceId = uint(-1);
+}
 
-	// Re-run the arrival /sel scan so /sel sections that gate on
-	// `FinPuzzle = 255` fire immediately on win.  CHAPI012 line 129
-	// (`/sel(FinPuzzle=255)&(Vue=221)&(Flagtemp6=0)` -> /set(cinema=30)
-	// + hide/show NPCs + Flagtemp6=1) is the canonical case: without
-	// this re-scan the cinematic only triggers on the next natural
-	// place transition.  The puzzle-launch /sel
-	// (`/sel(vue=221)&(flagtemp6=0)` -> /set(Startpuzzle=0)) sits
-	// in the same scan but the cinema gate fires first (earlier in
-	// the CON file), sets Flagtemp6=1, and the puzzle-launch /sel's
-	// `flagtemp6=0` cond then fails — no recursive puzzle relaunch.
-	if (finPuzzle == 255 && _currentPlaceId != uint(-1))
-		runArrivalSelSections((int)_currentPlaceId, (int)_currentPlaceId);
+void CryOmni3DEngine_Atlantis::runPuzzleZone(int puzzleId) {
+	// atlantis.exe FUN_004240fc: FinPuzzle = the puzzle's result, the view is
+	// reloaded, StartPuzzle = 0, one /sel scan, then FinPuzzle = 0.
+	playPuzzle(puzzleId);
+	if (shouldAbort())
+		return;
+	if (_currentPlace && loadCycloHNM(_currentPlace->cycloHnm)) {
+		_omni3dMan.setSourceSurface(&_warpSurface);
+		setupPalette(_mainPalette, 0, 256);
+		compositeNPCSprites();
+	}
+	_gameVars["startpuzzle"] = 0;
+	runSelScan();
+	_gameVars["finpuzzle"] = 0;
+}
+
+void CryOmni3DEngine_Atlantis::runSelScan() {
+	// FUN_004277c8: the first /sel entry whose condition holds runs.
+	for (ConSection &sec : _conScript.sections()) {
+		if (!sec.isEntry || sec.isCon || sec.isTimer)
+			continue;
+		if (!evalSelSection(sec, 0, (int)_currentPlaceId))
+			continue;
+		debugC(1, kDebugScript, "runSelScan: section %d", sec.id);
+		playConSection(sec);
+		break;
+	}
 }
 
 void CryOmni3DEngine_Atlantis::execConInventCommand(uint objId, int value) {
@@ -508,10 +516,8 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 	// writes back FinPuzzle (255 = win; smaller values denote loss patterns,
 	// e.g. CHAPI018's chess puzzle uses 1/2 for "poor queen" / "poor hero"
 	// voice-line variants).
-	if (key == "startpuzzle") {
-		playPuzzle(value);
-		return;
-	}
+	// StartPuzzle=N only arms puzzle N: it runs when zone 1000 + N is clicked
+	// (atlantis.exe FUN_004240fc); the variable is stored below.
 
 	// stopsound=N — stop the currently playing newsound.  N is ignored: the
 	// original engine only tracks one ambient channel and any stopsound

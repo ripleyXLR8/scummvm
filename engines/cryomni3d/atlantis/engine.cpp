@@ -470,16 +470,39 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 		// (0x00427b8c..0x00427bc2).  A transition then needs an empty hand
 		// (0x00423d2b).
 		_gameVars["cliczone"] = (int)actionId;
-		if (actionId != 0 || _inventory.selectedObject() != nullptr) {
+		uint zone = actionId;
+		// FUN_004240fc: zones 1000..1016 run puzzle zone - 1000 when it is the
+		// armed one (StartPuzzle).
+		if (zone >= 1000 && zone < 1017 &&
+		        _gameVars.getValOrDefault("startpuzzle", 0) == (int)zone - 1000) {
+			runPuzzleZone((int)zone - 1000);
+			zone = 0;
+			if (shouldAbort())
+				break;
+		}
+		// Zone 999: a /sel scan with DepartVue = 999, no transition
+		// (FUN_00423ad8 @ 0x00423c47..0x00423c9b).
+		if (zone == 999) {
+			runDepartureSelSections(999);
+			zone = 0;
+			if (shouldAbort())
+				break;
+		}
+		if (_gameVars.getValOrDefault("cliczone", 0) != 0 || _inventory.selectedObject() != nullptr) {
 			runConClick();
 			if (shouldAbort())
 				break;
-			if (_arrivalScanPending)
-				continue;   // a Vue= in the section entered another place
 		}
 		_gameVars["cliczone"] = 0;
+		if (_arrivalScanPending)
+			continue;   // a Vue= in a section entered another place
 		if (_inventory.selectedObject() != nullptr)
 			continue;
+		// FUN_00423ad8 @ 0x00423d4b: a transition needs an entry for the zone in
+		// the current place.
+		if (zone == 0 || !_currentPlace || !_currentPlace->findTransition((uint16)zone))
+			continue;
+		actionId = zone;
 
 		// A zone action in the place-id range is a navigation click: run the
 		// departure /sel sections (which may abort the move by clearing

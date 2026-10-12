@@ -247,6 +247,8 @@ private:
 	// without a handler auto-win so their CHAPI script chains keep
 	// progressing past the gate.
 	void playPuzzle(int puzzleId);
+	void runPuzzleZone(int puzzleId);
+	void runSelScan();
 	// Evaluate a /sel section's condition list (left-to-right short-circuit).
 	bool evalSelSection(const ConSection &sec, int departZone, int currentVue) const;
 	// Execute a fired section's body (its /set commands and /go redirect; the
