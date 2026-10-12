@@ -59,10 +59,8 @@ bool CryOmni3DEngine_Atlantis::isPersistentGameVar(const Common::String &key) {
 }
 
 void CryOmni3DEngine_Atlantis::loadConScript(int chapter) {
-	// Stamp the wall-clock so the `chaptertime` condition (seconds since the
-	// active CHAPI*.CON loaded) can be evaluated dynamically.
-	_chapterStartMs = g_system->getMillis();
-	_gameVars["chaptertime"] = 0;
+	// FUN_00427634 restarts ChapterTime before loading the file (0x004276d0).
+	_conClocks.chapterStart = g_system->getMillis();
 
 	_conScript.reset();
 	// A chapter change keeps only the 7 persistent CON variables; the
@@ -118,6 +116,9 @@ void CryOmni3DEngine_Atlantis::loadConScript(int chapter) {
 	delete[] buf;
 
 	execConInitCommands();
+	// FUN_00427634 restarts Time2 after the /INIT block (0x0042779e).
+	_conClocks.time2Start = g_system->getMillis();
+	_conClocks.time2Offset = 0;
 	debugC(1, kDebugScript, "loadConScript: '%s' -> %u sections",
 	      name.c_str(), _conScript.sections().size());
 }
@@ -253,6 +254,14 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 	Common::String key(p, (uint)(eq - p));
 	key.toLowercase();
 	int value = atoi(eq + 1);
+
+	// Time1=N / Time2=N — restart the timer at N seconds; the variable itself
+	// is written by updateConClocks (atlantis.exe FUN_0042a100 @ 0x0042a321,
+	// 0x0042a392).
+	if (key == "time1" || key == "time2") {
+		restartConTimer(key == "time1" ? 1 : 2, value);
+		return;
+	}
 
 	// Disable=N — count a play of section N, which disables /con N
 	// (atlantis.exe FUN_0042a100 @ 0x0042a41a); the variable is not stored.
@@ -487,11 +496,10 @@ class EngineConEvaluator : public ConEvaluator {
 public:
 	EngineConEvaluator(const ConVariableNames &names, const Inventory &inventory,
 	                   const Common::HashMap<Common::String, int> &vars,
-	                   const Common::Array<byte> &placeVisits, uint32 chapterStartMs,
-	                   int departZone, int currentVue, int rolledRandom) :
+	                   const Common::Array<byte> &placeVisits,
+	                   int departZone, int currentVue) :
 		ConEvaluator(names, vars, inventory), _inventory(inventory), _placeVisits(placeVisits),
-		_chapterStartMs(chapterStartMs), _departZone(departZone), _currentVue(currentVue),
-		_rolledRandom(rolledRandom) {}
+		_departZone(departZone), _currentVue(currentVue) {}
 
 protected:
 	bool liveValue(const Common::String &key, int &out) const override {
@@ -504,15 +512,6 @@ protected:
 			// the toolbar can change the selection without any /set running.
 			Object *sel = _inventory.selectedObject();
 			out = (sel && sel->idOBJ() != uint(-1)) ? (int)sel->idOBJ() : 0;
-		} else if (key == "chaptertime") {
-			out = _chapterStartMs
-			      ? (int)((g_system->getMillis() - _chapterStartMs) / 1000)
-			      : 0;
-		} else if (key == "nbvisite") {
-			out = (_currentVue >= 0 && (uint)_currentVue < _placeVisits.size())
-			      ? (int)_placeVisits[_currentVue] : 0;
-		} else if (key == "random") {
-			out = _rolledRandom;
 		} else {
 			return false;
 		}
@@ -522,11 +521,55 @@ protected:
 private:
 	const Inventory &_inventory;
 	const Common::Array<byte> &_placeVisits;
-	uint32 _chapterStartMs;
-	int _departZone, _currentVue, _rolledRandom;
+	int _departZone, _currentVue;
 };
 
 } // End of anonymous namespace
+
+void CryOmni3DEngine_Atlantis::updateConClocks() {
+	// atlantis.exe FUN_0041c75c, at the start of every warp frame.
+	const uint32 now = g_system->getMillis();
+	_gameVars["random"] = (int)(now & 0xff);
+	_gameVars["chaptertime"] = _conClocks.chapterTime(now);
+	_gameVars["time1"] = _conClocks.timerValue(1, now);
+	_gameVars["time2"] = _conClocks.timerValue(2, now);
+}
+
+void CryOmni3DEngine_Atlantis::restartConTimer(int timer, int value) {
+	_conClocks.restart(timer, value, g_system->getMillis());
+}
+
+void CryOmni3DEngine_Atlantis::rebaseConClocks() {
+	// After the toolbar (FUN_0042c59c @ 0x0042c844) and the in-game menu
+	// (FUN_0041c838 @ 0x0041cb84): the timers resume from their current
+	// values, and ChapterTime starts again from 0.
+	_conClocks.rebase(g_system->getMillis(), _gameVars.getValOrDefault("time1", 0),
+	                  _gameVars.getValOrDefault("time2", 0));
+}
+
+bool CryOmni3DEngine_Atlantis::runConTimers() {
+	bool played = false;
+	for (int timer = 1; timer <= 2; timer++) {
+		if (_gameVars.getValOrDefault(timer == 1 ? "testtime1" : "testtime2", 0) == 0)
+			continue;
+		for (ConSection &sec : _conScript.sections()) {
+			if (!sec.isEntry || !sec.isTimer || sec.timerNum != timer)
+				continue;
+			if (!evalSelSection(sec, 0, (int)_currentPlaceId))
+				continue;
+			debugC(1, kDebugScript, "runConTimers: /tim%d section %d", timer, sec.id);
+			// A timer run counts as a play (flag 0x00496174).
+			bumpConPlayCounter(sec.id);
+			g_system->lockMouse(false);   // leave the warp's mouse-look for the dialog
+			playConSection(sec);
+			played = true;
+			break;
+		}
+		if (shouldAbort())
+			break;
+	}
+	return played;
+}
 
 void CryOmni3DEngine_Atlantis::bumpConPlayCounter(int section) {
 	// A byte: it wraps after 255 plays, as in the original.
@@ -538,14 +581,10 @@ void CryOmni3DEngine_Atlantis::bumpConPlayCounter(int section) {
 
 bool CryOmni3DEngine_Atlantis::evalSelSection(const ConSection &sec,
                                                int departZone, int currentVue) const {
-	// One random roll per section so multiple `random` clauses in the same
-	// conjunction see a consistent value.
-	const int rolledRandom = (int)_conRng.getRandomNumber(255);
-
 	if (sec.condOffset < 0)
 		return true;
-	EngineConEvaluator eval(_conVarNames, _inventory, _gameVars, _placeVisits, _chapterStartMs,
-	                        departZone, currentVue, rolledRandom);
+	EngineConEvaluator eval(_conVarNames, _inventory, _gameVars, _placeVisits,
+	                        departZone, currentVue);
 	return eval.evaluate(_conScript.text(), (uint32)sec.condOffset);
 }
 

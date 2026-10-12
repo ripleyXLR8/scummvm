@@ -91,9 +91,12 @@ void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 	// functions/graphics-FUN_0042b328.md.
 	if (chapter == 1) {
 		inventoryReset(_inventory, _objects);
-		// FUN_00423760 zeroes the /con play counters when a game starts.
+		// FUN_00423760 zeroes the /con play counters and the timer offsets,
+		// and restarts Time1, when a game starts.
 		for (byte &b : _conPlayCounters)
 			b = 0;
+		_conClocks.time1Offset = _conClocks.time2Offset = 0;
+		_conClocks.time1Start = g_system->getMillis();
 	}
 
 	if ((uint)chapter != _currentCONChapter) {

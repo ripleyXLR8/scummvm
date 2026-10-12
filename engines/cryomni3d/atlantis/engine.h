@@ -490,7 +490,14 @@ private:
 	// CON scenario-script state.
 	ConScript _conScript;
 	uint _currentCONChapter;   // which CHAPI00N.CON is loaded (0 = none)
-	uint32 _chapterStartMs;    // wall-clock at chapter load (for `chaptertime`)
+	// CON clocks (atlantis.exe FUN_0041c75c, every warp frame).
+	ConClocks _conClocks;
+	void updateConClocks();
+	void restartConTimer(int timer, int value);
+	void rebaseConClocks();
+	// FUN_0042be3c: run the first matching /tim1, then /tim2, entry while
+	// TestTime1 / TestTime2 is set.  True if a section played.
+	bool runConTimers();
 	Common::HashMap<Common::String, int> _gameVars;
 	ConVariableNames _conVarNames;             // VARIAS.CON, for conditions
 	// /con play counters (atlantis.exe 0x006cc6cc), one byte per section:
@@ -499,7 +506,6 @@ private:
 	Common::Array<byte> _conPlayCounters;
 	void bumpConPlayCounter(int section);
 	Common::Array<byte> _placeVisits;          // per-place visit counts (nbvisite)
-	mutable Common::RandomSource _conRng;      // for /sel `random` conditions
 
 	// Per-character dialog resource table parsed from DIALOG\INITDIAL.TXT.
 	// camUBB[0..3] = UBB talking-head video basenames for cameras 2..5 ("none"

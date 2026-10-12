@@ -72,7 +72,6 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
         const CryOmni3DGameDescription *gamedesc) :
 	CryOmni3DEngine(syst, gamedesc),
 	_currentCONChapter(0),
-	_chapterStartMs(0),
 	_currentChapter(uint(-1)),
 	_currentPlaceId(uint(-1)),
 	_nextPlaceId(uint(-1)),
@@ -82,7 +81,6 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_loadedSave(0),
 	_autosavePending(false),
 	_currentPlayer(0),
-	_conRng("AtlantisConRandom"),
 	_heroPersoId(0),
 	_dialRng("AtlantisDialCam"),
 	_lastDialCam(0),
@@ -476,6 +474,11 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 			_nextPlaceId = actionId;
 			runDepartureSelSections((int)actionId);
 			if (!shouldAbort() && _nextPlaceId != uint(-1)) {
+				// A departure that is not aborted stops timer 1 and restarts
+				// Time1 (atlantis.exe FUN_00423ad8 @ 0x00423e8d).
+				_gameVars["testtime1"] = 0;
+				_conClocks.time1Start = g_system->getMillis();
+				_conClocks.time1Offset = 0;
 				uint dest = _nextPlaceId;
 				_nextPlaceId = uint(-1);
 				executeTransition(dest);

@@ -283,6 +283,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 
 	while (!leftButtonPressed && !exit) {
 		pollEvents();
+		updateConClocks();   // atlantis.exe FUN_0041bfa0 @ 0x0041c086
 
 		// This frame's accumulated relative motion.  WSLg's Wayland relative
 		// pointer inverts X (Y is consistent everywhere); the Windows build
@@ -395,6 +396,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			else
 				setArrowCursor();
 			displayToolbar(_warpLoaded ? _omni3dMan.getSurface() : nullptr);
+			rebaseConClocks();
 			if (shouldAbort()) {
 				actionId = 66666;
 				exit = true;
@@ -424,6 +426,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				actionId = 66666;
 				exit = true;
 			} else {                          // resume
+				rebaseConClocks();
 				g_system->lockMouse(true);
 				takeMouseRelative();
 				setMousePos(Common::Point(320, 240));
@@ -445,6 +448,31 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		// Keep angle vars in sync for CON conditions (AngleWarpX<N).
 		_gameVars["anglewarpx"] = (int)(alpha * 180.0 / M_PI);
 		_gameVars["anglewarpy"] = (int)(beta  * 180.0 / M_PI);
+
+		// Timer sections (atlantis.exe FUN_0041bfa0 @ 0x0041c369).
+		if (!exit && runConTimers()) {
+			if (shouldAbort()) {
+				actionId = 66666;
+				exit = true;
+			} else if (_nextPlaceId != uint(-1)) {
+				// A timer section asked for a place change: hand it to
+				// gameStep as a script-set destination (see interactNPC above).
+				uint dest = _nextPlaceId;
+				showMouse(false);
+				g_system->lockMouse(false);
+				return (int)dest;
+			} else {
+				g_system->lockMouse(true);
+				takeMouseRelative();
+				setMousePos(Common::Point(320, 240));
+				_dialogGivenObjSprite = -1;
+				curCursorGroup = -1;
+				while (getCurrentMouseButton() != 0 && !shouldAbort()) {
+					pollEvents();
+					g_system->delayMillis(10);
+				}
+			}
+		}
 
 		if (_warpLoaded) {
 			const Graphics::Surface *result = _omni3dMan.getSurface();

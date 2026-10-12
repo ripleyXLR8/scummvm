@@ -117,6 +117,54 @@ public:
 	void test_synth_inventory()      { TS_ASSERT_EQUALS(runSynth(43, 51), 0u); }
 	void test_synth_table_size()     { TS_ASSERT_EQUALS(ARRAYSIZE(ScriptsEvalTest::kSynth), 51u); }
 
+	// CON clocks against the ORIGINAL code under emulation (atlantis-re
+	// tools/emu/scripts_clock.py, clock FUN_00451d0c stubbed): the /set
+	// handler on Time1=/Time2= and the per-frame updater FUN_0041c75c.
+	// Port: ConClocks (con_eval.cpp).
+	void test_clock_restart() {
+		static const struct { uint32 now; const char *cmd; uint32 t1s; int32 t1o; uint32 t2s; int32 t2o; } kOrig[] = {
+			{ 100000, "Time1=0", 100000, 0, 57005, 57005 },
+			{ 100000, "Time1=30", 70000, 0, 57005, 57005 },
+			{ 100000, "Time1=200", 100000, 200, 57005, 57005 },
+			{ 100000, "Time1=100", 100000, 100, 57005, 57005 },
+			{ 100000, "Time2=7", 57005, 57005, 93000, 0 },
+			{ 5000, "Time2=5", 57005, 57005, 5000, 5 },
+			{ 5000, "Time2=4", 57005, 57005, 1000, 0 },
+		};
+		for (uint i = 0; i < ARRAYSIZE(kOrig); i++) {
+			CryOmni3D::Atlantis::ConClocks c;
+			c.time1Start = c.time2Start = 0xdead;   // as the harness: untouched = 0xdead
+			c.time1Offset = c.time2Offset = 0xdead;
+			c.restart(kOrig[i].cmd[4] - '0', atoi(kOrig[i].cmd + 6), kOrig[i].now);
+			TSM_ASSERT_EQUALS(kOrig[i].cmd, c.time1Start, kOrig[i].t1s);
+			TSM_ASSERT_EQUALS(kOrig[i].cmd, c.time1Offset, kOrig[i].t1o);
+			TSM_ASSERT_EQUALS(kOrig[i].cmd, c.time2Start, kOrig[i].t2s);
+			TSM_ASSERT_EQUALS(kOrig[i].cmd, c.time2Offset, kOrig[i].t2o);
+		}
+	}
+
+	void test_clock_update() {
+		static const struct { uint32 now, chap, t1s; int32 t1o; uint32 t2s; int32 t2o, random, chapterTime, time1, time2; } kOrig[] = {
+			{ 100000u, 40000u, 99000u, 5, 100000u, 0, 160, 60, 6, 0 },
+			{ 123456u, 0u, 3456u, 0, 23999u, 12, 64, 123, 120, 111 },
+			{ 100000u, 100500u, 100500u, 3, 90000u, 0, 160, 4294966, 4294969, 10 },
+			{ 74565u, 74565u, 73728u, 0, 0u, 0, 69, 0, 0, 74 },
+		};
+		for (uint i = 0; i < ARRAYSIZE(kOrig); i++) {
+			CryOmni3D::Atlantis::ConClocks c;
+			c.chapterStart = kOrig[i].chap;
+			c.time1Start = kOrig[i].t1s;
+			c.time1Offset = kOrig[i].t1o;
+			c.time2Start = kOrig[i].t2s;
+			c.time2Offset = kOrig[i].t2o;
+			// Random is timeGetTime() & 0xff (updateConClocks).
+			TS_ASSERT_EQUALS((int32)(kOrig[i].now & 0xff), kOrig[i].random);
+			TS_ASSERT_EQUALS(c.chapterTime(kOrig[i].now), kOrig[i].chapterTime);
+			TS_ASSERT_EQUALS(c.timerValue(1, kOrig[i].now), kOrig[i].time1);
+			TS_ASSERT_EQUALS(c.timerValue(2, kOrig[i].now), kOrig[i].time2);
+		}
+	}
+
 	uint runSynth(uint from, uint to) {
 		uint fails = 0;
 		if (!AtlantisTest::haveData()) {

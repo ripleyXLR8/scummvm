@@ -125,6 +125,33 @@ bool compareTerm(const TextCursor &t, uint32 pos, byte op, uint32 var) {
 
 } // End of anonymous namespace
 
+int32 ConClocks::timerValue(int timer, uint32 now) const {
+	if (timer == 1)
+		return time1Offset + (int32)((now - time1Start) / 1000);
+	return time2Offset + (int32)((now - time2Start) / 1000);
+}
+
+void ConClocks::restart(int timer, int32 value, uint32 now) {
+	// start = now - value s, or, when the clock is not that far yet,
+	// start = now and the value becomes the offset.
+	const uint32 ms = (uint32)value * 1000;
+	uint32 &start = (timer == 1) ? time1Start : time2Start;
+	int32 &offset = (timer == 1) ? time1Offset : time2Offset;
+	offset = 0;
+	if (now > ms) {
+		start = now - ms;
+	} else {
+		start = now;
+		offset = value;
+	}
+}
+
+void ConClocks::rebase(uint32 now, int32 time1, int32 time2) {
+	time1Start = time2Start = chapterStart = now;
+	time1Offset = time1;
+	time2Offset = time2;
+}
+
 void ConVariableNames::load(const char *data, uint32 size) {
 	_text.resize(size);
 	_names.clear();

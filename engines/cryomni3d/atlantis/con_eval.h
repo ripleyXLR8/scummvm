@@ -53,6 +53,24 @@ private:
 	Common::Array<Common::String> _names;    // lower-case, one per line
 };
 
+// The CON clocks (atlantis.exe): ChapterTime, Time1 and Time2, in seconds.
+// See atlantis-re: formats/scripts-con.md (timers).
+struct ConClocks {
+	uint32 chapterStart = 0;   // 0x006ce078
+	uint32 time1Start = 0;     // 0x006ce088
+	uint32 time2Start = 0;     // 0x006ce084
+	int32 time1Offset = 0;     // 0x006ce04c
+	int32 time2Offset = 0;     // 0x006ce050
+
+	// FUN_0041c75c: (now - start) / 1000, unsigned, plus the offset.
+	int32 chapterTime(uint32 now) const { return (int32)((now - chapterStart) / 1000); }
+	int32 timerValue(int timer, uint32 now) const;
+	// FUN_0042a100, Time1= / Time2=.
+	void restart(int timer, int32 value, uint32 now);
+	// FUN_0042c59c / FUN_0041c838: resume from the current values.
+	void rebase(uint32 now, int32 time1, int32 time2);
+};
+
 // Evaluates the condition line of a CON section (/sel, /con, /tim) the way
 // atlantis.exe FUN_004298ac does: on the script text itself, against the
 // variables named in VARIAS.CON and the inventory.  Keys whose value comes
