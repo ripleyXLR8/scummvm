@@ -15,12 +15,14 @@
 // The geometry/hit-test rules are read from the disassembly (level B).
 //
 // PORT code exercised directly (linked): CryOmni3D::Inventory (objects.cpp),
-// Atlantis_Toolbar::hitTestZones / callbackInventory / addZone (toolbar.cpp);
-// init() itself cannot run (see initToolbarNoGfx).
+// the Atlantis inventory unit (inventory.cpp: readInventoryIconTable,
+// buildInventoryCatalogue, findInventoryObject, inventoryAppend,
+// inventoryRemove, inventoryReset), Atlantis_Toolbar::hitTestZones /
+// callbackInventory / addZone (toolbar.cpp); init() itself cannot run (see
+// initToolbarNoGfx).
+// portInvent() repeats the "inventN" branch of execConSetCommand
+// (con_exec.cpp), which only calls the inventory unit.
 // FAITHFUL COPIES (stated explicitly):
-//  - portInvent(): the "inventN" branch of execConSetCommand (con_exec.cpp);
-//  - portSetupObjects(): setupObjects (exetables.cpp): default Object + rename;
-//  - the inventory-table loop of loadAtlantisExeTables (exetables.cpp);
 //  - the bar-sprite placement of engine.cpp (addMenuSprite(..., 0, s.yoff))
 //    combined with Atlantis_Toolbar::drawToolbar's baseY formula.
 
@@ -37,6 +39,8 @@
 
 #include "cryomni3d/cryomni3d.h"
 #include "cryomni3d/objects.h"
+#include "cryomni3d/sprites.h"
+#include "cryomni3d/atlantis/inventory.h"
 
 #define private public
 #include "cryomni3d/atlantis/toolbar.h"
@@ -48,26 +52,21 @@ struct NullCb {
 	void cb(uint) {}
 };
 
-// FAITHFUL COPY of setupObjects() (exetables.cpp) for a list of ids.
+// setupObjects() (exetables.cpp) for a list of ids: the real catalogue
+// builder, with an unmapped Sprites like the engine's _sprites.
 inline void portSetupObjects(CryOmni3D::Objects &objects, const Common::Array<uint> &ids) {
-	objects.clear();
-	objects.resize(ids.size());
-	for (uint i = 0; i < ids.size(); i++)
-		objects[i].rename(ids[i]);
+	static const CryOmni3D::Sprites sprites;
+	CryOmni3D::Atlantis::buildInventoryCatalogue(sprites, ids, objects);
 }
 
-// FAITHFUL COPY of the inventN branch of execConSetCommand (con_exec.cpp).
+// The inventN branch of execConSetCommand (con_exec.cpp).
 inline void portInvent(CryOmni3D::Objects &objects, CryOmni3D::Inventory &inv, uint objId, int value) {
 	if (value) {
-		CryOmni3D::Object *obj = nullptr;
-		for (CryOmni3D::Object &o : objects)
-			if (o.idOBJ() == objId) { obj = &o; break; }
-		if (obj) {
-			if (!inv.inInventoryByNameID(objId))
-				inv.add(obj);
-		}
+		CryOmni3D::Object *obj = CryOmni3D::Atlantis::findInventoryObject(objects, objId);
+		if (obj)
+			CryOmni3D::Atlantis::inventoryAppend(inv, obj);
 	} else {
-		inv.removeByNameID(objId);
+		CryOmni3D::Atlantis::inventoryRemove(inv, objId);
 		CryOmni3D::Object *sel = inv.selectedObject();
 		if (sel && sel->idOBJ() == objId)
 			inv.deselectObject();
@@ -153,20 +152,26 @@ public:
 
 	// Start-up inventory: FUN_0042c054 (called at 0x00419605) leaves object
 	// 257 (OBJETS1 sprite 0) in record 0; no CON script gives or removes 257.
-	// The port's new game starts from Inventory::clear() (place.cpp) - this
-	// documents the original state the port does not reproduce.
+	// The port's new game calls inventoryReset (place.cpp, chapter 1).
 	void test_inventory_startup_record() {
 		static const char *const kOriginalStartup = "257";
+		Common::Array<uint> ids;
+		ids.push_back(257);
+		ids.push_back(258);
+		CryOmni3D::Objects objects;
+		GraphicsToolbarTest::portSetupObjects(objects, ids);
 		CryOmni3D::Inventory inv;
 		GraphicsToolbarTest::NullCb nc;
 		inv.init(20, new Common::Functor1Mem<uint, void, GraphicsToolbarTest::NullCb>(&nc, &GraphicsToolbarTest::NullCb::cb));
-		inv.clear();   // what place.cpp does for chapter 1
+		GraphicsToolbarTest::portInvent(objects, inv, 258, 1);   // a previous game
+		CryOmni3D::Atlantis::inventoryReset(inv, objects);
 		TS_ASSERT_EQUALS(GraphicsToolbarTest::order(inv), Common::String(kOriginalStartup));
+		TS_ASSERT(inv[0] && inv[0]->idCA() == 0u);   // record 0 = {sprite 0, 257}
 	}
 
 	// Object id -> OBJETS1 sprite index: original FUN_0042b328 over the table
 	// at 0x004967b0 up to -1 (golden graphics_inventory.txt) versus the port's
-	// loop (stops at the first id <= 0) and its index-in-list mapping.
+	// table reader, catalogue and lookup (inventory.cpp).
 	void test_inventory_icon_table() {
 		if (!AtlantisTest::haveData()) {
 			TS_WARN("graphics_toolbar: no atlantis_test.cfg, data test skipped");
@@ -179,21 +184,16 @@ public:
 		TS_ASSERT(exe.open(node));
 		if (!exe.isOpen())
 			return;
-		// FAITHFUL COPY of loadAtlantisExeTables' inventory loop.
 		Common::Array<uint> ids;
 		exe.seek((0x004967b0 - 0x400000 - 0x90000) + 0x71200);
-		for (int i = 0; i < 64 && !exe.eos(); i++) {
-			int32 id = exe.readSint32LE();
-			if (id <= 0)
-				break;
-			ids.push_back((uint)id);
-		}
+		CryOmni3D::Atlantis::readInventoryIconTable(exe, ids);
+		CryOmni3D::Objects objects;
+		GraphicsToolbarTest::portSetupObjects(objects, ids);
 		uint missing = 0, wrong = 0;
 		for (AtlantisTest::Golden::const_iterator it = golden.begin(); it != golden.end(); ++it) {
 			uint id = atoi(it->_key.c_str());
-			int portIdx = -1;
-			for (uint i = 0; i < ids.size(); i++)
-				if (ids[i] == id) { portIdx = (int)i; break; }   // setupObjects + first match
+			const CryOmni3D::Object *obj = CryOmni3D::Atlantis::findInventoryObject(objects, id);
+			int portIdx = obj ? (int)obj->idCA() : -1;
 			int origIdx = atoi(it->_value.c_str());
 			if (portIdx < 0) {
 				missing++;
@@ -313,9 +313,8 @@ public:
 
 	// Taking an item: the original click takes the record's object
 	// (FUN_0042c098 writes it to the held-object slot 0x611210[...]).  The
-	// port's callbackInventory refuses objects whose valid() is false, and
-	// setupObjects builds every object with the default constructor
-	// (_valid = false) and rename() only.
+	// port's callbackInventory refuses objects whose valid() is false, so
+	// setupObjects must build valid objects.
 	void test_take_item() {
 		using namespace GraphicsToolbarTest;
 		Common::Array<uint> ids;

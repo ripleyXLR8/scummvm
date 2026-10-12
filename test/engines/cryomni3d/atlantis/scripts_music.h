@@ -31,8 +31,9 @@ static const char *const kOrigMusic[] = {
 	"cine194.apc"
 };
 
-// md5 of the loadAtlantisExeTables span of exetables.cpp (scummvm 693c26414e5).
-static const char *const kExeTablesMd5 = "f13417dd6c9406bf455a7abcf056aa83";
+// md5 of the loadAtlantisExeTables span of exetables.cpp.  Updated when the
+// inventory-table read moved to inventory.cpp; the newsound loop is unchanged.
+static const char *const kExeTablesMd5 = "64a84740f38ea930bc818d5ad5f51231";
 
 inline bool readSource(const char *rel, Common::String &out) {
 	Common::String src = AtlantisTest::configValue("src");
