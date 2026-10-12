@@ -233,7 +233,9 @@ bool Atlantis_Toolbar::displayToolbar(const Graphics::Surface *original) {
 	_guestClicked = 0;
 	updateZones();
 
-	// Slide the bar up.
+	// Slide the bar up (FUN_0042c2c4); a timer that sets GameOver or Exit
+	// ends it early (0x0042c55d).
+	bool closed = false;
 	for (_position = _destSurface.h; _position > 0 && !_engine->shouldAbort(); _position--) {
 		drawToolbar(original);
 		g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0,
@@ -242,6 +244,10 @@ bool Atlantis_Toolbar::displayToolbar(const Graphics::Surface *original) {
 		g_system->updateScreen();
 		g_system->delayMillis(10);
 		_engine->pollEvents();
+		if (barTick(original)) {
+			closed = true;
+			break;
+		}
 	}
 	if (_engine->shouldAbort())
 		return false;
@@ -249,12 +255,13 @@ bool Atlantis_Toolbar::displayToolbar(const Graphics::Surface *original) {
 	_engine->clearKeys();
 	_engine->waitMouseRelease();
 
-	bool itemTaken = handleToolbarEvents(original);
+	bool itemTaken = closed ? false : handleToolbarEvents(original);
 	if (_engine->shouldAbort())
 		return false;
 
-	// Slide down — skipped when an item was just taken, so the carried object
-	// reaches the centred crosshair at once.
+	// Slide down (FUN_0042c59c) — skipped when an item was just taken, so the
+	// carried object reaches the centred crosshair at once; a timer that sets
+	// GameOver or Exit ends it early (0x0042c805).
 	if (!itemTaken) {
 		for (_position = 0; _position <= (uint)_destSurface.h && !_engine->shouldAbort(); _position++) {
 			drawToolbar(original);
@@ -264,10 +271,26 @@ bool Atlantis_Toolbar::displayToolbar(const Graphics::Surface *original) {
 			g_system->updateScreen();
 			g_system->delayMillis(10);
 			_engine->pollEvents();
+			if (barTick(original))
+				break;
 		}
 	}
 
 	return false;
+}
+
+bool Atlantis_Toolbar::barTick(const Graphics::Surface *original) {
+	bool played = false;
+	bool close = _engine->barFrameTick(played);
+	// A timer section drew over the screen: put the view and the bar back.
+	if (played && original && !close) {
+		g_system->copyRectToScreen(original->getPixels(), original->pitch, 0, 0, original->w, original->h);
+		drawToolbar(original);
+		g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0, original->h - _destSurface.h,
+		                           _destSurface.w, _destSurface.h);
+		g_system->updateScreen();
+	}
+	return close;
 }
 
 bool Atlantis_Toolbar::displayPickup(const Graphics::Surface *original, Object *obj) {
@@ -288,6 +311,8 @@ bool Atlantis_Toolbar::displayPickup(const Graphics::Surface *original, Object *
 		g_system->updateScreen();
 		g_system->delayMillis(10);
 		_engine->pollEvents();
+		if (barTick(original))
+			break;
 	}
 
 	// The loop ends on the press edge of either button (FUN_0041a298 sets
@@ -310,6 +335,9 @@ bool Atlantis_Toolbar::displayPickup(const Graphics::Surface *original, Object *
 			break;
 		}
 		prevButton = button;
+		// FUN_0042cc98 animates the place sprites (0x0042cd1c) but runs no
+		// timers.
+		_engine->animateSprites();
 		// FUN_0042cc98 edge scrolling: x > 0x276 or x < 5 with y > 400; it
 		// scrolls right only while more than 9 records exist and the first
 		// shown is below count - 7.  The port throttles it as in the bar loop.
@@ -342,6 +370,8 @@ bool Atlantis_Toolbar::displayPickup(const Graphics::Surface *original, Object *
 		g_system->updateScreen();
 		g_system->delayMillis(10);
 		_engine->pollEvents();
+		if (barTick(original))
+			break;
 	}
 	return right;
 }
@@ -373,6 +403,12 @@ bool Atlantis_Toolbar::handleToolbarEvents(const Graphics::Surface *original) {
 	while (!exitToolbar) {
 		_engine->pollEvents();
 		if (_engine->shouldAbort()) {
+			exitToolbar = true;
+			break;
+		}
+		// FUN_0042c8ac: the timers each frame (0x0042cb2c); GameOver or Exit
+		// closes the bar (0x0042cb67).
+		if (barTick(original)) {
 			exitToolbar = true;
 			break;
 		}

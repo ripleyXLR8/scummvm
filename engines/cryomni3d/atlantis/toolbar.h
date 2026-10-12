@@ -54,6 +54,9 @@ public:
 	// until a left or right click, FUN_0042c59c slides the bar out.  True for
 	// a right click (the object stays in hand).
 	bool displayPickup(const Graphics::Surface *original, Object *obj);
+	// One frame of the bar loops' engine work (barFrameTick); true when the
+	// bar must close.  Redraws the view and the bar after a timer section.
+	bool barTick(const Graphics::Surface *original);
 	void inventoryChanged(uint newPosition);
 	// The guest whose portrait was clicked in the open bar (0: none); the
 	// caller talks to it (atlantis.exe FUN_0042c8ac @ 0x0042cbfe).

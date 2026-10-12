@@ -616,6 +616,13 @@ void CryOmni3DEngine_Atlantis::rebaseConClocks() {
 	                  _gameVars.getValOrDefault("time2", 0));
 }
 
+bool CryOmni3DEngine_Atlantis::barFrameTick(bool &played) {
+	animateSprites();
+	played = runConTimers();
+	return shouldAbort() || _gameVars.getValOrDefault("gameover", 0) != 0 ||
+	       _gameVars.getValOrDefault("exit", 0) != 0;
+}
+
 bool CryOmni3DEngine_Atlantis::runConTimers() {
 	bool played = false;
 	for (int timer = 1; timer <= 2; timer++) {

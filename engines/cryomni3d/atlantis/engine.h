@@ -672,6 +672,11 @@ private:
 	// One FUN_00425304 step for the current view; recomposites when a frame
 	// or an active flag changed.
 	void animateSprites();
+	// One frame of the bar loops (FUN_0042c2c4, FUN_0042c59c, FUN_0042c8ac):
+	// the place sprites, then the timers (FUN_0042be3c) with the clocks
+	// frozen (no FUN_0041c75c).  played: a timer section ran.  True when the
+	// bar must close: GameOver or Exit set, or the engine is quitting.
+	bool barFrameTick(bool &played);
 };
 
 } // End of namespace Atlantis
