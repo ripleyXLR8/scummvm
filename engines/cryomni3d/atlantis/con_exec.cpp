@@ -439,6 +439,25 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 		return;
 	}
 
+	// atlantis.exe FUN_00428da8 (after each executor line): NEWWSPRANIM=N
+	// starts the current view's entry N, STOPWSPRANIM=N stops it (and clears
+	// WSPRFRAME); the variable returns to 0.
+	if (key == "newwspranim" || key == "stopwspranim") {
+		if (value != 0 && _currentPlaceId < _spriteAnimCurrent.size()) {
+			bool ok = (key == "newwspranim")
+			          ? startPlaceSpriteAnim(_spritePlaceList, (uint16)_currentPlaceId, value,
+			                                 _spriteAnimCurrent[_currentPlaceId])
+			          : stopPlaceSpriteAnim(_spritePlaceList, (uint16)_currentPlaceId, value);
+			if (!ok)
+				warning("execConSetCommand: %s=%d: no such sprite in view %u", key.c_str(), value, _currentPlaceId);
+			if (key == "stopwspranim")
+				_gameVars["wsprframe"] = 0;
+			recompositeSpriteLayer();
+		}
+		_gameVars[key] = 0;
+		return;
+	}
+
 	// objetenmain=N — force object N into the player's hand (N=0 clears it).
 	if (key == "objetenmain") {
 		if (value == 0) {

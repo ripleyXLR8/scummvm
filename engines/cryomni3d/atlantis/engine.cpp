@@ -95,10 +95,9 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_warpCursorFrame(-1),
 	_warpCursorNextMs(0),
 	_mainPalette(nullptr),
-	_warpLoaded(false),
-	_propAnimFrames(0),
-	_propAnimFrame(0),
-	_propAnimNextMs(0) {
+	_warpLoaded(false) {
+	memset(_spriteAnimLast, 0, sizeof(_spriteAnimLast));
+	_spriteAnimCurrent.resize(512, 0);
 	_placeVisits.resize(1500, 0);
 	_conPlayCounters.resize(kConPlayCounterCount, 0);
 	for (int i = 0; i < 4; i++)
@@ -271,9 +270,6 @@ bool CryOmni3DEngine_Atlantis::loadCycloHNM(const Common::String &name) {
 
 	delete decoder;
 	_warpLoaded = true;
-	_propAnimFrames = 0;
-	_propAnimFrame  = 0;
-	_propAnimNextMs = 0;
 	debugC(1, kDebugScript, "loadCycloHNM: %s (%dx%d)", name.c_str(), _warpSurface.w, _warpSurface.h);
 	return true;
 #else

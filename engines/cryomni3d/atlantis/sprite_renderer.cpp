@@ -680,6 +680,9 @@ void CryOmni3DEngine_Atlantis::loadCursorSprites() {
 
 void CryOmni3DEngine_Atlantis::loadSpritePlaceList() {
 	_spritePlaceList.clear();
+	// A new place table: every view's current animation entry is 0 again.
+	for (uint &c : _spriteAnimCurrent)
+		c = 0;
 
 	const Common::String &listFile = _wam.spwListFile;
 	if (listFile.empty()) {
@@ -839,12 +842,6 @@ void CryOmni3DEngine_Atlantis::compositeNPCSprites() {
 	if (!_warpLoaded)
 		return;
 
-	// Animated props and wspranim poses (the SPW-header frame count + the
-	// per-frame tick) land with the music/timer layer; for now sprites render
-	// their first frame statically.
-	_propAnimFrames = 0;
-	_propAnimFrame  = 0;
-
 	// Rebaseline each current-place sprite to its parsed startActive flag so
 	// state from a previous place doesn't leak; a persoId in _hiddenPersos
 	// stays deactivated (a /set(hideperso=N) persists across places).
@@ -852,7 +849,15 @@ void CryOmni3DEngine_Atlantis::compositeNPCSprites() {
 		if (e.placeId != (uint16)_currentPlaceId)
 			continue;
 		e.active = e.startActive;
+		// FUN_0042431c: frame 0, frame count = SPW header dword +4.
 		e.frame  = 0;
+		e.frameCount = 0;
+		Common::ScopedPtr<Common::SeekableReadStream> spw(openBigFileStream(kFileTypeSpriteCyclo, e.spwFile));
+		if (spw && spw->seek(4)) {
+			uint32 n = spw->readUint32LE();
+			if (!spw->err())
+				e.frameCount = (int)n;
+		}
 		if (e.persoId > 0) {
 			for (int h : _hiddenPersos)
 				if (h == e.persoId) { e.active = false; break; }
@@ -870,7 +875,7 @@ void CryOmni3DEngine_Atlantis::recompositeSpriteLayer() {
 	// Start from the clean cyclo so sprites don't stack across recomposites.
 	_warpSurface.copyFrom(_cycloSurface);
 
-	// Render every active sprite at the current place (frame 0 for now).
+	// Render every active sprite at the current place at its current frame.
 	for (const SpritePlaceEntry &entry : _spritePlaceList) {
 		if (entry.placeId != (uint16)_currentPlaceId)
 			continue;
@@ -883,16 +888,27 @@ void CryOmni3DEngine_Atlantis::recompositeSpriteLayer() {
 			continue;
 		}
 		int16 x1, y1, x2, y2;
-		if (!readSPWBounds(spw, x1, y1, x2, y2, 0)) {
+		if (!readSPWBounds(spw, x1, y1, x2, y2, (uint)entry.frame)) {
 			warning("recompositeSpriteLayer: bad header in '%s'", entry.spwFile.c_str());
 			delete spw;
 			continue;
 		}
 		debugC(5, kDebugVideo, "recompositeSpriteLayer: place=%u %s bounds [%d,%d]-[%d,%d]",
 		      entry.placeId, entry.spwFile.c_str(), x1, y1, x2, y2);
-		decodeSPWPixels(spw, _warpSurface, 0);
+		decodeSPWPixels(spw, _warpSurface, (uint)entry.frame);
 		delete spw;
 	}
+	_omni3dMan.setSourceSurface(&_warpSurface);
+}
+
+void CryOmni3DEngine_Atlantis::animateSprites() {
+	if (!_warpLoaded || _currentPlaceId >= _spriteAnimCurrent.size())
+		return;
+	int wspr = _gameVars.getValOrDefault("wsprframe", 0);
+	if (animatePlaceSprites(_spritePlaceList, (uint16)_currentPlaceId, _spriteAnimCurrent[_currentPlaceId],
+	                        g_system->getMillis() / kSpriteTickMs, _spriteAnimLast, wspr))
+		recompositeSpriteLayer();
+	_gameVars["wsprframe"] = wspr;
 }
 
 } // End of namespace Atlantis

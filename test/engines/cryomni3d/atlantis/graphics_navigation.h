@@ -24,6 +24,7 @@
 #include "cryomni3d/omni3d.h"
 #include "cryomni3d/atlantis/bigfile.h"
 #include "cryomni3d/atlantis/npc_click.h"
+#include "cryomni3d/atlantis/sprite_anim.h"
 #include "cryomni3d/atlantis/wam_parser.h"
 #include "common/archive.h"
 #include "common/fs.h"
@@ -347,6 +348,76 @@ public:
 		}
 		TS_ASSERT_EQUALS(wams, 38u);
 		SearchMan.remove("graphics_pickup_data");
+	}
+
+	// Place-sprite animation against the ORIGINAL FUN_00425304 run under
+	// emulation on synthetic place tables (atlantis-re
+	// tools/emu/scripts_sprite_anim.py, evidence/golden/graphics_sprite_anim.txt):
+	// 24 scenarios of up to 5 entries (active, type 0..3, frame count 1..8),
+	// a current animation entry, and 60 calls at increasing tick values each;
+	// after every call the entries' active flags and frames and WSPRFRAME.
+	// Port: animatePlaceSprites (sprite_anim.cpp).
+	static long nextLong(const char *&p) {
+		char *end = nullptr;
+		long v = strtol(p, &end, 10);
+		p = end;
+		return v;
+	}
+
+	void test_sprite_anim_vs_original() {
+		using namespace CryOmni3D::Atlantis;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("graphics_navigation: no golden directory configured, skipped");
+			return;
+		}
+		Common::Array<Common::String> lines;
+		TS_ASSERT(AtlantisTest::loadGoldenLines("graphics_sprite_anim.txt", lines));
+		Common::Array<SpritePlaceEntry> entries;
+		uint current = 0;
+		uint32 last[kSpriteAnimSlots];
+		int wspr = 0;
+		uint scenarios = 0, steps = 0, bad = 0;
+		for (const Common::String &l : lines) {
+			if (l.empty() || l[0] == '#')
+				continue;
+			const char *p = l.c_str() + 2;
+			if (l[0] == 'S') {
+				scenarios++;
+				entries.clear();
+				memset(last, 0, sizeof(last));
+				wspr = 0;
+				current = (uint)nextLong(p);
+				while (*p == ' ') {
+					p++;
+					SpritePlaceEntry e;
+					e.placeId = 5;
+					e.active = nextLong(p) != 0;
+					p++;
+					e.type = (int)nextLong(p);
+					p++;
+					e.frameCount = (int)nextLong(p);
+					e.frame = 0;
+					e.persoId = 0;
+					entries.push_back(e);
+				}
+				continue;
+			}
+			// T <ticks> <a:f>... W <w>
+			steps++;
+			uint32 ticks = (uint32)nextLong(p);
+			animatePlaceSprites(entries, 5, current, ticks, last, wspr);
+			Common::String got = Common::String::format("T %u", ticks);
+			for (const SpritePlaceEntry &e : entries)
+				got += Common::String::format(" %d:%d", e.active ? 1 : 0, e.frame);
+			got += Common::String::format(" W %d", wspr);
+			if (got != l) {
+				if (bad++ < 5)
+					TS_FAIL(Common::String::format("sprite anim: got '%s', original '%s'", got.c_str(), l.c_str()).c_str());
+			}
+		}
+		TS_ASSERT_EQUALS(scenarios, 24u);
+		TS_ASSERT_EQUALS(steps, 24u * 60u);
+		TS_ASSERT_EQUALS(bad, 0u);
 	}
 
 	// Dialog camera FOV table (atlantis-cd-en-714240 @ 0x00496080, 4 floats,

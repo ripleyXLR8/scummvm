@@ -84,6 +84,21 @@ inline bool loadGolden(const char *name, Golden &out) {
 	return true;
 }
 
+// The lines of a golden file as they are (trimmed), comments included.
+inline bool loadGoldenLines(const char *name, Common::Array<Common::String> &out) {
+	Common::FSNode node(Common::Path(goldenDir(), '/').appendComponent(name));
+	Common::File f;
+	if (!f.open(node))
+		return false;
+	while (!f.eos()) {
+		Common::String line = f.readLine();
+		line.trim();
+		if (!line.empty())
+			out.push_back(line);
+	}
+	return true;
+}
+
 inline Common::String md5Hex(const byte *data, uint32 size) {
 	Common::MemoryReadStream s(data, size);
 	return Common::computeStreamMD5AsString(s);

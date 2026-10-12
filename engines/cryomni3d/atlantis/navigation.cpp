@@ -489,6 +489,11 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			}
 		}
 
+		// Place sprites: FUN_0041bfa0 calls FUN_00425304 at 0x0041c3a9, after
+		// the timers, unless GameOver or Exit is set (then it leaves, 0x0041c387).
+		if (!exit)
+			animateSprites();
+
 		if (_warpLoaded) {
 			const Graphics::Surface *result = _omni3dMan.getSurface();
 			if (result && _guestsShown && _guests.count) {

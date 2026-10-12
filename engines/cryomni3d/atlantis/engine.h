@@ -42,6 +42,7 @@
 #include "cryomni3d/atlantis/con_script.h"
 #include "cryomni3d/atlantis/menu_layout.h"
 #include "cryomni3d/atlantis/npc_click.h"
+#include "cryomni3d/atlantis/sprite_anim.h"
 #include "cryomni3d/atlantis/toolbar.h"
 #include "cryomni3d/atlantis/wam_parser.h"
 
@@ -652,9 +653,14 @@ private:
 	Graphics::Surface _warpSurface;
 	bool _warpLoaded;
 
-	int    _propAnimFrames;  // total frame count (0 = no animated prop at current place)
-	int    _propAnimFrame;
-	uint32 _propAnimNextMs;  // g_system->getMillis() threshold for next frame advance
+	// Place-sprite animation (atlantis.exe FUN_00425304): the per-slot tick
+	// of the last frame step (0x006cc578, never reset) and each view's
+	// current animation entry (place byte +4, set by NEWWSPRANIM).
+	uint32 _spriteAnimLast[kSpriteAnimSlots];
+	Common::Array<uint> _spriteAnimCurrent;
+	// One FUN_00425304 step for the current view; recomposites when a frame
+	// or an active flag changed.
+	void animateSprites();
 };
 
 } // End of namespace Atlantis

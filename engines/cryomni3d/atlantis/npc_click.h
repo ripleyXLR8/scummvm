@@ -57,6 +57,9 @@ struct SpritePlaceEntry {
 	bool startActive;
 	mutable bool active;   // runtime render flag; reset to startActive on place load
 	mutable int  frame;    // current animation frame
+	// SPW header dword +4, set when the place is entered (FUN_0042431c);
+	// 0 when the SPW could not be read (the original skips such entries).
+	int frameCount = 0;
 };
 
 // Parse one line of a sprite list (SPRLIST\\SPWATLn.TXT); false for comments
