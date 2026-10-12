@@ -505,12 +505,18 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 	// (the reload replays the chapter) or any pending abort.
 	if (_currentCONChapter == entryChapter && sec.gotoId > 0 && !shouldAbort() &&
 	        pendingGameOver == 0 && _abortCommand == kAbortNoAbort) {
-		for (ConSection &target : _conScript.sections()) {
-			if (target.id == sec.gotoId) {
-				target.played = true;
-				playConSection(target);
-				break;
+		// The executor resumes at the first "/N" header of the text
+		// (atlantis.exe FUN_00425c04).
+		ConSection target;
+		if (_conScript.gotoSection(sec.gotoId, target)) {
+			for (ConSection &s : _conScript.sections()) {
+				if (s.id == sec.gotoId) {
+					s.played = true;
+					target.isCon = s.isCon;
+					break;
+				}
 			}
+			playConSection(target);
 		}
 	}
 

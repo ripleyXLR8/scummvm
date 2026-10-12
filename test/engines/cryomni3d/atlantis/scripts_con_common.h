@@ -130,12 +130,16 @@ inline Common::String canonicalDump(const ConScript &script) {
 	for (uint s = 0; s < secs.size(); s++) {
 		const ConSection &sec = secs[s];
 		Common::String kind;
-		if (sec.isTimer)
+		// The harness calls an entry "con*" when the /con scanner still finds
+		// it with every play counter at 0xff.
+		if (!sec.isEntry)
+			kind = "none";
+		else if (sec.isTimer)
 			kind = Common::String::format("tim%d", sec.timerNum);
 		else if (sec.isCon)
-			kind = sec.needsItem ? "con*" : "con";
+			kind = (sec.repeatable || sec.conLimit > 0xff) ? "con*" : "con";
 		else
-			kind = sec.conditions.empty() ? "none" : "sel";
+			kind = "sel";
 		out += Common::String::format("S %d %s\n", sec.id, kind.c_str());
 		for (uint k = 0; k < sec.items.size(); k++) {
 			const CryOmni3D::Atlantis::ConSectionItem &it = sec.items[k];

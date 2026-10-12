@@ -19,29 +19,25 @@
  *
  */
 
-// Parser for Atlantis chapter scenario scripts (.CON files in SCENAR\).
+// Atlantis chapter scenario scripts (.CON files in SCENAR\).
 //
-// CON file structure:
-//   /INIT ... /FININIT  — chapter initialisation commands
-//   /N                  — section header (decimal integer)
-//   /con(conditions)    — player-triggered condition (NPC click)
-//   /con*(conditions)   — same but requires item in hand
-//   /sel(conditions)    — automatic condition (departure/arrival/game-state check)
-//   /sujN               — dialog subject/topic ID for subject-menu gating
-//   /goN                — redirect execution to section N
-//   /set(command)       — game-state mutation
+// The original keeps no parsed structure: it walks the text every time.
+// ConScript keeps the text and lists what those walks find, in the order
+// they find it (atlantis.exe; see atlantis-re: formats/scripts-con.md):
+//   /INIT            — FUN_00425eb0 runs the commands of the following lines
+//                      until a line has none
+//   /N               — section number: the last "/digit" a walk passed
+//   /sel, /Sel       — automatic entry (FUN_004280f8)
+//   /con, /Con       — player-triggered entry (FUN_004281f8); /conN allows N
+//                      plays, /con* any number
+//   /tim1, /Tim1, /tim2, /Tim2 — timer entries (FUN_0042bef4, FUN_0042bfa4)
+//   /sujN            — dialog subject gate of the entry it follows
+//   /set, /Set       — game-state command; /go, /Go — jump to "/N"
 //   [Speaker,params] text — dialog line
-//   /000                — end of script
-//
-// Condition string format (for both /con and /sel):
-//   (key op val)&(key op val)&...   where op is '=', '<', or '>'
-//
-// Well-known condition keys:
-//   departvue   — which WAM zone the player just clicked to depart (/sel only)
-//   vue         — which panoramic place is currently active
-//   arriveevue  — set by engine to the arrived-at place ID when entering a place
-//   clicperso   — which NPC was clicked (/con only)
-//   All other keys are general game variables stored in CryOmni3DEngine_Atlantis::_gameVars.
+//   #                — comment
+// Other spellings are not recognised.  A section can hold several entry
+// lines; each is a separate entry point.  The keys of a condition are the
+// variables of VARIAS.CON (con_eval.cpp).
 
 #ifndef CRYOMNI3D_ATLANTIS_CON_SCRIPT_H
 #define CRYOMNI3D_ATLANTIS_CON_SCRIPT_H
@@ -82,18 +78,8 @@ struct ConSectionItem {
 	Common::String setCmd;  // valid when  isSet
 };
 
-// One parsed condition from a /con(...) or /sel(...) compound condition string.
-//
-// Conditions evaluate left-to-right with short-circuit semantics that match
-// the exe (atlantis.exe FUN_004298ac):
-//   nextSep = '&' : if cond fails -> EXIT FAIL ; if passes -> continue
-//   nextSep = '|' : if cond passes -> EXIT SUCCESS ; if fails -> continue
-//   nextSep = '\0': last cond; its result is the overall result.
-// So `A & B | C & D` reads as `A AND (B OR (C AND D))` — neither standard nor
-// OR-tighter precedence; just a left-to-right chain.  All multi-clause CON
-// conditions in the game data (CHAPI*.CON) are authored under this rule, e.g.
-// /sel(parletemp3=3)&(departvue=38)|(56)|(22) gates the OR-list on the
-// leading parletemp3=3 guard the way the exe evaluates it.
+// One term of an entry line's condition, used only to find ClicPerso and
+// ClicZone; the evaluation itself reads the text (con_eval.cpp).
 struct ConCondition {
 	Common::String key;    // lowercase key name
 	char           op;     // '=', '<', '>', '!' (not equal)
@@ -101,19 +87,24 @@ struct ConCondition {
 	char           nextSep = '\0';  // '&', '|', or '\0' (end of cond list)
 };
 
+// An entry point found by one of the original's scanners (/sel, /con,
+// /tim1, /tim2), or a section header that no scanner reaches (isEntry false:
+// only reachable through /go).  See atlantis-re: formats/scripts-con.md.
 struct ConSection {
-	int  id        = 0;
-	bool isCon     = false;   // /con or /con* (player-triggered)
-	bool needsItem = false;   // /con* (item in hand required)
-	bool isTimer   = false;   // /tim* (timer-driven automatic condition)
-	int  timerNum  = 0;       // timer index (1 or 2) from /tim1 or /tim2
+	int  id        = 0;       // the last "/N" before the entry line
+	bool isEntry   = false;   // false: header only
+	bool isCon     = false;   // /con or /Con (player-triggered)
+	bool repeatable = false;  // /con* : not limited by the play counter
+	int  conLimit  = 1;       // /conN : plays allowed by the counter (0 -> 1)
+	bool isTimer   = false;   // /tim1, /Tim1, /tim2, /Tim2
+	int  timerNum  = 0;       // 1 or 2
 	int  clicPerso = 0;       // ClicPerso=N from conditions (0 = none); kept for interactNPC()
 	int  clicZone  = 0;       // ClicZone=N from conditions (0 = none); for zone-click /con* sections
 	int  sujId     = 0;       // /sujN subject gate (0 = always available;
 	                          // first id from a comma-list; see sujIds)
 	int  gotoId    = 0;       // /goN redirect (0 = no redirect)
-	int32 condOffset = -1;    // offset in ConScript::text() of the first
-	                          // /con, /sel or /tim line (-1 = none)
+	int32 condOffset = -1;    // where the scanner starts the evaluation (-1 = none)
+	int32 lineOffset = -1;    // start of the entry line, or of the header
 	mutable bool played = false;  // set after first execution (for one-shot arrival sections)
 
 	// /suj supports a comma-separated list (`/suj1,2` means "this
@@ -124,8 +115,8 @@ struct ConSection {
 	// for either suj 1 OR suj 2.  sujId == sujIds[0] for the menu icon.
 	Common::Array<int>             sujIds;
 
-	Common::Array<ConCondition>    conditions;  // all parsed conditions
-	Common::Array<ConSectionItem>  items;       // dialog lines and /set commands in source order
+	Common::Array<ConCondition>    conditions;  // terms of the entry line
+	Common::Array<ConSectionItem>  items;       // what the section executor runs, up to /go
 };
 
 // Parses a CON file buffer into sections and INIT commands.
@@ -133,6 +124,10 @@ class ConScript {
 public:
 	void parse(const char *buf, uint32 len);
 	void reset();
+
+	// FUN_00425c04 (/goN): the section that starts at the first "/N" of the
+	// text, with the items the executor runs from there.  False if none.
+	bool gotoSection(int id, ConSection &out) const;
 
 	Common::Array<ConSection>       &sections()  { return _sections; }
 	const Common::Array<ConSection> &sections()  const { return _sections; }

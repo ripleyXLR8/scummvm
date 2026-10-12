@@ -543,7 +543,7 @@ void CryOmni3DEngine_Atlantis::runArrivalSelSections(int arrivedVue, int fromVue
 	// FUN_004280f8).  This is also what runs each chapter's intro section
 	// (/sel(initflag=0), the first /sel after /FININIT).
 	for (ConSection &sec : _conScript.sections()) {
-		if (sec.isCon || sec.isTimer || sec.played)
+		if (!sec.isEntry || sec.isCon || sec.isTimer || sec.played)
 			continue;
 		if (!evalSelSection(sec, 0, arrivedVue))
 			continue;
@@ -561,7 +561,7 @@ void CryOmni3DEngine_Atlantis::runDepartureSelSections(int departZone) {
 	// Same single-fire /sel scan; departure sections gate on (departvue=N) or
 	// (departvue>0), arrival-only sections self-exclude (arriveevue is 0 here).
 	for (ConSection &sec : _conScript.sections()) {
-		if (sec.isCon || sec.isTimer)
+		if (!sec.isEntry || sec.isCon || sec.isTimer)
 			continue;
 		if (!evalSelSection(sec, departZone, (int)_currentPlaceId))
 			continue;
