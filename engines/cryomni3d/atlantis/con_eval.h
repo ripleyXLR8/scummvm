@@ -33,27 +33,55 @@
 namespace CryOmni3D {
 namespace Atlantis {
 
-// Evaluates the condition list of a CON section (/sel, /con, /tim) against
-// the stored game variables and the inventory.  Keys whose value comes from
-// live engine state (vue, departvue, ...) are supplied by liveValue(), which
-// the engine overrides.  See atlantis-re: functions/scripts-FUN_004298ac.md.
+// The variable names of VARIAS.CON.  The line number is the variable index.
+class ConVariableNames {
+public:
+	// Load VARIAS.CON; FUN_00426cb0 upper-cases the whole file (FUN_00429df0).
+	void load(const char *data, uint32 size);
+	bool empty() const { return _names.empty(); }
+
+	// FUN_00429d20: index of the first line that starts with the len bytes of
+	// key (strncmp), or -1.
+	int index(const char *key, uint len) const;
+
+	// Lower-case name of the variable with this index.
+	const Common::String &name(uint index) const { return _names[index]; }
+	uint size() const { return _names.size(); }
+
+private:
+	Common::Array<char> _text;               // upper-cased
+	Common::Array<Common::String> _names;    // lower-case, one per line
+};
+
+// Evaluates the condition line of a CON section (/sel, /con, /tim) the way
+// atlantis.exe FUN_004298ac does: on the script text itself, against the
+// variables named in VARIAS.CON and the inventory.  Keys whose value comes
+// from live engine state (vue, departvue, ...) are supplied by liveValue(),
+// which the engine overrides.  See atlantis-re: functions/scripts-FUN_004298ac.md.
 class ConEvaluator {
 public:
-	ConEvaluator(const Common::HashMap<Common::String, int> &vars, const Inventory &inventory) :
-		_vars(vars), _inventory(inventory) {}
+	ConEvaluator(const ConVariableNames &names, const Common::HashMap<Common::String, int> &vars,
+	             const Inventory &inventory) :
+		_names(names), _vars(vars), _inventory(inventory) {}
 	virtual ~ConEvaluator() {}
 
-	// True when the conditions hold; an empty list holds.
-	bool evaluate(const Common::Array<ConCondition> &conditions) const;
+	// True when the condition line starting at text[offset] holds.  The
+	// scans may run past the line, as in the original; bytes past the end of
+	// the text read as 0.
+	bool evaluate(const Common::Array<char> &text, uint32 offset) const;
 
-	// Value of the left-hand side of a condition.
-	int value(const Common::String &key) const;
+	// Value of the variable with this VARIAS.CON index.
+	int variableValue(int index) const;
+
+	// Value of a variable by its lower-case VARIAS.CON name.
+	int value(const Common::String &name) const;
 
 protected:
 	// Return true and set out for a key read from live engine state.
 	virtual bool liveValue(const Common::String &, int &) const { return false; }
 
 private:
+	const ConVariableNames &_names;
 	const Common::HashMap<Common::String, int> &_vars;
 	const Inventory &_inventory;
 };

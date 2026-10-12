@@ -105,12 +105,16 @@ static void parseConditions(const Common::String &str, Common::Array<ConConditio
 // ---------------------------------------------------------------------------
 
 void ConScript::reset() {
+	_text.clear();
 	_sections.clear();
 	_initCmds.clear();
 }
 
 void ConScript::parse(const char *buf, uint32 len) {
 	reset();
+	_text.resize(len);
+	if (len)
+		memcpy(_text.begin(), buf, len);
 
 	const char *p   = buf;
 	const char *end = buf + len;
@@ -160,6 +164,8 @@ void ConScript::parse(const char *buf, uint32 len) {
 
 		// /con(...) or /con*(...) — player-triggered condition.
 		if (line.size() >= 4 && scumm_strnicmp(line.c_str(), "/con", 4) == 0) {
+			if (cur->condOffset < 0)
+				cur->condOffset = (int32)(sol - buf);
 			cur->isCon = true;
 			uint i = 4;
 			if (i < line.size() && line[i] == '*') { cur->needsItem = true; i++; }
@@ -175,6 +181,8 @@ void ConScript::parse(const char *buf, uint32 len) {
 
 		// /sel(...) — automatic condition (view events, game-state checks).
 		if (line.size() >= 4 && scumm_strnicmp(line.c_str(), "/sel", 4) == 0) {
+			if (cur->condOffset < 0)
+				cur->condOffset = (int32)(sol - buf);
 			cur->isCon = false;
 			Common::String condStr = (4u < line.size()) ? line.substr(4) : Common::String();
 			parseConditions(condStr, cur->conditions);
@@ -183,6 +191,8 @@ void ConScript::parse(const char *buf, uint32 len) {
 
 		// /timN(...) — timer-driven automatic condition (timerNum = the digit after /tim).
 		if (line.size() >= 4 && scumm_strnicmp(line.c_str(), "/tim", 4) == 0) {
+			if (cur->condOffset < 0)
+				cur->condOffset = (int32)(sol - buf);
 			cur->isCon    = false;
 			cur->isTimer  = true;
 			// Extract timer number (digit(s) between "/tim" and "(").

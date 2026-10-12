@@ -26,6 +26,7 @@
 
 #include "common/debug.h"
 #include "common/memstream.h"
+#include "common/ptr.h"
 #include "common/str.h"
 #include "common/system.h"
 #include "common/textconsole.h"
@@ -87,6 +88,18 @@ void CryOmni3DEngine_Atlantis::loadConScript(int chapter) {
 	// clears the list before the first loadConScript, and loadGame restores
 	// the saved list.
 	_sujEnabled.clear();
+
+	if (_conVarNames.empty()) {
+		Common::ScopedPtr<Common::SeekableReadStream> v(openBigFileStream(kFileTypeScript, "VARIAS.CON"));
+		if (v) {
+			Common::Array<char> data(v->size());
+			if (data.size())
+				v->read(data.begin(), data.size());
+			_conVarNames.load(data.begin(), data.size());
+		} else {
+			warning("loadConScript: no VARIAS.CON");
+		}
+	}
 
 	Common::String name = Common::String::format("CHAPI%03d.CON", chapter);
 	Common::SeekableReadStream *s = openBigFileStream(kFileTypeScript, name);
@@ -465,11 +478,11 @@ namespace {
 // rather than from the stored game variables.
 class EngineConEvaluator : public ConEvaluator {
 public:
-	EngineConEvaluator(const Inventory &inventory,
+	EngineConEvaluator(const ConVariableNames &names, const Inventory &inventory,
 	                   const Common::HashMap<Common::String, int> &vars,
 	                   const Common::Array<byte> &placeVisits, uint32 chapterStartMs,
 	                   int departZone, int currentVue, int rolledRandom) :
-		ConEvaluator(vars, inventory), _inventory(inventory), _placeVisits(placeVisits),
+		ConEvaluator(names, vars, inventory), _inventory(inventory), _placeVisits(placeVisits),
 		_chapterStartMs(chapterStartMs), _departZone(departZone), _currentVue(currentVue),
 		_rolledRandom(rolledRandom) {}
 
@@ -514,9 +527,11 @@ bool CryOmni3DEngine_Atlantis::evalSelSection(const ConSection &sec,
 	// conjunction see a consistent value.
 	const int rolledRandom = (int)_conRng.getRandomNumber(255);
 
-	EngineConEvaluator eval(_inventory, _gameVars, _placeVisits, _chapterStartMs,
+	if (sec.condOffset < 0)
+		return true;
+	EngineConEvaluator eval(_conVarNames, _inventory, _gameVars, _placeVisits, _chapterStartMs,
 	                        departZone, currentVue, rolledRandom);
-	return eval.evaluate(sec.conditions);
+	return eval.evaluate(_conScript.text(), (uint32)sec.condOffset);
 }
 
 void CryOmni3DEngine_Atlantis::runArrivalSelSections(int arrivedVue, int fromVue) {

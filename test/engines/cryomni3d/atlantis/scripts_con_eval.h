@@ -8,8 +8,9 @@
 // terminator = < > ! # ,), 0x00429d20 (prefix lookup in VARIAS.CON),
 // 0x00429eb0/0x00429f44/0x00429fd8/0x0042a06c (= < > !, unsigned),
 // 0x00429e54 (INVENTnnn -> inventory table 0x006ce138).
-// Port: con_script.cpp parseConditions (real code, through ConScript::parse)
-// + con_eval.cpp ConEvaluator (real code, the evaluator of evalSelSection).
+// Port: con_eval.cpp ConEvaluator (real code, the evaluator of
+// evalSelSection), which reads the condition text itself, as the original
+// does.  Needs the game data (VARIAS.CON).
 //
 // Expected values were produced by running the ORIGINAL evaluator under
 // emulation: atlantis-re/tools/emu/scripts_eval.py synth / golden.
@@ -118,13 +119,15 @@ public:
 
 	uint runSynth(uint from, uint to) {
 		uint fails = 0;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("scripts_con_eval: no game data configured (VARIAS.CON), skipped");
+			return 0;
+		}
 		for (uint i = from; i < to && i < ARRAYSIZE(ScriptsEvalTest::kSynth); i++) {
 			const ScriptsEvalTest::SynthCase &c = ScriptsEvalTest::kSynth[i];
 			ScriptsTest::VarState st;
 			ScriptsEvalTest::stateFor(c, st);
-			Common::Array<ScriptsTest::ConCondition> conds;
-			ScriptsTest::portParseLine(c.text, conds);
-			bool port = ScriptsTest::portEval(conds, st);
+			bool port = ScriptsTest::portEval(c.text, st);
 			if (port != c.expected) {
 				fails++;
 				TS_WARN(Common::String::format("scripts_con_eval: case %u '%s': original=%d port=%d",
@@ -178,12 +181,10 @@ public:
 			ScriptsTest::condLines(data, lines);
 			Common::String bits;
 			for (uint i = 0; i < lines.size(); i++) {
-				Common::Array<ScriptsTest::ConCondition> conds;
-				ScriptsTest::portParseLine(lines[i], conds);
 				for (uint k = 0; k < 64; k++) {
 					ScriptsTest::VarState st;
 					ScriptsTest::makeState(i, k, varNames, lines[i], st);
-					bits += ScriptsTest::portEval(conds, st) ? '1' : '0';
+					bits += ScriptsTest::portEval(lines[i], st) ? '1' : '0';
 				}
 			}
 			Common::String key = files[f].substr(7);

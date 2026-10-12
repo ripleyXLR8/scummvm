@@ -112,6 +112,8 @@ struct ConSection {
 	int  sujId     = 0;       // /sujN subject gate (0 = always available;
 	                          // first id from a comma-list; see sujIds)
 	int  gotoId    = 0;       // /goN redirect (0 = no redirect)
+	int32 condOffset = -1;    // offset in ConScript::text() of the first
+	                          // /con, /sel or /tim line (-1 = none)
 	mutable bool played = false;  // set after first execution (for one-shot arrival sections)
 
 	// /suj supports a comma-separated list (`/suj1,2` means "this
@@ -135,8 +137,12 @@ public:
 	Common::Array<ConSection>       &sections()  { return _sections; }
 	const Common::Array<ConSection> &sections()  const { return _sections; }
 	const Common::Array<Common::String> &initCmds() const { return _initCmds; }
+	// The file as loaded: the condition evaluator reads the condition lines
+	// from it, as the original does.
+	const Common::Array<char> &text() const { return _text; }
 
 private:
+	Common::Array<char>          _text;
 	Common::Array<ConSection>    _sections;
 	Common::Array<Common::String> _initCmds;
 };

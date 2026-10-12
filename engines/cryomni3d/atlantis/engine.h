@@ -36,6 +36,7 @@
 #include "cryomni3d/omni3d.h"
 
 #include "cryomni3d/atlantis/bigfile.h"
+#include "cryomni3d/atlantis/con_eval.h"
 #include "cryomni3d/atlantis/con_script.h"
 #include "cryomni3d/atlantis/menu_layout.h"
 #include "cryomni3d/atlantis/toolbar.h"
@@ -491,6 +492,7 @@ private:
 	uint _currentCONChapter;   // which CHAPI00N.CON is loaded (0 = none)
 	uint32 _chapterStartMs;    // wall-clock at chapter load (for `chaptertime`)
 	Common::HashMap<Common::String, int> _gameVars;
+	ConVariableNames _conVarNames;             // VARIAS.CON, for conditions
 	Common::Array<byte> _placeVisits;          // per-place visit counts (nbvisite)
 	mutable Common::RandomSource _conRng;      // for /sel `random` conditions
 

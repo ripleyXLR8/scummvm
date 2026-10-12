@@ -19,56 +19,258 @@
  *
  */
 
-#include "common/util.h"
-
 #include "cryomni3d/atlantis/con_eval.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
 
-int ConEvaluator::value(const Common::String &key) const {
-	int live;
-	if (liveValue(key, live))
-		return live;
-	if (key.hasPrefix("invent") && key.size() > 6 && Common::isDigit(key[6])) {
-		// invent<N> — 1 when object N is in the inventory, else 0.  The
-		// original (atlantis.exe FUN_00429e54) tests the live inventory
-		// here; it is not a stored game variable.
-		uint objId = (uint)atoi(key.c_str() + 6);
-		return _inventory.inInventoryByNameID(objId) ? 1 : 0;
+namespace {
+
+// FUN_00451b7a (atoi) character classes, from the table at 0x004bf600.
+bool isAtoiSpace(byte c) {
+	return (c >= 9 && c <= 13) || c == ' ';
+}
+
+bool isAtoiDigit(byte c) {
+	return c >= '0' && c <= '9';
+}
+
+// Bytes of the script text; past the end reads 0.
+struct TextCursor {
+	const Common::Array<char> &text;
+	explicit TextCursor(const Common::Array<char> &t) : text(t) {}
+	byte at(uint32 pos) const { return pos < text.size() ? (byte)text[pos] : 0; }
+};
+
+// FUN_00451b7a.
+int32 atoiAt(const TextCursor &t, uint32 pos) {
+	while (isAtoiSpace(t.at(pos)))
+		pos++;
+	byte sign = t.at(pos);
+	if (sign == '+' || sign == '-')
+		pos++;
+	uint32 n = 0;
+	while (isAtoiDigit(t.at(pos)))
+		n = n * 10 + (t.at(pos++) - '0');
+	return (int32)(sign == '-' ? 0u - n : n);
+}
+
+int32 atoiBuf(const byte *buf, uint len, uint pos) {
+	while (pos < len && isAtoiSpace(buf[pos]))
+		pos++;
+	byte sign = pos < len ? buf[pos] : 0;
+	if (sign == '+' || sign == '-')
+		pos++;
+	uint32 n = 0;
+	while (pos < len && isAtoiDigit(buf[pos]))
+		n = n * 10 + (buf[pos++] - '0');
+	return (int32)(sign == '-' ? 0u - n : n);
+}
+
+// FUN_00429bf4: separator after the current term.  1 for '|', 0 for '&' or
+// the end of the line, unchanged when another '(' comes first.
+int pendingOr(const TextCursor &t, uint32 pos, int pending) {
+	for (;;) {
+		byte c = t.at(pos);
+		if (c == '(')
+			return pending;
+		if (c == '|')
+			return 1;
+		if (c == '&')
+			return 0;
+		pos++;
+		if (c == '\r')
+			return 0;
+		if (pos > t.text.size() + 1)   // the original would run off the buffer
+			return 0;
 	}
-	// Generic variable (covers arriveevue, the flags, initflag, …).
-	Common::HashMap<Common::String, int>::const_iterator it = _vars.find(key);
+}
+
+// FUN_00429c64: position after the next '&' of the line, or -1.
+int64 skipToAnd(const TextCursor &t, uint32 pos) {
+	for (;;) {
+		byte c = t.at(pos);
+		if (c == '\r')
+			return -1;
+		pos++;
+		if (c == '&')
+			return pos;
+		if (pos > t.text.size() + 1)
+			return -1;
+	}
+}
+
+// FUN_00429cb0: false on a key terminator.
+bool isKeyChar(byte c) {
+	return c != '=' && c != '<' && c != '>' && c != '!' && c != '#' && c != ',';
+}
+
+// FUN_00429eb0 / 0x00429f44 / 0x00429fd8 / 0x0042a06c: the value is the first
+// digit run within 16 bytes after the operator; no digit fails the test.
+// The compare is unsigned.
+bool compareTerm(const TextCursor &t, uint32 pos, byte op, uint32 var) {
+	for (uint i = 0; i < 16; i++) {
+		if (!isAtoiDigit(t.at(pos + i)))
+			continue;
+		uint32 v = (uint32)atoiAt(t, pos + i);
+		switch (op) {
+		case '=': return var == v;
+		case '<': return var < v;
+		case '>': return var > v;
+		default:  return var != v;
+		}
+	}
+	return false;
+}
+
+} // End of anonymous namespace
+
+void ConVariableNames::load(const char *data, uint32 size) {
+	_text.resize(size);
+	_names.clear();
+	Common::String line;
+	for (uint32 i = 0; i < size; i++) {
+		char c = data[i];
+		_text[i] = (c >= 'a' && c <= 'z') ? (char)(c - 0x20) : c;
+		if (c == '\n') {
+			if (!line.empty() && line.lastChar() == '\r')
+				line.deleteLastChar();
+			line.toLowercase();
+			_names.push_back(line);
+			line.clear();
+		} else {
+			line += c;
+		}
+	}
+	if (!line.empty()) {
+		line.toLowercase();
+		_names.push_back(line);
+	}
+}
+
+int ConVariableNames::index(const char *key, uint len) const {
+	// Line by line: strncmp(line, key, len), first match wins.
+	uint32 pos = 0;
+	int index = 0;
+	while (pos < _text.size()) {
+		bool match = true;
+		for (uint i = 0; i < len; i++) {
+			byte a = pos + i < _text.size() ? (byte)_text[pos + i] : 0;
+			byte b = (byte)key[i];
+			if (a != b) {
+				match = false;
+				break;
+			}
+			if (a == 0)
+				break;
+		}
+		if (match)
+			return index;
+		while (pos < _text.size() && _text[pos] != '\n')
+			pos++;
+		pos++;
+		index++;
+	}
+	return -1;
+}
+
+int ConEvaluator::variableValue(int index) const {
+	if (index < 0 || (uint)index >= _names.size())
+		return 0;
+	return value(_names.name((uint)index));
+}
+
+int ConEvaluator::value(const Common::String &name) const {
+	int live;
+	if (liveValue(name, live))
+		return live;
+	Common::HashMap<Common::String, int>::const_iterator it = _vars.find(name);
 	return (it != _vars.end()) ? it->_value : 0;
 }
 
-bool ConEvaluator::evaluate(const Common::Array<ConCondition> &conditions) const {
-	if (conditions.empty())
-		return true;
+bool ConEvaluator::evaluate(const Common::Array<char> &text, uint32 offset) const {
+	const TextCursor t(text);
+	// The key buffer of the original is a 16-byte stack array that is never
+	// cleared or terminated; FUN_00429e54 reads it past the key.  Its initial
+	// content is undefined in the original: it is zero here, as in the
+	// emulation that produced the reference results.
+	byte key[16];
+	memset(key, 0, sizeof(key));
+	int pending = 0;
+	uint32 p = offset;
 
-	// Left-to-right short-circuit eval (atlantis.exe FUN_004298ac):
-	//   '&' + fail -> EXIT FAIL ; '|' + pass -> EXIT SUCCESS ; end -> last result.
-	for (const ConCondition &cc : conditions) {
-		int lhs = value(cc.key);
+	// The original bounds the loop by the size of the CON file.
+	for (uint32 iter = 0; iter < text.size(); iter++) {
+		byte c = t.at(p);
+		if (c == '\r' || c == '\n')
+			return true;
+		p++;
+		if (c != '(')
+			continue;
 
-		bool ok;
-		switch (cc.op) {
-		case '=': ok = (lhs == cc.value); break;
-		case '<': ok = (lhs <  cc.value); break;
-		case '>': ok = (lhs >  cc.value); break;
-		case '!': ok = (lhs != cc.value); break;
-		default:  ok = false;             break;
-		}
+		pending = pendingOr(t, p, pending);
+		uint len = 0;
+		do {
+			key[len++] = t.at(p);
+			if (len >= 13)
+				return false;
+			p++;
+		} while (isKeyChar(t.at(p)));
+		for (uint i = 0; i < len; i++)
+			if (key[i] >= 'a' && key[i] <= 'z')
+				key[i] -= 0x20;
 
-		if (cc.nextSep == '&') {
-			if (!ok) return false;
-		} else if (cc.nextSep == '|') {
-			if (ok) return true;
+		// FUN_00429e54: "INVENT" then atoi over the rest of the buffer.
+		int32 objId = (memcmp(key, "INVENT", 6) == 0) ? atoiBuf(key, sizeof(key), 6) : 0;
+		if (objId == 0) {
+			int index = _names.index((const char *)key, len);
+			if (index == -1) {
+				// The original shows an error dialog here.
+				warning("CON condition: unknown variable '%s'",
+				        Common::String((const char *)key, len).c_str());
+				return false;
+			}
+			const uint32 var = (uint32)variableValue(index);
+			static const byte kOps[4] = { '=', '<', '>', '!' };
+			for (uint k = 0; k < 4; k++) {
+				if (t.at(p) != kOps[k])
+					continue;
+				if (!compareTerm(t, p + 1, kOps[k], var)) {
+					if (pending == 0)
+						return false;
+				} else if (pending == 1) {
+					int64 next = skipToAnd(t, p);
+					if (next < 0)
+						return true;
+					p = (uint32)next;
+				}
+			}
 		} else {
-			return ok;
+			// The operator is ignored: the term holds when a record with this
+			// id has the value after the operator (records hold 1), or when
+			// there is no such record and that value starts with '0'.
+			bool found = false;
+			for (uint i = 0; i < _inventory.size(); i++) {
+				const Object *obj = _inventory[i];
+				if (!obj || obj->idOBJ() != (uint)objId)
+					continue;
+				if (atoiAt(t, p + 1) == 1) {
+					found = true;
+					break;
+				}
+				if (pending != 1)
+					return false;
+				pending = 0;
+			}
+			if (!found && t.at(p + 1) != '0') {
+				if (pending == 1)
+					pending = 0;
+				else
+					return false;
+			}
 		}
 	}
-	return true;
+	return false;
 }
 
 } // End of namespace Atlantis

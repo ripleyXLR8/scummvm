@@ -11,11 +11,13 @@
 //    interpreter (atlantis-cd-en-714240 @ 0x004280f8/0x004281f8/0x0042bef4/
 //    0x0042bfa4 entry scanners, 0x0042844c section executor, 0x00425eb0 /INIT).
 //  - portEval()         runs the REAL condition evaluator, ConEvaluator
-//    (con_eval.cpp), on a variable map and an inventory built with the real
-//    inventory unit (inventory.cpp).  The engine's evalSelSection uses the
-//    same class; only the keys it reads from live engine state (departvue,
-//    vue, objetenmain, chaptertime, nbvisite, random) come from an engine
-//    subclass, and the test gives them through the variable map instead.
+//    (con_eval.cpp), on one condition line laid out as the emulation harness
+//    lays it out (line + "\r\n"), with the VARIAS.CON names, a variable map
+//    and an inventory built with the real inventory unit (inventory.cpp).
+//    The engine's evalSelSection uses the same class; only the keys it reads
+//    from live engine state (departvue, vue, objetenmain, chaptertime,
+//    nbvisite, random) come from an engine subclass, and the test gives them
+//    through the variable map instead.
 //  - the deterministic variable-state generator mirrored from
 //    atlantis-re/tools/emu/scripts_eval.py.
 
@@ -254,9 +256,21 @@ struct NullInventoryCb {
 	void cb(uint) {}
 };
 
+// VARIAS.CON from the game data, loaded once.
+inline const CryOmni3D::Atlantis::ConVariableNames &variasNames() {
+	static CryOmni3D::Atlantis::ConVariableNames names;
+	if (names.empty()) {
+		Big big;
+		Common::Array<char> data;
+		if (big.get("SCENAR\\VARIAS.CON", data))
+			names.load(data.begin(), data.size());
+	}
+	return names;
+}
+
 // The port's condition evaluator on a test state: variables from st.vars,
 // inventory records for st.inventory (one per id, in order).
-inline bool portEval(const Common::Array<ConCondition> &conditions, const VarState &st) {
+inline bool portEval(const Common::String &line, const VarState &st) {
 	static const CryOmni3D::Sprites sprites;
 	static NullInventoryCb nullCb;
 	Common::Array<uint> ids;
@@ -269,8 +283,10 @@ inline bool portEval(const Common::Array<ConCondition> &conditions, const VarSta
 	               new Common::Functor1Mem<uint, void, NullInventoryCb>(&nullCb, &NullInventoryCb::cb));
 	for (uint i = 0; i < objects.size(); i++)
 		CryOmni3D::Atlantis::inventoryAppend(inventory, &objects[i]);
-	CryOmni3D::Atlantis::ConEvaluator eval(st.vars, inventory);
-	return eval.evaluate(conditions);
+	Common::String text = line + "\r\n";
+	Common::Array<char> buf(text.c_str(), text.size());
+	CryOmni3D::Atlantis::ConEvaluator eval(variasNames(), st.vars, inventory);
+	return eval.evaluate(buf, 0);
 }
 
 } // End of namespace ScriptsTest
