@@ -356,19 +356,19 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 			break;
 
 		if (item.isSet) {
-			// /set(gameover=N), N != 0: trigger the game-over screen.  Its
-			// narrator commentary is the first dialog line after the command;
-			// the APC track is that line's index within the section.
+			// /set(gameover=N), N != 0: trigger the game-over screen
+			// (FUN_00426590).  Its narrator commentary is the line right after
+			// the command when it starts with "[Narra" (@ 0x004267ea); the APC
+			// track is 'a' + the number of '[' from the section header to it,
+			// which is the dialog line index for all 144 game overs shipped.
 			if (scumm_strnicmp(item.setCmd.c_str(), "gameover=", 9) == 0 &&
 			        atoi(item.setCmd.c_str() + 9) != 0) {
 				execConSetCommand(item.setCmd, item.offset);
 				pendingGameOver = atoi(item.setCmd.c_str() + 9);
-				for (uint j = itemIdx + 1; j < sec.items.size(); ++j) {
-					if (!sec.items[j].isSet) {
-						gameOverText  = sec.items[j].line.text;
-						gameOverTrack = (char)('A' + lineIdx);
-						break;
-					}
+				if (itemIdx + 1 < sec.items.size() && !sec.items[itemIdx + 1].isSet &&
+				        sec.items[itemIdx + 1].line.speaker.hasPrefix("Narra")) {
+					gameOverText  = sec.items[itemIdx + 1].line.text;
+					gameOverTrack = (char)('A' + lineIdx);
 				}
 				break;
 			}

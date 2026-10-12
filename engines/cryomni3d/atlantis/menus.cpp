@@ -296,24 +296,36 @@ void CryOmni3DEngine_Atlantis::showGameOver(int sectionId, int n,
 		Audio::SoundHandle handle;
 		_mixer->playStream(Audio::Mixer::kSpeechSoundType, &handle, apc);
 		debugC(1, kDebugScript, "showGameOver: GOVER%02d.TGA + %s", n, apcName.c_str());
+		// FUN_00426590 @ 0x00426b0c: until the sample ends or a left click
+		// (0x0049611c, set on a VK_LBUTTON edge by FUN_0041a298).
 		while (!shouldAbort() && _mixer->isSoundHandleActive(handle)) {
 			pollEvents();
-			if (checkKeysPressed(1, Common::KEYCODE_SPACE) || getCurrentMouseButton() != 0)
+			if (getCurrentMouseButton() == 1)
 				break;
 			g_system->delayMillis(10);
 		}
 		_mixer->stopHandle(handle);
-	} else {
+	} else if (!narratorText.empty()) {
+		// @ 0x00426ae0: a narrator line whose APC is missing holds the image
+		// for 5000 ms or until a left click.
 		debugC(1, kDebugScript, "showGameOver: GOVER%02d.TGA (no narrator audio)", n);
 		uint32 deadline = g_system->getMillis() + 5000;
 		while (!shouldAbort() && g_system->getMillis() < deadline) {
 			pollEvents();
-			if (checkKeysPressed(1, Common::KEYCODE_SPACE) || getCurrentMouseButton() != 0)
+			if (getCurrentMouseButton() == 1)
 				break;
 			g_system->delayMillis(10);
 		}
+	} else {
+		// @ 0x004267f4: no "[Narra" line after the command: no wait.
+		debugC(1, kDebugScript, "showGameOver: GOVER%02d.TGA (no narrator line)", n);
 	}
 	delete apcFile;
+
+	// @ 0x00426bc2: the screen is cleared to black.
+	img.fillRect(Common::Rect(640, 480), 0);
+	g_system->copyRectToScreen(img.getPixels(), img.pitch, 0, 0, 640, 480);
+	g_system->updateScreen();
 
 	while (getCurrentMouseButton() != 0 && !shouldAbort()) {
 		pollEvents();
