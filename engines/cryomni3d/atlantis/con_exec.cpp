@@ -439,6 +439,14 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 		return;
 	}
 
+	// ArcMagique=N (any value): the magic-bow animation, then the store
+	// (FUN_0042a100 @ 0x0042aa09).
+	if (key == "arcmagique") {
+		playArcMagique();
+		_gameVars[key] = value;
+		return;
+	}
+
 	// atlantis.exe FUN_00428da8 (after each executor line): NEWWSPRANIM=N
 	// starts the current view's entry N, STOPWSPRANIM=N stops it (and clears
 	// WSPRFRAME); the variable returns to 0.
@@ -841,6 +849,35 @@ bool CryOmni3DEngine_Atlantis::isSujEnabled(int persoId, int sujId) const {
 		return false;
 	}
 	return false;
+}
+
+void CryOmni3DEngine_Atlantis::playArcMagique() {
+	// atlantis.exe FUN_0042a100 @ 0x0042aa21..0x0042ac2b: SPRITE\2D\ARCANIM.SPR,
+	// frames 0..19 drawn at the mouse position over the view (the place
+	// sprites animate meanwhile, FUN_00425304); nothing when the file is
+	// missing.  The original presents each frame with no timer (Flip or Blt,
+	// FUN_004337d4), so its pace is the display's; the port uses the warp
+	// loop's frame pacing.
+	Common::Array<SubjSprite> anim;
+	loadFontSpriteSet("ARCANIM.SPR", anim);
+	if (anim.empty())
+		return;
+	const Common::Point mouse = getMousePos();
+	for (uint i = 0; i < 20 && !shouldAbort(); i++) {
+		animateSprites();
+		const Graphics::Surface *view = _warpLoaded ? _omni3dMan.getSurface() : nullptr;
+		if (!view)
+			break;
+		Graphics::ManagedSurface frame;
+		frame.copyFrom(*view);
+		if (i < anim.size())
+			drawSprite(frame, anim[i], mouse.x, mouse.y);
+		g_system->copyRectToScreen(frame.getPixels(), frame.pitch, 0, 0, frame.w, frame.h);
+		g_system->updateScreen();
+		g_system->delayMillis(10);
+		pollEvents();
+	}
+	debugC(1, kDebugScript, "playArcMagique: %u frames", anim.size());
 }
 
 void CryOmni3DEngine_Atlantis::hidePerso(int perso) {

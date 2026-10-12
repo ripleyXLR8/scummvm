@@ -244,6 +244,8 @@ private:
 	// /con(clicperso=N) section for them (the subject topic menu lands with
 	// the cursor layer).  Mirrors atlantis.exe FUN_00425828.
 	void interactNPC(int persoId);
+	// ArcMagique=N: the 20-frame ARCANIM.SPR animation at the mouse.
+	void playArcMagique();
 	// atlantis.exe FUN_00427bd0: hide every sprite of perso and remember it.
 	void hidePerso(int perso);
 	// atlantis.exe FUN_004278a0 for an object id (0x100..0x1ff).
