@@ -372,26 +372,11 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 				}
 				break;
 			}
-			const uint placeBeforeSet = _nextPlaceId;
 			execConSetCommand(item.setCmd, item.offset);
 			// A chapter reload reparsed _conScript: `sec`/`item`/the section
 			// list are dangling now.  Stop at once.
 			if (_currentCONChapter != entryChapter)
 				break;
-			// A mid-section /set(vue=N) followed by more dialog lines: swap to
-			// the destination's clean cyclo so those lines composite over the
-			// right panorama (the real place change still runs after the
-			// section, through the normal arrival path).
-			if (_nextPlaceId != uint(-1) && _nextPlaceId != placeBeforeSet) {
-				bool laterLine = false;
-				for (uint j = itemIdx + 1; j < sec.items.size(); ++j)
-					if (!sec.items[j].isSet) { laterLine = true; break; }
-				const AtlantisPlace *destPlace = laterLine
-				    ? _wam.findPlaceById((uint16)_nextPlaceId) : nullptr;
-				if (destPlace && loadCycloHNM(destPlace->cycloHnm))
-					debugC(1, kDebugScript, "playConSection: vue=%u mid-section — clean "
-					         "cyclo swapped for trailing dialog lines", _nextPlaceId);
-			}
 			continue;
 		}
 

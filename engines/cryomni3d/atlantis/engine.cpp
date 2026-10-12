@@ -435,13 +435,22 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 		if (_nextPlaceId != uint(-1)) {
 			uint fromVue = _currentPlaceId;
 			doPlaceChange();
+			_arrivalScanPending = false;
 			// Music persists across places — only startmusik/stopmusik (run
 			// by the new place's arrival CON sections, if any) change it.
 			musicUpdate();
 			if (_currentPlace)
 				runArrivalSelSections((int)_currentPlaceId, (int)fromVue);
+		} else if (_arrivalScanPending) {
+			// A script Vue= already entered the place (enterPlaceFromScript);
+			// the place loop now runs its arrival scan (atlantis.exe
+			// FUN_00423ad8 @ 0x00423b48).
+			_arrivalScanPending = false;
+			musicUpdate();
+			if (_currentPlace)
+				runArrivalSelSections((int)_currentPlaceId, (int)_arrivalFromVue);
 		}
-		if (_nextPlaceId != uint(-1))
+		if (_nextPlaceId != uint(-1) || _arrivalScanPending)
 			continue;
 
 		uint actionId = handleWarp();
@@ -451,19 +460,6 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 		if (actionId == 66666) {
 			if (_abortCommand || shouldAbort())
 				break;
-			continue;
-		}
-
-		// Script-initiated transition: handleWarp returned a destination set by
-		// /set(vue=N) inside a dialog or timer section (it left _nextPlaceId
-		// equal to the returned actionId).  Skip the user-click pipeline — no
-		// departure /sel scan, no abortdepart gate — the exe schedules
-		// script-set places directly, independent of the area-lock sections
-		// that fire on player navigation clicks.
-		if (actionId > 0 && _nextPlaceId == actionId) {
-			uint dest = _nextPlaceId;
-			_nextPlaceId = uint(-1);
-			executeTransition(dest);
 			continue;
 		}
 
@@ -477,12 +473,8 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 			runConClick();
 			if (shouldAbort())
 				break;
-			if (_nextPlaceId != uint(-1)) {
-				uint dest = _nextPlaceId;
-				_nextPlaceId = uint(-1);
-				executeTransition(dest);
-				continue;
-			}
+			if (_arrivalScanPending)
+				continue;   // a Vue= in the section entered another place
 		}
 		_gameVars["cliczone"] = 0;
 		if (_inventory.selectedObject() != nullptr)
@@ -494,6 +486,15 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 		if (actionId >= 1 && actionId < 10000) {
 			_nextPlaceId = actionId;
 			runDepartureSelSections((int)actionId);
+			if (_arrivalScanPending) {
+				// A Vue= inside a departure section already entered its place
+				// (CHAPI005 /113, CHAPI062 /864, CHAPI077 /010).  Which
+				// transition video the original then plays is not established
+				// (atlantis-re: experiments/2026-10-12-15-con-vue.md); none is
+				// played here.
+				_nextPlaceId = uint(-1);
+				continue;
+			}
 			if (!shouldAbort() && _nextPlaceId != uint(-1)) {
 				// A departure that is not aborted stops timer 1 and restarts
 				// Time1 (atlantis.exe FUN_00423ad8 @ 0x00423e8d).

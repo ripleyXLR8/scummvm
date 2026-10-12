@@ -343,18 +343,11 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			if (shouldAbort()) {
 				actionId = 66666;
 				exit = true;
-			} else if (_nextPlaceId != uint(-1)) {
-				// The dialog requested a place change (/set(Vue=N) inside
-				// playConSection, e.g. CHAPI011 section 128's Creon dismissing
-				// Seth back to vue 50).  Hand the destination to gameStep, BUT
-				// leave _nextPlaceId set: gameStep recognises a script-set
-				// destination by `_nextPlaceId == actionId` and bypasses the
-				// departure /sel scan — that scan gates player-driven
-				// navigation, and its area locks (/sel(departvue>0)&...) would
-				// otherwise abortdepart the scripted move.
-				uint dest = _nextPlaceId;
-				showMouse(false);
-				return (int)dest;
+			} else if (_arrivalScanPending) {
+				// A Vue= in the dialog entered another place; the place loop
+				// takes over (arrival scan).
+				actionId = 66666;
+				exit = true;
 			} else {
 				g_system->lockMouse(true);
 				takeMouseRelative();
@@ -454,13 +447,13 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			if (shouldAbort()) {
 				actionId = 66666;
 				exit = true;
-			} else if (_nextPlaceId != uint(-1)) {
-				// A timer section asked for a place change: hand it to
-				// gameStep as a script-set destination (see interactNPC above).
-				uint dest = _nextPlaceId;
-				showMouse(false);
-				g_system->lockMouse(false);
-				return (int)dest;
+			} else if (_arrivalScanPending) {
+				// A Vue= in the timer section entered another place; return to
+				// the place loop for its arrival scan.  When the original's warp
+				// loop returns in this case is not established (atlantis-re:
+				// experiments/2026-10-12-15-con-vue.md).
+				actionId = 66666;
+				exit = true;
 			} else {
 				g_system->lockMouse(true);
 				takeMouseRelative();

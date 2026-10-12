@@ -235,6 +235,11 @@ private:
 	// offset: position of the "/set" in the CON text (-1: parse cmd alone).
 	void execConSetCommand(const Common::String &cmd, int32 offset = -1);
 	void execConInventCommand(uint objId, int value);
+	// FUN_0042a100 Vue=N: enter place N at once (no transition video), the
+	// arrival /sel scan running when the place loop next comes round.
+	void enterPlaceFromScript(uint placeId);
+	bool _arrivalScanPending = false;
+	uint _arrivalFromVue = 0;
 	// CON /set(StartPuzzle=N) — run minigame N and write FinPuzzle back
 	// (255 = win; smaller values denote per-puzzle loss variants).  Puzzles
 	// without a handler auto-win so their CHAPI script chains keep

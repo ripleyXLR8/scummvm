@@ -253,6 +253,7 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	}
 
 	_nextPlaceId = placeId;
+	_arrivalScanPending = false;   // a Vue= of the reloaded /INIT is superseded
 	_omni3dMan.setAlpha(alpha);
 	_omni3dMan.setBeta(beta);
 	for (byte &b : _placeVisits)      // visit counters aren't persisted yet

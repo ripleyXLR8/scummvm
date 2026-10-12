@@ -137,10 +137,12 @@ void CryOmni3DEngine_Atlantis::changeChapter(int chapter) {
 	// start place via /set(vue=N) (e.g. chapter 1 opens on the place-450
 	// cinematic).  Clear _nextPlaceId first so we can detect that.
 	_nextPlaceId = uint(-1);
+	_arrivalScanPending = false;
 	setupChapterWAM(chapter);
 
 	const LevelInitialState &init = kChapterInitialStates[chapter - 1];
-	if (_nextPlaceId == uint(-1))
+	// A Vue= in /INIT has entered its place already (enterPlaceFromScript).
+	if (_nextPlaceId == uint(-1) && !_arrivalScanPending)
 		_nextPlaceId = init.placeId;   // fall back to the hardcoded start
 	_omni3dMan.setAlpha(init.alpha);
 	_omni3dMan.setBeta(init.beta);

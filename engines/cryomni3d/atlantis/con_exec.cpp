@@ -325,8 +325,7 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 	}
 
 	if (key == "vue") {
-		// Schedule a place change (gameStep enters it next iteration).
-		_nextPlaceId = (uint)value;
+		enterPlaceFromScript((uint)value);
 		return;
 	}
 
@@ -588,6 +587,31 @@ bool CryOmni3DEngine_Atlantis::runConTimers() {
 			break;
 	}
 	return played;
+}
+
+void CryOmni3DEngine_Atlantis::enterPlaceFromScript(uint placeId) {
+	// atlantis.exe FUN_0042a100 @ 0x0042a630..0x0042a749: the sub-WAM swap
+	// FUN_00422ad0 (current place, N), the place load FUN_00421b4c without a
+	// transition video, ArriveeVue = the previous place, ClicPerso = 0.  The
+	// rest of the section then plays in the new place; the place loop
+	// FUN_00423ad8 runs the arrival /sel scan when it comes round
+	// (ArriveeVue != 0 @ 0x00423b48).
+	const uint from = _currentPlaceId;
+	for (const AtlantisSubWAM &sub : _wam.getSubWAMs()) {
+		if (sub.srcPlaceId == from && sub.dstPlaceId == placeId) {
+			Common::String wamName = sub.wamName;   // setupWAMByName clears the list
+			setupWAMByName(wamName);
+			_currentPlace = nullptr;
+			break;
+		}
+	}
+	_nextPlaceId = placeId;
+	doPlaceChange();
+	_gameVars["arriveevue"] = (int)from;
+	_gameVars["clicperso"] = 0;
+	_arrivalScanPending = true;
+	_arrivalFromVue = from;
+	debugC(1, kDebugScript, "enterPlaceFromScript: %u -> %u", from, placeId);
 }
 
 void CryOmni3DEngine_Atlantis::showPerso(int perso) {
