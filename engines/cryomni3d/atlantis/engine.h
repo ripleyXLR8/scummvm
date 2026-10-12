@@ -246,6 +246,10 @@ private:
 	void interactNPC(int persoId);
 	// ArcMagique=N: the 20-frame ARCANIM.SPR animation at the mouse.
 	void playArcMagique();
+	void enterBowMode();
+	void raiseBow();
+	void lowerBow();
+	void showBowAt(int y);
 	// atlantis.exe FUN_00427bd0: hide every sprite of perso and remember it.
 	void hidePerso(int perso);
 	// atlantis.exe FUN_004278a0 for an object id (0x100..0x1ff).
@@ -546,6 +550,11 @@ private:
 	bool _guestsShown = true;                  // 0x0049613c, initially 1
 	Common::Array<int32> _guestSpriteIds;      // exe table 0x00496884
 	Common::Array<SubjSprite> _guestSprites;   // SPRITE\2D\SUIVEUR.SPR
+	// Chapter 34 bow mode (atlantis.exe 0x00496164): ARCWARP.SPR at
+	// (0x2e, 0x79), frame _arrowFrame (0x0049619d) while an arrow flies.
+	bool _bowMode = false;
+	Common::Array<SubjSprite> _bowSprites;
+	uint _arrowFrame = 0;
 	void drawSprite(Graphics::ManagedSurface &dst, const SubjSprite &spr, int x, int y);
 	void drawGuests(Graphics::ManagedSurface &dst, int movingSprite = -1, int movingX = 0);
 	void slideGuest(byte sprite, int fromX, int toX, int step);

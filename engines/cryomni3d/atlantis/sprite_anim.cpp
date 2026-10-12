@@ -82,5 +82,22 @@ bool stopPlaceSpriteAnim(Common::Array<SpritePlaceEntry> &entries, uint16 vue, i
 	return true;
 }
 
+bool bowFrameStep(bool bowMode, bool click, int angleWarpY, int &tirFleche, uint &arrowFrame) {
+	bool consumed = false;
+	if (click && bowMode) {
+		consumed = true;
+		if (angleWarpY < 20)
+			tirFleche = 1;
+	}
+	if (tirFleche != 0) {
+		arrowFrame = (arrowFrame + 1) & 0xff;
+		if (arrowFrame == 15) {
+			arrowFrame = 0;
+			tirFleche = 0;
+		}
+	}
+	return consumed;
+}
+
 } // End of namespace Atlantis
 } // End of namespace CryOmni3D

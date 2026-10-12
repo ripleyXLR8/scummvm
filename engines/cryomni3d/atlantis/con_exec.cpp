@@ -439,6 +439,10 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 		return;
 	}
 
+	// TirFleche=N restarts the arrow frame (0x0042a98e), then the store.
+	if (key == "tirfleche")
+		_arrowFrame = 0;
+
 	// ArcMagique=N (any value): the magic-bow animation, then the store
 	// (FUN_0042a100 @ 0x0042aa09).
 	if (key == "arcmagique") {

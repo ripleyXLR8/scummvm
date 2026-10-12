@@ -53,6 +53,13 @@ bool animatePlaceSprites(Common::Array<SpritePlaceEntry> &entries, uint16 vue, u
 bool startPlaceSpriteAnim(Common::Array<SpritePlaceEntry> &entries, uint16 vue, int n, uint &current);
 bool stopPlaceSpriteAnim(Common::Array<SpritePlaceEntry> &entries, uint16 vue, int n);
 
+// atlantis.exe FUN_0041bfa0 @ 0x0041c61d..0x0041c6a0, once per warp frame
+// after the frame is drawn: a left click in bow mode is consumed and, when
+// AngleWarpY < 20, sets TirFleche to 1; then, while TirFleche is non-zero,
+// the arrow frame (0x0049619d) steps by one and at 15 returns to 0 with
+// TirFleche.  True when the click was consumed.
+bool bowFrameStep(bool bowMode, bool click, int angleWarpY, int &tirFleche, uint &arrowFrame);
+
 } // End of namespace Atlantis
 } // End of namespace CryOmni3D
 

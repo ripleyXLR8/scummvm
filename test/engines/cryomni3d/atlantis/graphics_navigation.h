@@ -420,6 +420,40 @@ public:
 		TS_ASSERT_EQUALS(bad, 0u);
 	}
 
+	// Arrow shot in bow mode, from the static reading of atlantis.exe
+	// FUN_0041bfa0 @ 0x0041c61d..0x0041c6a0 (atlantis-re
+	// experiments/2026-10-13-20-archery-and-sprite-animation.md): the click is
+	// consumed only in bow mode and shoots only when AngleWarpY < 20; the
+	// arrow frame steps while TirFleche is set and both reset at 15.
+	void test_bow_frame_step() {
+		using namespace CryOmni3D::Atlantis;
+		int tir = 0;
+		uint frame = 0;
+		// Not in bow mode: the click is not consumed and does not shoot.
+		TS_ASSERT(!bowFrameStep(false, true, 0, tir, frame));
+		TS_ASSERT_EQUALS(tir, 0);
+		TS_ASSERT_EQUALS(frame, 0u);
+		// Aiming too high: consumed, no shot.
+		TS_ASSERT(bowFrameStep(true, true, 20, tir, frame));
+		TS_ASSERT_EQUALS(tir, 0);
+		// A shot: the frame steps in the same call.
+		TS_ASSERT(bowFrameStep(true, true, 19, tir, frame));
+		TS_ASSERT_EQUALS(tir, 1);
+		TS_ASSERT_EQUALS(frame, 1u);
+		for (uint i = 2; i < 15; i++) {
+			TS_ASSERT(!bowFrameStep(true, false, 0, tir, frame));
+			TS_ASSERT_EQUALS(frame, i);
+			TS_ASSERT_EQUALS(tir, 1);
+		}
+		bowFrameStep(true, false, 0, tir, frame);
+		TS_ASSERT_EQUALS(frame, 0u);
+		TS_ASSERT_EQUALS(tir, 0);
+		// A script-set TirFleche runs the arrow outside bow mode too.
+		tir = 1;
+		bowFrameStep(false, false, 0, tir, frame);
+		TS_ASSERT_EQUALS(frame, 1u);
+	}
+
 	// Dialog camera FOV table (atlantis-cd-en-714240 @ 0x00496080, 4 floats,
 	// read as [cam*4 + 0x496078] at 0x00428a0e / 0x00428ad4) versus the port's
 	// literal kCamFovDeg in dialog.cpp (FAITHFUL COPY of the literal; the

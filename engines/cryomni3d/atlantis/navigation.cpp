@@ -280,6 +280,9 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 	// When the player is carrying an object the item cursor replaces it.
 	int curCursorGroup = -1;
 	const Object *curHeldObj = nullptr;
+	// The arrow frame starts at 0 on every warp entry (0x0041c017).
+	_arrowFrame = 0;
+	bool bowButtonHeld = (getCurrentMouseButton() == 1);
 
 	while (!leftButtonPressed && !exit) {
 		pollEvents();
@@ -301,6 +304,12 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		takeMouseRelative();
 
 		bool clicked = (getCurrentMouseButton() == 1);
+		// Bow mode consumes the click (0x0041c631): no zone or character
+		// action; the press edge feeds the shot test after the render.
+		const bool bowClick = _bowMode && clicked && !bowButtonHeld;
+		bowButtonHeld = clicked;
+		if (_bowMode)
+			clicked = false;
 
 		// Hit-test the panorama at the screen centre: an NPC takes priority
 		// over the navigation zone underneath it.
@@ -381,6 +390,10 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		// with the menus layer).
 		Common::KeyCode kc = getNextKey().keycode;
 		if (!exit && (getCurrentMouseButton() == 2 || kc == Common::KEYCODE_SPACE)) {
+			// Opening the bar in bow mode lowers the bow first (0x0041c6af,
+			// FUN_0042d368).
+			if (_bowMode)
+				lowerBow();
 			// Show the current view, switch to a normal pointer, run the bar,
 			// then re-arm relative-look mode.
 			if (_warpLoaded) {
@@ -404,6 +417,12 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				barBg = &barFrame.rawSurface();
 			}
 			displayToolbar(barBg);
+			// Closing the bar (FUN_0042c098): bow mode when the bow is in hand
+			// and ArcMagique is set (FUN_0042d098), then the bow rises
+			// (FUN_0042d198).
+			enterBowMode();
+			if (_bowMode)
+				raiseBow();
 			rebaseConClocks();
 			if (_toolbar.guestClicked() != 0 && !shouldAbort()) {
 				talkToGuest(_toolbar.guestClicked());
@@ -496,12 +515,16 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 
 		if (_warpLoaded) {
 			const Graphics::Surface *result = _omni3dMan.getSurface();
-			if (result && _guestsShown && _guests.count) {
-				// Guest portraits over the view (atlantis.exe FUN_0041bfa0 @
-				// 0x0041c489 -> FUN_0042bc58).
+			if (result && (_bowMode || (_guestsShown && _guests.count))) {
+				// The bow, ARCWARP.SPR frame _arrowFrame at (0x2e, 0x79)
+				// (0x0041c40b), then the guest portraits (0x0041c489 ->
+				// FUN_0042bc58).
 				Graphics::ManagedSurface frame;
 				frame.copyFrom(*result);
-				drawGuests(frame);
+				if (_bowMode && _arrowFrame < _bowSprites.size())
+					drawSprite(frame, _bowSprites[_arrowFrame], 0x2e, 0x79);
+				if (_guestsShown && _guests.count)
+					drawGuests(frame);
 				g_system->copyRectToScreen(frame.getPixels(), frame.pitch, 0, 0, frame.w, frame.h);
 			} else if (result) {
 				g_system->copyRectToScreen(result->getPixels(), result->pitch,
@@ -510,6 +533,12 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		}
 		if (!exit)
 			g_system->updateScreen();
+		// Arrow shot (0x0041c61d..0x0041c6a0), after the frame is drawn.
+		{
+			int tir = _gameVars.getValOrDefault("tirfleche", 0);
+			bowFrameStep(_bowMode, bowClick, _gameVars.getValOrDefault("anglewarpy", 0), tir, _arrowFrame);
+			_gameVars["tirfleche"] = tir;
+		}
 		g_system->delayMillis(10);
 	}
 
@@ -524,6 +553,53 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 
 	debugC(2, kDebugScript, "handleWarp: returning action %u", actionId);
 	return (int)actionId;
+}
+
+void CryOmni3DEngine_Atlantis::enterBowMode() {
+	// atlantis.exe FUN_0042d098: ObjetEnMain 334 (0x14e), ArcMagique set and
+	// not yet in bow mode -> SPRITE\2D\ARCWARP.SPR, bow mode, empty hand.
+	const Object *held = _inventory.selectedObject();
+	if (!held || held->idOBJ() != 0x14e || _gameVars.getValOrDefault("arcmagique", 0) == 0 || _bowMode)
+		return;
+	loadFontSpriteSet("ARCWARP.SPR", _bowSprites);
+	if (_bowSprites.empty())
+		return;
+	_bowMode = true;
+	_gameVars["objetenmain"] = 0;
+	_inventory.setSelectedObject(nullptr);
+	debugC(1, kDebugScript, "enterBowMode");
+}
+
+void CryOmni3DEngine_Atlantis::showBowAt(int y) {
+	animateSprites();
+	const Graphics::Surface *view = _warpLoaded ? _omni3dMan.getSurface() : nullptr;
+	if (!view)
+		return;
+	Graphics::ManagedSurface frame;
+	frame.copyFrom(*view);
+	if (!_bowSprites.empty())
+		drawSprite(frame, _bowSprites[0], 0x2e, y);
+	g_system->copyRectToScreen(frame.getPixels(), frame.pitch, 0, 0, frame.w, frame.h);
+	g_system->updateScreen();
+	g_system->delayMillis(10);
+	pollEvents();
+}
+
+void CryOmni3DEngine_Atlantis::raiseBow() {
+	// FUN_0042d198: frame 0 at y = 0x1e1 .. 0x83, 10 px per frame; the warp
+	// loop then draws it at 0x79.
+	for (int y = 0x1e1; y != 0x79 && !shouldAbort(); y -= 10)
+		showBowAt(y);
+}
+
+void CryOmni3DEngine_Atlantis::lowerBow() {
+	// FUN_0042d368: frame 0 at y = 0x79 .. 0x1d7, then bow mode ends and the
+	// sprite is freed.
+	for (int y = 0x79; y != 0x1e1 && !shouldAbort(); y += 10)
+		showBowAt(y);
+	_bowMode = false;
+	_bowSprites.clear();
+	debugC(1, kDebugScript, "lowerBow: bow mode ends");
 }
 
 bool CryOmni3DEngine_Atlantis::runPickupToolbar(Object *obj) {
