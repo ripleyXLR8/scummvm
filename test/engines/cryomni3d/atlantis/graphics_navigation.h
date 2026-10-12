@@ -9,10 +9,10 @@
 //   FUN_00422bb0                                             zone under the mouse
 // on a synthetic 2048x1024 RGB565 panorama (pixel i = (i*2654435761) >> 16).
 //
-// Port code exercised directly (linked): CryOmni3D::Omni3DManager (omni3d.cpp)
-// and CryOmni3D::Atlantis::AtlantisPlace::hitTest (wam_parser.cpp).
-// FAITHFUL COPY (stated explicitly): the "768 - y" flip that handleWarp
-// (navigation.cpp, engine method) applies to mapMouseCoords().
+// Port code exercised directly (linked): CryOmni3D::Omni3DManager (omni3d.cpp),
+// CryOmni3D::Atlantis::AtlantisPlace::hitTest (wam_parser.cpp) and
+// CryOmni3D::Atlantis::hitTestPoint (wam_parser.h), the flip handleWarp
+// (navigation.cpp) applies to mapMouseCoords().
 
 #include "atlantis_test_helper.h"
 
@@ -109,7 +109,7 @@ public:
 	}
 
 	// Centre hit point: original FUN_0045166f returns y = 0x2ff - v; the port
-	// takes mapMouseCoords().y and flips with 768 - y (handleWarp).
+	// takes mapMouseCoords() through hitTestPoint (handleWarp).
 	void test_centre_point() {
 		using namespace GraphicsNavTest;
 		static const struct { double a, b; int ox, oy; } cases[] = {
@@ -119,8 +119,7 @@ public:
 		for (uint i = 0; i < ARRAYSIZE(cases); i++) {
 			CryOmni3D::Omni3DManager m;
 			setupPort(m, pano.s, 75.137, cases[i].a, cases[i].b);
-			Common::Point pan = m.mapMouseCoords(Common::Point(320, 240));
-			pan.y = 768 - pan.y;   // FAITHFUL COPY of navigation.cpp handleWarp
+			Common::Point pan = CryOmni3D::Atlantis::hitTestPoint(m.mapMouseCoords(Common::Point(320, 240)));
 			TS_ASSERT_EQUALS(pan.x, cases[i].ox);
 			TS_ASSERT_EQUALS(pan.y, cases[i].oy);
 		}
@@ -150,8 +149,7 @@ public:
 			};
 			CryOmni3D::Omni3DManager m;
 			setupPort(m, pano.s, 75.137, angles[ai].a, angles[ai].b);
-			Common::Point pan = m.mapMouseCoords(Common::Point(320, 240));
-			pan.y = 768 - pan.y;   // FAITHFUL COPY of handleWarp
+			Common::Point pan = CryOmni3D::Atlantis::hitTestPoint(m.mapMouseCoords(Common::Point(320, 240)));
 			for (uint ci = 0; ci < ARRAYSIZE(cases); ci++) {
 				CryOmni3D::Atlantis::AtlantisPlace place;
 				for (int k = 0; k < cases[ci].nz; k++) {
