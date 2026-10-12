@@ -190,6 +190,7 @@ public:
 			{ "/set(invent262=1)", true, "", 1, 262 },
 			{ "/set(invent262=0)", true, "", 0, 262 },
 			{ "/set(invent262=2)", true, "", 2, 262 },
+			{ "/set(changewam=atlan4.wam)", true, "changewam", 0, 0 },   // loads wam\\atlan4.wam
 		};
 		for (uint i = 0; i < ARRAYSIZE(kOrig); i++) {
 			Common::String line = Common::String(kOrig[i].line) + "\r\n/1\r\n";
@@ -203,6 +204,9 @@ public:
 				TSM_ASSERT(kOrig[i].line, set.invent);
 				TSM_ASSERT_EQUALS(kOrig[i].line, set.inventId, kOrig[i].inventId);
 				TSM_ASSERT_EQUALS(kOrig[i].line, set.inventValue, kOrig[i].value);
+			} else if (set.changeWam) {
+				TSM_ASSERT_EQUALS(kOrig[i].line, set.name, Common::String(kOrig[i].name));
+				TSM_ASSERT_EQUALS(kOrig[i].line, set.wamName, Common::String("atlan4.wam"));
 			} else {
 				TSM_ASSERT_EQUALS(kOrig[i].line, set.name, Common::String(kOrig[i].name));
 				TSM_ASSERT_EQUALS(kOrig[i].line, set.value, kOrig[i].value);

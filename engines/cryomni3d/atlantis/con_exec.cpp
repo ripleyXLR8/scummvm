@@ -242,6 +242,18 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 	if (!set.valid)
 		return;
 
+	// ChangeWam=name — load "wam\\name" and make its first place the current
+	// one (FUN_0042a100 @ 0x0042a1f8..0x0042a2b6).  Every ChangeWam of the game
+	// is followed by a Vue= in the same section, which moves the player; until
+	// then no place is entered (as after a sub-WAM swap, executeTransition).
+	if (set.changeWam) {
+		setupWAMByName(set.wamName);
+		_currentPlace = nullptr;
+		_currentPlaceId = _wam.getPlaces().empty() ? uint(-1) : _wam.getPlaces()[0].placeId;
+		debugC(1, kDebugScript, "execConSetCommand: changewam '%s'", set.wamName.c_str());
+		return;
+	}
+
 	// inventN=v — v != 0 adds object N, v == 0 removes it (FUN_0042b328).
 	if (set.invent) {
 		execConInventCommand((uint)set.inventId, set.inventValue);
