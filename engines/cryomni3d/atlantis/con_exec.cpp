@@ -428,17 +428,8 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 	// hideperso=N — deactivate every sprite for perso N and
 	// add it to the persistent hidden list (atlantis.exe FUN_00427bd0).
 	if (key == "hideperso") {
-		int perso = value;
-		if (perso > 0) {
-			bool found = false;
-			for (int h : _hiddenPersos) if (h == perso) { found = true; break; }
-			if (!found)
-				_hiddenPersos.push_back(perso);
-			for (SpritePlaceEntry &e : _spritePlaceList)
-				if (e.persoId == perso) e.active = false;
-			recompositeSpriteLayer();
-			debugC(1, kDebugScript, "execConSetCommand: hide perso %d", perso);
-		}
+		if (value > 0)
+			hidePerso(value);
 		return;
 	}
 
@@ -831,6 +822,63 @@ bool CryOmni3DEngine_Atlantis::isSujEnabled(int persoId, int sujId) const {
 		return false;
 	}
 	return false;
+}
+
+void CryOmni3DEngine_Atlantis::hidePerso(int perso) {
+	// atlantis.exe FUN_00427bd0.
+	bool found = false;
+	for (int h : _hiddenPersos) if (h == perso) { found = true; break; }
+	if (!found)
+		_hiddenPersos.push_back(perso);
+	for (SpritePlaceEntry &e : _spritePlaceList)
+		if (e.persoId == perso) e.active = false;
+	recompositeSpriteLayer();
+	debugC(1, kDebugScript, "execConSetCommand: hide perso %d", perso);
+}
+
+void CryOmni3DEngine_Atlantis::clickObject(int objId) {
+	// atlantis.exe FUN_004278a0 for an object (0x100..0x1ff): ClicPerso = id,
+	// the /con click scan (FUN_00425cf4), nothing more once GameOver is set,
+	// then the pick-up of every row objectPickupRows() returns.
+	debugC(1, kDebugScript, "clickObject: %d", objId);
+	_gameVars["clicperso"] = objId;
+	runConClick();
+	if (shouldAbort() || _gameVars.getValOrDefault("gameover", 0) != 0)
+		return;
+	Common::Array<uint> rows;
+	objectPickupRows(_spritePlaceList, (uint16)_currentPlaceId, objId, rows);
+	for (uint r : rows) {
+		const int id = _spritePlaceList[r].persoId;
+		const uint icon = _spritePlaceList[r].icon;
+		hidePerso(id);
+		_gameVars["objetenmain"] = id;
+		// The original appends the record (icon, id).  The port's records are
+		// catalogue objects: the icon-th one has that id for every object the
+		// original's hit-test can return (atlantis-re
+		// experiments/2026-10-12-18-object-pickup.md).
+		Object *obj = (icon < _objects.size() && (int)_objects[icon].idOBJ() == id)
+		              ? &_objects[icon] : findInventoryObject(_objects, (uint)id);
+		if (!obj || (int)obj->idCA() != (int)icon)
+			warning("clickObject: no catalogue object for id %d icon %u", id, icon);
+		bool keep = false;
+		if (obj) {
+			uint used = 0;
+			for (Object *o : _inventory)
+				if (o) used++;
+			if (used < _inventory.size())
+				inventoryAppend(_inventory, obj);
+			else
+				warning("clickObject: inventory full, object %d not added", id);
+			keep = runPickupToolbar(obj);
+		}
+		if (shouldAbort())
+			return;
+		// A left click puts the object away; a right click keeps it in hand.
+		if (!keep) {
+			_gameVars["objetenmain"] = 0;
+			_inventory.setSelectedObject(nullptr);
+		}
+	}
 }
 
 void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {

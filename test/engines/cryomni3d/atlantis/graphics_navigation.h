@@ -172,6 +172,36 @@ public:
 		}
 	}
 
+	// The rows of a WAM's sprite list (SPRLIST\\<spwListFile>), as the
+	// engine's loadSpritePlaceList parses them.  Member names are looked up
+	// upper-cased, as the engine does (openBigFileStream).
+	static void loadSpriteList(CryOmni3D::Atlantis::BigFileArchive &big, const CryOmni3D::Atlantis::AtlantisWAMParser &w,
+	                           Common::Array<CryOmni3D::Atlantis::SpritePlaceEntry> &entries) {
+		using namespace CryOmni3D::Atlantis;
+		entries.clear();
+		Common::String listName = "SPRLIST\\" + w.spwListFile;
+		listName.toUppercase();
+		Common::ScopedPtr<Common::SeekableReadStream> ls(big.createReadStreamForMember(listName));
+		if (!ls)
+			return;
+		Common::String text;
+		while (!ls->eos()) {
+			char c = (char)ls->readByte();
+			if (!ls->eos())
+				text += c;
+		}
+		const char *p = text.c_str();
+		while (*p) {
+			while (*p == '\r' || *p == '\n' || *p == ' ' || *p == '\t') p++;
+			const char *eol = p;
+			while (*eol && *eol != '\r' && *eol != '\n') eol++;
+			SpritePlaceEntry e;
+			if (eol > p && parseSpritePlaceLine(Common::String(p, eol - p), e))
+				entries.push_back(e);
+			p = eol;
+		}
+	}
+
 	// NPC / object click areas over every WAM, against the ORIGINAL
 	// FUN_00421ebc + FUN_00424a20 + FUN_00422d5c run end to end under
 	// emulation on the game data (atlantis-re tools/emu/scripts_npc_click.py,
@@ -207,30 +237,8 @@ public:
 			w.loadStream(*ws);
 			const Common::Array<AtlantisNPCEntry> &npcs = w.getNPCEntries();
 
-			// Member names are looked up upper-cased, as the engine does
-			// (CryOmni3DEngine_Atlantis::openBigFileStream).
 			Common::Array<SpritePlaceEntry> entries;
-			Common::String listName = "SPRLIST\\" + w.spwListFile;
-			listName.toUppercase();
-			Common::ScopedPtr<Common::SeekableReadStream> ls(big.createReadStreamForMember(listName));
-			if (ls) {
-				Common::String text;
-				while (!ls->eos()) {
-					char c = (char)ls->readByte();
-					if (!ls->eos())
-						text += c;
-				}
-				const char *p = text.c_str();
-				while (*p) {
-					while (*p == '\r' || *p == '\n' || *p == ' ' || *p == '\t') p++;
-					const char *eol = p;
-					while (*eol && *eol != '\r' && *eol != '\n') eol++;
-					SpritePlaceEntry e;
-					if (eol > p && parseSpritePlaceLine(Common::String(p, eol - p), e))
-						entries.push_back(e);
-					p = eol;
-				}
-			}
+			loadSpriteList(big, w, entries);
 			Common::Array<NpcClickRect> rects;
 			initNpcClickRects(npcs, rects);
 			for (const SpritePlaceEntry &e : entries) {
@@ -280,6 +288,65 @@ public:
 		}
 		TS_ASSERT_EQUALS(wams, 38u);
 		SearchMan.remove("graphics_npc_data");
+	}
+
+	// Object pick-up rows over every WAM, against the place tables the
+	// ORIGINAL loaders build under emulation (atlantis-re
+	// tools/emu/scripts_npc_click.py pickup,
+	// evidence/golden/scripts_object_pickup.txt): for each view, the entries
+	// FUN_004278a0's pick-up loop takes (object id, type != 3) and their icon
+	// byte.  Port: parseSpritePlaceLine (icon) and objectPickupRows.
+	void test_object_pickup_rows_data() {
+		using namespace CryOmni3D::Atlantis;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("graphics_navigation: no game data configured, skipped");
+			return;
+		}
+		AtlantisTest::Golden golden;
+		TS_ASSERT(AtlantisTest::loadGolden("scripts_object_pickup.txt", golden));
+		if (!SearchMan.hasArchive("graphics_pickup_data"))
+			SearchMan.addDirectory("graphics_pickup_data", Common::FSNode(Common::Path(AtlantisTest::dataDir(), '/')));
+		BigFileArchive big;
+		for (int d = 1; d <= 4; d++)
+			TS_ASSERT(big.open(Common::Path(Common::String::format("BIGCD%d.BIG", d))));
+		uint wams = 0;
+		for (AtlantisTest::Golden::const_iterator it = golden.begin(); it != golden.end(); ++it) {
+			if (!it->_key.hasSuffix("|rows"))
+				continue;
+			Common::String name = it->_key.substr(0, it->_key.size() - 5);
+			wams++;
+			Common::ScopedPtr<Common::SeekableReadStream> ws(big.createReadStreamForMember("WAM\\" + name));
+			TS_ASSERT(ws);
+			if (!ws)
+				continue;
+			AtlantisWAMParser w;
+			w.loadStream(*ws);
+			Common::Array<SpritePlaceEntry> entries;
+			loadSpriteList(big, w, entries);
+			Common::String text;
+			uint n = 0;
+			Common::Array<uint> rows;
+			for (uint vue = 0; vue < 512; vue++) {
+				for (uint i = 0; i < entries.size(); i++) {
+					const SpritePlaceEntry &e = entries[i];
+					if (e.placeId != vue || e.persoId < 0x100 || e.persoId >= 0x200)
+						continue;
+					objectPickupRows(entries, (uint16)vue, e.persoId, rows);
+					bool taken = false;
+					for (uint r : rows)
+						if (r == i) taken = true;
+					if (!taken)
+						continue;
+					text += Common::String::format("%u %d %s %u\n", vue, e.persoId, e.rawFile.c_str(), e.icon);
+					n++;
+				}
+			}
+			TSM_ASSERT_EQUALS((name + ": pick-up row count").c_str(), Common::String::format("%u", n), golden[name + "|count"]);
+			TSM_ASSERT_EQUALS((name + ": pick-up rows").c_str(),
+			                  AtlantisTest::md5Hex((const byte *)text.c_str(), text.size()), it->_value);
+		}
+		TS_ASSERT_EQUALS(wams, 38u);
+		SearchMan.remove("graphics_pickup_data");
 	}
 
 	// Dialog camera FOV table (atlantis-cd-en-714240 @ 0x00496080, 4 floats,

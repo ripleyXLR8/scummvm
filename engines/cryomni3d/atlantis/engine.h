@@ -243,6 +243,13 @@ private:
 	// /con(clicperso=N) section for them (the subject topic menu lands with
 	// the cursor layer).  Mirrors atlantis.exe FUN_00425828.
 	void interactNPC(int persoId);
+	// atlantis.exe FUN_00427bd0: hide every sprite of perso and remember it.
+	void hidePerso(int perso);
+	// atlantis.exe FUN_004278a0 for an object id (0x100..0x1ff).
+	void clickObject(int objId);
+	// The pick-up toolbar (Atlantis_Toolbar::displayPickup) over the view;
+	// true when the object stays in hand.
+	bool runPickupToolbar(Object *obj);
 	// FUN_00425cf4: after a click on a zone or with an object in hand, run the
 	// first eligible /con entry that is not a subject entry, then
 	// FUN_00425dd0 (drop the held object on its zone).

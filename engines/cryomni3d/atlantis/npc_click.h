@@ -38,7 +38,10 @@ struct SpritePlaceEntry {
 	int type;        // 0 = NPC, non-zero = animated prop / wspranim pose
 	int frames;      // TXT frame field (animation length comes from the SPW header)
 	int persoId;     // character ID (0 for props)
-	float angle;     // camera look angle for NPC orientation
+	// Byte 8 of the original's place entry: the absolute value of the fifth
+	// token of a 6-token row, a 2-digit icon (OBJETS1.SPR sprite) for objects
+	// (FUN_00424a20).  0 for 4-token rows.
+	uint8 icon;
 	Common::String spwFile;
 	// FUN_00424a20: the id is kept only when written "-NNN" (else -1), and
 	// the file name compared with the WAM NPC entries is the rest of the
@@ -91,6 +94,13 @@ void applyNpcRowRect(const Common::Array<AtlantisNPCEntry> &npcs, const SpritePl
 // rectangle holds (x, y), edges inclusive, unsigned compares; 0 if none.
 uint32 npcHitTest(const Common::Array<AtlantisNPCEntry> &npcs, const Common::Array<NpcClickRect> &rects,
                   const Common::Array<SpritePlaceEntry> &entries, uint16 vue, int x, int y);
+
+// atlantis.exe FUN_004278a0 (0x00427983..0x00427b85): the rows of view vue
+// the object pick-up takes for a clicked object id, in list order: every row
+// of that view with that id whose type is not 3.  The active flag is not
+// tested, and the loop does not stop at the first row.
+void objectPickupRows(const Common::Array<SpritePlaceEntry> &entries, uint16 vue, int id,
+                      Common::Array<uint> &rows);
 
 } // End of namespace Atlantis
 } // End of namespace CryOmni3D

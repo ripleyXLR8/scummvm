@@ -337,9 +337,14 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 
 		// A click on an NPC opens the conversation in place (no navigation):
 		// leave warp's relative-look mode, run the dialog, then resume looking.
-		if (clicked && centrePerso > 0) {
+		// atlantis.exe FUN_004278a0: ids 0x100..0x1ff are objects (click scan
+		// and pick-up), from 0x200 the conversation (FUN_00425828).
+		if (clicked && centrePerso >= 0x100) {
 			g_system->lockMouse(false);
-			interactNPC(centrePerso);
+			if (centrePerso < 0x200)
+				clickObject(centrePerso);
+			else
+				interactNPC(centrePerso);
 			if (shouldAbort()) {
 				actionId = 66666;
 				exit = true;
@@ -514,6 +519,26 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 
 	debugC(2, kDebugScript, "handleWarp: returning action %u", actionId);
 	return (int)actionId;
+}
+
+bool CryOmni3DEngine_Atlantis::runPickupToolbar(Object *obj) {
+	// The bar over the view and the guest portraits, as for the toolbar key.
+	if (_warpLoaded) {
+		const Graphics::Surface *bg = _omni3dMan.getSurface();
+		if (bg)
+			g_system->copyRectToScreen(bg->getPixels(), bg->pitch, 0, 0, bg->w, bg->h);
+	}
+	Graphics::ManagedSurface barFrame;
+	const Graphics::Surface *barBg = _warpLoaded ? _omni3dMan.getSurface() : nullptr;
+	if (barBg) {
+		barFrame.copyFrom(*barBg);
+		drawGuests(barFrame);
+		g_system->copyRectToScreen(barFrame.getPixels(), barFrame.pitch, 0, 0, barFrame.w, barFrame.h);
+		barBg = &barFrame.rawSurface();
+	}
+	bool keep = _toolbar.displayPickup(barBg, obj);
+	rebaseConClocks();
+	return keep;
 }
 
 bool CryOmni3DEngine_Atlantis::npcPanoHitTest(const Common::Point &pan,

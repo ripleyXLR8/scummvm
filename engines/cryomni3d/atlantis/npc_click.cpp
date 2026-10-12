@@ -45,7 +45,7 @@ bool parseSpritePlaceLine(const Common::String &line, SpritePlaceEntry &entry) {
 	entry.placeId = (uint16)atoi(tok[0].c_str());
 	entry.type    = atoi(tok[1].c_str());
 	entry.frames  = atoi(tok[2].c_str());
-	entry.angle   = 0.f;
+	entry.icon    = 0;
 	entry.persoId = 0;
 	entry.interactive = false;
 	// Trailing '-' on the placeId token marks the sprite as start-inactive.
@@ -59,7 +59,7 @@ bool parseSpritePlaceLine(const Common::String &line, SpritePlaceEntry &entry) {
 	if (tok.size() >= 6) {
 		int signedId  = atoi(tok[3].c_str());
 		entry.persoId = (signedId < 0) ? -signedId : signedId;
-		entry.angle   = (float)atof(tok[4].c_str());
+		entry.icon    = (uint8)ABS(atoi(tok[4].c_str()));
 		// A leading '-' on the angle token marks the NPC's home (clickable)
 		// place — atof drops the sign on a zero magnitude, so check the raw
 		// token.
@@ -154,6 +154,14 @@ uint32 npcHitTest(const Common::Array<AtlantisNPCEntry> &npcs, const Common::Arr
 		}
 	}
 	return 0;
+}
+
+void objectPickupRows(const Common::Array<SpritePlaceEntry> &entries, uint16 vue, int id,
+                      Common::Array<uint> &rows) {
+	rows.clear();
+	for (uint i = 0; i < entries.size(); i++)
+		if (entries[i].placeId == vue && entries[i].persoId == id && entries[i].type != 3)
+			rows.push_back(i);
 }
 
 } // End of namespace Atlantis

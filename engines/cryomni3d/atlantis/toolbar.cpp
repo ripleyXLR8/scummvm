@@ -270,6 +270,82 @@ bool Atlantis_Toolbar::displayToolbar(const Graphics::Surface *original) {
 	return false;
 }
 
+bool Atlantis_Toolbar::displayPickup(const Graphics::Surface *original, Object *obj) {
+	drawBackground(original);
+	_inventorySelected = uint(-1);
+	_inventoryHovered  = uint(-1);
+	_guestClicked = 0;
+	// FUN_0042cc98: ObjetEnMain and the held icon are the new record's.
+	_inventory->setSelectedObject(obj);
+	_engine->setItemCursor(obj);
+	updateZones();
+
+	const int barY = original ? original->h - _destSurface.h : (480 - 82);
+	for (_position = _destSurface.h; _position > 0 && !_engine->shouldAbort(); _position--) {
+		drawToolbar(original);
+		g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0, barY,
+		                           _destSurface.w, _destSurface.h);
+		g_system->updateScreen();
+		g_system->delayMillis(10);
+		_engine->pollEvents();
+	}
+
+	// The loop ends on the press edge of either button (FUN_0041a298 sets
+	// 0x0049611c on a VK_LBUTTON edge, 0x00496120 on a VK_RBUTTON edge); a
+	// button still held from the pick-up click does not count.
+	uint used = 0;
+	for (Object *o : *_inventory)
+		if (o) used++;
+	uint prevButton = _engine->getCurrentMouseButton();
+	bool right = false;
+	const uint32 kScrollIntervalMs = 110;
+	uint32 nextScrollMs = 0;
+	while (!_engine->shouldAbort()) {
+		_engine->pollEvents();
+		uint button = _engine->getCurrentMouseButton();
+		if (button != prevButton && button == 1)
+			break;
+		if (button != prevButton && button == 2) {
+			right = true;
+			break;
+		}
+		prevButton = button;
+		// FUN_0042cc98 edge scrolling: x > 0x276 or x < 5 with y > 400; it
+		// scrolls right only while more than 9 records exist and the first
+		// shown is below count - 7.  The port throttles it as in the bar loop.
+		const Common::Point ms = _engine->getMousePos();
+		if (ms.y > 400 && g_system->getMillis() >= nextScrollMs) {
+			if (ms.x > 0x276 && used > 9 && _inventoryOffset + 7 < used) {
+				_inventoryOffset++;
+				nextScrollMs = g_system->getMillis() + kScrollIntervalMs;
+			} else if (ms.x < 5 && _inventoryOffset > 0) {
+				_inventoryOffset--;
+				nextScrollMs = g_system->getMillis() + kScrollIntervalMs;
+			}
+		}
+		drawToolbar(original);
+		g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0, barY,
+		                           _destSurface.w, _destSurface.h);
+		g_system->updateScreen();
+		g_system->delayMillis(10);
+	}
+	_engine->waitMouseRelease();
+	if (!right) {
+		_inventory->setSelectedObject(nullptr);
+		_engine->setArrowCursor();
+	}
+
+	for (_position = 0; _position <= (uint)_destSurface.h && !_engine->shouldAbort(); _position++) {
+		drawToolbar(original);
+		g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0, barY,
+		                           _destSurface.w, _destSurface.h);
+		g_system->updateScreen();
+		g_system->delayMillis(10);
+		_engine->pollEvents();
+	}
+	return right;
+}
+
 bool Atlantis_Toolbar::handleToolbarEvents(const Graphics::Surface *original) {
 	_inventoryHovered  = uint(-1);
 	_inventorySelected = uint(-1);

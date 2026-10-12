@@ -49,6 +49,11 @@ public:
 	                   int tx, int ty, const uint16 *pix, const uint8 *blend);
 
 	bool displayToolbar(const Graphics::Surface *original);
+	// atlantis.exe FUN_004278a0 after a pick-up: FUN_0042c2c4 slides the bar
+	// in, FUN_0042cc98 holds the new object (obj, already in the inventory)
+	// until a left or right click, FUN_0042c59c slides the bar out.  True for
+	// a right click (the object stays in hand).
+	bool displayPickup(const Graphics::Surface *original, Object *obj);
 	void inventoryChanged(uint newPosition);
 	// The guest whose portrait was clicked in the open bar (0: none); the
 	// caller talks to it (atlantis.exe FUN_0042c8ac @ 0x0042cbfe).
