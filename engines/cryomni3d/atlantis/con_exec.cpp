@@ -35,6 +35,7 @@
 #include "audio/mixer.h"
 
 #include "cryomni3d/objects.h"
+#include "cryomni3d/atlantis/con_eval.h"
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/inventory.h"
 #include "cryomni3d/atlantis/puzzle_eclipse.h"
@@ -458,68 +459,64 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 	_gameVars[key] = value;
 }
 
+namespace {
+
+// The keys of a CON condition that the engine reads from its live state
+// rather than from the stored game variables.
+class EngineConEvaluator : public ConEvaluator {
+public:
+	EngineConEvaluator(const Inventory &inventory,
+	                   const Common::HashMap<Common::String, int> &vars,
+	                   const Common::Array<byte> &placeVisits, uint32 chapterStartMs,
+	                   int departZone, int currentVue, int rolledRandom) :
+		ConEvaluator(vars, inventory), _inventory(inventory), _placeVisits(placeVisits),
+		_chapterStartMs(chapterStartMs), _departZone(departZone), _currentVue(currentVue),
+		_rolledRandom(rolledRandom) {}
+
+protected:
+	bool liveValue(const Common::String &key, int &out) const override {
+		if (key == "departvue") {
+			out = _departZone;
+		} else if (key == "vue") {
+			out = _currentVue;
+		} else if (key == "objetenmain") {
+			// Live held-object id, not the stored game variable: a pickup or
+			// the toolbar can change the selection without any /set running.
+			Object *sel = _inventory.selectedObject();
+			out = (sel && sel->idOBJ() != uint(-1)) ? (int)sel->idOBJ() : 0;
+		} else if (key == "chaptertime") {
+			out = _chapterStartMs
+			      ? (int)((g_system->getMillis() - _chapterStartMs) / 1000)
+			      : 0;
+		} else if (key == "nbvisite") {
+			out = (_currentVue >= 0 && (uint)_currentVue < _placeVisits.size())
+			      ? (int)_placeVisits[_currentVue] : 0;
+		} else if (key == "random") {
+			out = _rolledRandom;
+		} else {
+			return false;
+		}
+		return true;
+	}
+
+private:
+	const Inventory &_inventory;
+	const Common::Array<byte> &_placeVisits;
+	uint32 _chapterStartMs;
+	int _departZone, _currentVue, _rolledRandom;
+};
+
+} // End of anonymous namespace
+
 bool CryOmni3DEngine_Atlantis::evalSelSection(const ConSection &sec,
                                                int departZone, int currentVue) const {
 	// One random roll per section so multiple `random` clauses in the same
 	// conjunction see a consistent value.
 	const int rolledRandom = (int)_conRng.getRandomNumber(255);
 
-	if (sec.conditions.empty())
-		return true;
-
-	// Left-to-right short-circuit eval (atlantis.exe FUN_004298ac):
-	//   '&' + fail -> EXIT FAIL ; '|' + pass -> EXIT SUCCESS ; end -> last result.
-	for (const ConCondition &cc : sec.conditions) {
-		int lhs;
-		if (cc.key == "departvue") {
-			lhs = departZone;
-		} else if (cc.key == "vue") {
-			lhs = currentVue;
-		} else if (cc.key == "objetenmain") {
-			// Live held-object id, not the stored game variable: a pickup or
-			// the toolbar can change the selection without any /set running.
-			Object *sel = _inventory.selectedObject();
-			lhs = (sel && sel->idOBJ() != uint(-1)) ? (int)sel->idOBJ() : 0;
-		} else if (cc.key.hasPrefix("invent") && cc.key.size() > 6
-		           && Common::isDigit(cc.key[6])) {
-			// invent<N> — 1 when object N is in the inventory, else 0.  The
-			// original (atlantis.exe FUN_00429e54) tests the live inventory
-			// here; it is not a stored game variable.
-			uint objId = (uint)atoi(cc.key.c_str() + 6);
-			lhs = _inventory.inInventoryByNameID(objId) ? 1 : 0;
-		} else if (cc.key == "chaptertime") {
-			lhs = _chapterStartMs
-			      ? (int)((g_system->getMillis() - _chapterStartMs) / 1000)
-			      : 0;
-		} else if (cc.key == "nbvisite") {
-			lhs = (currentVue >= 0 && (uint)currentVue < _placeVisits.size())
-			      ? (int)_placeVisits[currentVue] : 0;
-		} else if (cc.key == "random") {
-			lhs = rolledRandom;
-		} else {
-			// Generic variable (covers arriveevue, the flags, initflag, …).
-			Common::HashMap<Common::String, int>::const_iterator it = _gameVars.find(cc.key);
-			lhs = (it != _gameVars.end()) ? it->_value : 0;
-		}
-
-		bool ok;
-		switch (cc.op) {
-		case '=': ok = (lhs == cc.value); break;
-		case '<': ok = (lhs <  cc.value); break;
-		case '>': ok = (lhs >  cc.value); break;
-		case '!': ok = (lhs != cc.value); break;
-		default:  ok = false;             break;
-		}
-
-		if (cc.nextSep == '&') {
-			if (!ok) return false;
-		} else if (cc.nextSep == '|') {
-			if (ok) return true;
-		} else {
-			return ok;
-		}
-	}
-	return true;
+	EngineConEvaluator eval(_inventory, _gameVars, _placeVisits, _chapterStartMs,
+	                        departZone, currentVue, rolledRandom);
+	return eval.evaluate(sec.conditions);
 }
 
 void CryOmni3DEngine_Atlantis::runArrivalSelSections(int arrivedVue, int fromVue) {

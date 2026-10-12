@@ -34,6 +34,7 @@ endif
 ifdef ENABLE_ATLANTIS
 MODULE_OBJS += \
 	atlantis/bigfile.o \
+	atlantis/con_eval.o \
 	atlantis/con_exec.o \
 	atlantis/con_script.o \
 	atlantis/dialog.o \
