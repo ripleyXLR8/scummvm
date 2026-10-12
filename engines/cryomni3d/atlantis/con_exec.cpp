@@ -885,6 +885,17 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 	debugC(1, kDebugScript, "interactNPC: persoId=%d", persoId);
 	// Expose clicperso so evalSelSection can match (clicperso=N) conditions.
 	_gameVars["clicperso"] = persoId;
+
+	// atlantis.exe FUN_00425828 @ 0x00425867..0x004258b7: with an object in
+	// hand there is no conversation; the /con click scan (FUN_00425cf4) runs
+	// and the object leaves the hand.
+	// The port's ObjetEnMain is the inventory selection (liveValue).
+	if (_inventory.selectedObject() != nullptr) {
+		runConClick();
+		_gameVars["objetenmain"] = 0;
+		_inventory.setSelectedObject(nullptr);
+		return;
+	}
 	// New conversation: forget the previous cam and capture the click-time
 	// facing for the per-line default angle.
 	_lastDialCam = 0;
