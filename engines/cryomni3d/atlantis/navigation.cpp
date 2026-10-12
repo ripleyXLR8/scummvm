@@ -469,9 +469,17 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 
 		if (_warpLoaded) {
 			const Graphics::Surface *result = _omni3dMan.getSurface();
-			if (result)
+			if (result && _guestsShown && _guests.count) {
+				// Guest portraits over the view (atlantis.exe FUN_0041bfa0 @
+				// 0x0041c489 -> FUN_0042bc58).
+				Graphics::ManagedSurface frame;
+				frame.copyFrom(*result);
+				drawGuests(frame);
+				g_system->copyRectToScreen(frame.getPixels(), frame.pitch, 0, 0, frame.w, frame.h);
+			} else if (result) {
 				g_system->copyRectToScreen(result->getPixels(), result->pitch,
 				                           0, 0, result->w, result->h);
+			}
 		}
 		if (!exit)
 			g_system->updateScreen();

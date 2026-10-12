@@ -97,6 +97,11 @@ void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 			b = 0;
 		_conClocks.time1Offset = _conClocks.time2Offset = 0;
 		_conClocks.time1Start = g_system->getMillis();
+		// The guest list is zeroed at boot (FUN_004239f4); the shown flag
+		// starts at 1.  Whether a second new game in one session starts clean
+		// is not established; the port starts clean.
+		_guests.clear();
+		_guestsShown = true;
 	}
 
 	if ((uint)chapter != _currentCONChapter) {

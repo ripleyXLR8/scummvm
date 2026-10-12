@@ -336,6 +336,7 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	loadAtlantisExeTables();
 	setupObjects();
 	loadObjectSprites();
+	loadFontSpriteSet("SUIVEUR.SPR", _guestSprites);   // guest portraits (FUN_00427344)
 	loadInventoryBarSprite();
 	_inventory.init(20, new Common::Functor1Mem<uint, void, CryOmni3DEngine_Atlantis>(
 	                        this, &CryOmni3DEngine_Atlantis::refreshInventoryToolbar));

@@ -470,17 +470,23 @@ void CryOmni3DEngine_Atlantis::drawInventoryIcon(Graphics::ManagedSurface &dst,
 	// Centre the icon on the slot; clip ONLY to the surface (OBJETS1 icons run
 	// up to 60x60, larger than the 50x40 slot, so per-slot clipping would trim
 	// them — the 70px column spacing leaves room).
-	int cx = (r.left + r.right)  / 2;
-	int cy = (r.top  + r.bottom) / 2;
-	int dx = cx - spr.xoff;
-	int dy = cy - spr.yoff;
-	for (int y = 0; y < (int)spr.h; y++) {
-		int sy = dy + y;
+	drawSprite(dst, spr, (r.left + r.right) / 2, (r.top + r.bottom) / 2);
+}
+
+void CryOmni3DEngine_Atlantis::drawSprite(Graphics::ManagedSurface &dst, const SubjSprite &spr,
+                                          int x, int y) {
+	// The sprite's hotspot lands on (x, y), as FUN_00410430 draws it.
+	if (spr.pixels.empty())
+		return;
+	int dx = x - spr.xoff;
+	int dy = y - spr.yoff;
+	for (int row = 0; row < (int)spr.h; row++) {
+		int sy = dy + row;
 		if (sy < 0 || sy >= (int)dst.h) continue;
-		for (int x = 0; x < (int)spr.w; x++) {
-			int sx = dx + x;
+		for (int col = 0; col < (int)spr.w; col++) {
+			int sx = dx + col;
 			if (sx < 0 || sx >= (int)dst.w) continue;
-			uint sidx = y * spr.w + x;
+			uint sidx = row * spr.w + col;
 			uint16 pix = spr.pixels[sidx];
 			if (pix == kSprTransp) continue;
 			uint16 *dp = (uint16 *)dst.getBasePtr(sx, sy);

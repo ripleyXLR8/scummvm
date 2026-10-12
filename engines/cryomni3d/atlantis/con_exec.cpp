@@ -400,6 +400,23 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 	else if (key == "anglewarpy")
 		_omni3dMan.setBeta(conAngleRadians(value));
 
+	// Guests (atlantis.exe FUN_0042a100; atlantis-re:
+	// functions/scripts-guests.md).  HideGuest/ShowGuest store no variable.
+	if (key == "hideguest" || key == "showguest") {
+		_guestsShown = (key == "showguest");
+		return;
+	}
+	if (key == "addguest") {
+		addGuest(value);
+		_gameVars[key] = 0;
+		return;
+	}
+	if (key == "subguest") {
+		subGuest(value);
+		_gameVars[key] = 0;
+		return;
+	}
+
 	// hideperso=N — deactivate every sprite for perso N and
 	// add it to the persistent hidden list (atlantis.exe FUN_00427bd0).
 	if (key == "hideperso") {
@@ -619,6 +636,64 @@ void CryOmni3DEngine_Atlantis::enterPlaceFromScript(uint placeId) {
 	_arrivalScanPending = true;
 	_arrivalFromVue = from;
 	debugC(1, kDebugScript, "enterPlaceFromScript: %u -> %u", from, placeId);
+}
+
+void CryOmni3DEngine_Atlantis::drawGuests(Graphics::ManagedSurface &dst, int movingSprite, int movingX) {
+	// FUN_0042bc58: every record not hidden, at (540 - 100 i, 350).
+	if (!_guestsShown)
+		return;
+	for (uint i = 0; i < _guests.count; i++) {
+		byte s = _guests.sprite[i];
+		if (s != AtlantisGuests::kHidden && s < _guestSprites.size())
+			drawSprite(dst, _guestSprites[s], 540 - 100 * (int)i, 350);
+	}
+	if (movingSprite >= 0 && (uint)movingSprite < _guestSprites.size())
+		drawSprite(dst, _guestSprites[movingSprite], movingX, 350);
+}
+
+void CryOmni3DEngine_Atlantis::slideGuest(byte sprite, int fromX, int toX, int step) {
+	// FUN_0042b480 / FUN_0042b6c0: one redrawn view per 10 px.  The original
+	// frame pacing is not established (atlantis-re:
+	// functions/scripts-guests.md); the port uses its warp frame delay.
+	if (!_warpLoaded)
+		return;
+	for (int x = fromX; step < 0 ? x > toX : x < toX; x += step) {
+		const Graphics::Surface *view = _omni3dMan.getSurface();
+		if (!view)
+			return;
+		Graphics::ManagedSurface frame;
+		frame.copyFrom(*view);
+		drawGuests(frame, sprite, x);
+		g_system->copyRectToScreen(frame.getPixels(), frame.pitch, 0, 0, frame.w, frame.h);
+		g_system->updateScreen();
+		g_system->delayMillis(10);
+		if (shouldAbort())
+			return;
+	}
+}
+
+void CryOmni3DEngine_Atlantis::addGuest(int32 guestId) {
+	// FUN_0042b480: the record is written, the portrait slides in from the
+	// right edge, then the count grows.
+	if (_guests.count >= AtlantisGuests::kSlots)
+		return;
+	AtlantisGuests next = _guests;
+	next.add(guestId, _guestSpriteIds);
+	slideGuest(next.sprite[_guests.count], 640, 540 - 100 * (int)_guests.count, -10);
+	_guests = next;
+}
+
+void CryOmni3DEngine_Atlantis::subGuest(int32 guestId) {
+	// FUN_0042b6c0: each matching record is hidden, slides out to the right,
+	// then the following records move down.
+	for (uint i = 0; i < _guests.count; i++) {
+		if (_guests.id[i] != guestId)
+			continue;
+		byte s = _guests.sprite[i];
+		_guests.sprite[i] = AtlantisGuests::kHidden;
+		slideGuest(s, 540 - 100 * (int)i, 640, 10);
+		_guests.removeAt(i);
+	}
 }
 
 void CryOmni3DEngine_Atlantis::showPerso(int perso) {

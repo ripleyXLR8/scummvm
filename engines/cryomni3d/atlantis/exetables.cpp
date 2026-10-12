@@ -90,6 +90,17 @@ void CryOmni3DEngine_Atlantis::loadAtlantisExeTables() {
 	    (kInvTableVA - kImageBase - kDgroupVaddr) + kDgroupRawPtr;
 	exe.seek(kInvTableFileOff);
 	readInventoryIconTable(exe, _inventoryObjectIds);
+
+	// Guest sprite table at VA 0x00496884: perso ids up to -1, the index being
+	// the sprite of SUIVEUR.SPR (atlantis.exe FUN_0042b480).
+	_guestSpriteIds.clear();
+	exe.seek((0x00496884 - kImageBase - kDgroupVaddr) + kDgroupRawPtr);
+	for (int i = 0; i < 64 && !exe.eos(); i++) {
+		int32 id = exe.readSint32LE();
+		if (id == -1)
+			break;
+		_guestSpriteIds.push_back(id);
+	}
 	debugC(1, kDebugScript, "loadAtlantisExeTables: %u inventory object ids from atlantis.exe",
 	      _inventoryObjectIds.size());
 

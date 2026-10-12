@@ -209,6 +209,46 @@ public:
 		TS_ASSERT_EQUALS(wrong, 0u);
 	}
 
+	// Guests: the list after AddGuest / SubGuest sequences as the ORIGINAL
+	// FUN_0042b480 / FUN_0042b6c0 leave it (atlantis-re
+	// tools/emu/scripts_guests.py, drawing stubbed), "id:sprite" per record.
+	// Port: AtlantisGuests (inventory.cpp) with the exe table 0x00496884.
+	void test_guest_list() {
+		static const int32 kTable[] = { 562, 561, 587, 597, 543, 681, 682, 592, 523 };
+		Common::Array<int32> table(kTable, ARRAYSIZE(kTable));
+		static const struct { const char *ops; const char *list; } kOrig[] = {
+			{ "+587", "587:2" },
+			{ "+587 +562", "587:2 562:0" },
+			{ "+587 +562 +523", "587:2 562:0 523:8" },
+			{ "+587 +562 +523 -562", "587:2 523:8" },
+			{ "+587 -587", "" },
+			{ "+587 +587", "587:2 587:2" },
+			{ "+587 +587 -587", "587:2" },
+			{ "+543 -600", "543:4" },
+			{ "+597 +999", "597:3 999:0" },
+		};
+		for (uint i = 0; i < ARRAYSIZE(kOrig); i++) {
+			CryOmni3D::Atlantis::AtlantisGuests g;
+			for (const char *p = kOrig[i].ops; *p; ) {
+				char op = *p++;
+				int32 id = atoi(p);
+				while (*p && *p != ' ') p++;
+				while (*p == ' ') p++;
+				if (op == '+')
+					g.add(id, table);
+				else
+					g.remove(id);
+			}
+			Common::String got;
+			for (uint k = 0; k < g.count; k++) {
+				if (!got.empty())
+					got += " ";
+				got += Common::String::format("%d:%u", g.id[k], g.sprite[k]);
+			}
+			TSM_ASSERT_EQUALS(kOrig[i].ops, got, Common::String(kOrig[i].list));
+		}
+	}
+
 	// Icon hotspots: original (i*70+42, 443); port = centre of the toolbar's
 	// zone rect (rects from the faithful copy of init()), origin y = 480-82.
 	void test_icon_hotspots() {

@@ -84,5 +84,38 @@ void inventoryReset(Inventory &inventory, Objects &objects) {
 		inventoryAppend(inventory, start);
 }
 
+void AtlantisGuests::clear() {
+	memset(id, 0, sizeof(id));
+	memset(sprite, 0, sizeof(sprite));
+	count = 0;
+}
+
+void AtlantisGuests::add(int32 guestId, const Common::Array<int32> &table) {
+	if (count >= kSlots)
+		return;   // past the record area of the original
+	id[count] = guestId;
+	for (uint i = 0; i < table.size(); i++) {
+		if (table[i] == guestId) {
+			sprite[count] = (byte)i;
+			break;
+		}
+	}
+	count++;
+}
+
+void AtlantisGuests::removeAt(uint i) {
+	for (uint k = i; k < count && k + 1 < kSlots; k++) {
+		id[k] = id[k + 1];
+		sprite[k] = sprite[k + 1];
+	}
+	count--;
+}
+
+void AtlantisGuests::remove(int32 guestId) {
+	for (uint i = 0; i < count; i++)
+		if (id[i] == guestId)
+			removeAt(i);
+}
+
 } // End of namespace Atlantis
 } // End of namespace CryOmni3D

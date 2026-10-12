@@ -45,7 +45,7 @@ static const int32  kSaveSize        = 1792;
 static const uint   kSaveDescriptionLen = 20;
 static const uint   kWAMNameLen      = 32;
 static const uint32 kExtMagic        = 0x41544C53u;  // 'ATLS'
-static const uint32 kExtVersion      = 5;
+static const uint32 kExtVersion      = 6;
 
 // Player-profile file (cannot collide with the "atlantis.NNNN" save files).
 static const char  *kPlayersFile    = "atlantis-players.dat";
@@ -135,6 +135,14 @@ void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &save
 	// ext v5: the /con play counters (the original saves the same 0x5dc
 	// bytes, FUN_0042d6b8).
 	out->write(_conPlayCounters.begin(), _conPlayCounters.size());
+	// ext v6: the guests (the original saves the list, FUN_0042d6b8 @
+	// 0x0042db2a) and the shown flag.
+	out->writeByte((byte)_guests.count);
+	for (uint i = 0; i < AtlantisGuests::kSlots; i++) {
+		out->writeSint32BE(_guests.id[i]);
+		out->writeByte(_guests.sprite[i]);
+	}
+	out->writeByte(_guestsShown ? 1 : 0);
 
 	out->finalize();
 	delete out;
@@ -187,6 +195,9 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	Common::HashMap<Common::String, int> savedGameVars;
 	uint32 savedCONChapter = 0;
 	Common::Array<byte> savedConCounters;   // empty: saved before ext v5
+	AtlantisGuests savedGuests;            // ext v6
+	bool savedGuestsShown = true;
+	bool hasGuests = false;
 	int savedMusicTrack = 0;
 	bool hasExt = (in->size() > kSaveSize);
 	if (hasExt) {
@@ -231,6 +242,15 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 				savedConCounters.resize(kConPlayCounterCount);
 				in->read(savedConCounters.begin(), savedConCounters.size());
 			}
+			if (ver >= 6 && !in->eos()) {
+				hasGuests = true;
+				savedGuests.count = MIN<uint>(in->readByte(), AtlantisGuests::kSlots);
+				for (uint i = 0; i < AtlantisGuests::kSlots; i++) {
+					savedGuests.id[i] = in->readSint32BE();
+					savedGuests.sprite[i] = in->readByte();
+				}
+				savedGuestsShown = in->readByte() != 0;
+			}
 		}
 	}
 	delete in;
@@ -274,6 +294,10 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	// were kept.
 	for (uint i = 0; i < _conPlayCounters.size(); i++)
 		_conPlayCounters[i] = (i < savedConCounters.size()) ? savedConCounters[i] : 0;
+
+	// Guests: from the save, or none for saves written before they were kept.
+	_guests = hasGuests ? savedGuests : AtlantisGuests();
+	_guestsShown = hasGuests ? savedGuestsShown : true;
 
 	if (hasExt) {
 		_hiddenPersos = savedHiddenPersos;

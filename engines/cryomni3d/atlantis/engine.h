@@ -30,6 +30,7 @@
 #include "common/random.h"
 #include "common/rect.h"
 #include "common/str.h"
+#include "graphics/managed_surface.h"
 #include "graphics/surface.h"
 
 #include "cryomni3d/cryomni3d.h"
@@ -37,6 +38,7 @@
 
 #include "cryomni3d/atlantis/bigfile.h"
 #include "cryomni3d/atlantis/con_eval.h"
+#include "cryomni3d/atlantis/inventory.h"
 #include "cryomni3d/atlantis/con_script.h"
 #include "cryomni3d/atlantis/menu_layout.h"
 #include "cryomni3d/atlantis/toolbar.h"
@@ -546,6 +548,16 @@ private:
 	// OBJETS1.SPR sprite order), the matching item icons, and the index into
 	// _objSprites of an item an NPC just gave the player this dialog (-1 = none).
 	Common::Array<uint> _inventoryObjectIds;
+	// Guests (atlantis-re: functions/scripts-guests.md).
+	AtlantisGuests _guests;
+	bool _guestsShown = true;                  // 0x0049613c, initially 1
+	Common::Array<int32> _guestSpriteIds;      // exe table 0x00496884
+	Common::Array<SubjSprite> _guestSprites;   // SPRITE\2D\SUIVEUR.SPR
+	void drawSprite(Graphics::ManagedSurface &dst, const SubjSprite &spr, int x, int y);
+	void drawGuests(Graphics::ManagedSurface &dst, int movingSprite = -1, int movingX = 0);
+	void slideGuest(byte sprite, int fromX, int toX, int step);
+	void addGuest(int32 guestId);
+	void subGuest(int32 guestId);
 	Common::Array<SubjSprite> _objSprites;
 	int _dialogGivenObjSprite;
 	SubjSprite _inventoryBarSprite;   // OBJETS0.SPR bar background

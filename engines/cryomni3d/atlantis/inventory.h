@@ -71,6 +71,30 @@ void inventoryCompact(Inventory &inventory);
 // FUN_0042c054: one record, object 257.
 void inventoryReset(Inventory &inventory, Objects &objects);
 
+// The characters following Seth ("guests"), atlantis.exe: 5-byte records
+// {int32 id, byte sprite} at 0x006cd7fc, count byte 0x0077290e.  Fixed slots,
+// so that a slot reused by AddGuest keeps the sprite byte it held when the id
+// is not in the sprite table, as in the original.  See atlantis-re:
+// functions/scripts-guests.md.
+struct AtlantisGuests {
+	static const uint kSlots = 12;
+	static const byte kHidden = 0xff;   // sprite of a record not drawn
+	int32 id[kSlots];
+	byte sprite[kSlots];
+	uint count;
+
+	AtlantisGuests() { clear(); }
+	void clear();
+	// FUN_0042b480 (list part): append {id, index of id in table}.
+	void add(int32 guestId, const Common::Array<int32> &table);
+	// Remove record i and shift the following ones down.
+	void removeAt(uint i);
+	// FUN_0042b6c0 (list part): remove the records with this id; after a
+	// removal the scan goes on at the next index, so it skips the record
+	// that moved into the freed slot.
+	void remove(int32 guestId);
+};
+
 } // End of namespace Atlantis
 } // End of namespace CryOmni3D
 
