@@ -204,9 +204,28 @@ void AtlantisWAMParser::loadStream(Common::SeekableReadStream &stream) {
 		uint32 persoId = stream.readUint32LE();
 		Common::String spriteName;
 		readFixedName13(stream, spriteName);
-		for (uint32 p = 2 + 4 + 13; p < 108; p++)
-			stream.readByte();
 		AtlantisNPCEntry npc;
+		for (uint32 p = 2 + 4 + 13; p < 0x1e; p++)
+			stream.readByte();
+		bool viewZero = false;
+		for (uint k = 0; k < 17; k++) {
+			uint32 bits = stream.readUint32LE();
+			for (uint b = 0; b < 32; b++) {
+				if (!(bits >> b & 1))
+					continue;
+				if (k == 0 && b == 0)
+					viewZero = true;
+				npc.vues.push_back((uint16)(32 * k + b));
+			}
+		}
+		if (viewZero)
+			npc.vues.clear();
+		npc.rectX = stream.readSint16LE();
+		npc.rectY = stream.readSint16LE();
+		npc.rectW = stream.readSint16LE();
+		npc.rectH = stream.readSint16LE();
+		for (uint32 p = 0x6a; p < 108; p++)
+			stream.readByte();
 		npc.persoId    = persoId;
 		npc.spriteFile = spriteName;
 		_npcEntries.push_back(npc);

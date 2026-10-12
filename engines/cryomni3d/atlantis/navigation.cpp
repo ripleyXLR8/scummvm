@@ -518,13 +518,13 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 
 bool CryOmni3DEngine_Atlantis::npcPanoHitTest(const Common::Point &pan,
                                               int &outPersoId) const {
-	for (const NPCBound &nb : _npcPlaceBounds) {
-		if (nb.panoBounds.contains(pan)) {
-			outPersoId = nb.persoId;
-			return true;
-		}
-	}
-	return false;
+	// atlantis.exe FUN_00422d5c, see npc_click.h.
+	uint32 id = npcHitTest(_wam.getNPCEntries(), _npcRects, _spritePlaceList,
+	                       (uint16)_currentPlaceId, pan.x, pan.y);
+	if (!id)
+		return false;
+	outPersoId = (int)id;
+	return true;
 }
 
 } // End of namespace Atlantis

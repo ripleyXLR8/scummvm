@@ -41,6 +41,7 @@
 #include "cryomni3d/atlantis/inventory.h"
 #include "cryomni3d/atlantis/con_script.h"
 #include "cryomni3d/atlantis/menu_layout.h"
+#include "cryomni3d/atlantis/npc_click.h"
 #include "cryomni3d/atlantis/toolbar.h"
 #include "cryomni3d/atlantis/wam_parser.h"
 
@@ -91,26 +92,6 @@ struct SpriteTransEntry {
 	uint16 toPlace;
 	int    persoId;
 	Common::String spfFile;
-};
-
-// One entry from the WAM's SPW sprite list (e.g. SPWATL1.TXT).
-// NPC entries have type==0 and persoId>0; animated props (torches) have type!=0.
-struct SpritePlaceEntry {
-	uint16 placeId;
-	int type;        // 0 = NPC, non-zero = animated prop / wspranim pose
-	int frames;      // TXT frame field (animation length comes from the SPW header)
-	int persoId;     // character ID (0 for props)
-	float angle;     // camera look angle for NPC orientation
-	Common::String spwFile;
-	// The NPC's "home" place — clickable here, look-only elsewhere.  Encoded
-	// as a leading '-' on the angle token in the SPW list.
-	bool interactive;
-	// Trailing '-' on the placeId token marks the sprite as starting INACTIVE
-	// (atlantis.exe sprite-record field +0x04 = 0): it only renders after a
-	// /set(ShowPerso=N) (or wspranim activation, added later) flips it active.
-	bool startActive;
-	mutable bool active;   // runtime render flag; reset to startActive on place load
-	mutable int  frame;    // current animation frame
 };
 
 // How the gameStep() loop ended — drives run()'s outer state machine.
@@ -476,8 +457,8 @@ private:
 	// hit-test bounds and composite the sprite layer onto _warpSurface.  Called
 	// after loadCycloHNM() enters a place.
 	void compositeNPCSprites();
-	// Rebuild the NPC click-target list (_npcPlaceBounds) for the current place.
-	void rebuildNpcPlaceBounds();
+	// FUN_00424a20: the WAM NPC rectangles, from the file then the list rows.
+	void rebuildNpcRects();
 	// Re-composite every active current-place sprite onto _warpSurface from the
 	// clean _cycloSurface (so sprite show/hide changes take effect).
 	void recompositeSpriteLayer();
@@ -620,11 +601,9 @@ private:
 	// 2048-wide cyclo panorama.  Implemented in sprite_renderer.cpp.
 	void compositeSpfFrame(Common::SeekableReadStream *spf, uint frameIdx,
 	                       Graphics::Surface &dst);
-	struct NPCBound {
-		int persoId;
-		Common::Rect panoBounds;  // panoramic coords (Y=0 at top, exclusive right/bottom)
-	};
-	Common::Array<NPCBound> _npcPlaceBounds;
+	// The WAM NPC entries' click rectangles (from the file, overwritten by
+	// the sprite-list loader), parallel to _wam.getNPCEntries().
+	Common::Array<NpcClickRect> _npcRects;
 	// Persos hidden by /set(hideperso=N) / disableperso=N; showperso=N removes.
 	// Cleared on chapter change.
 	Common::Array<int> _hiddenPersos;

@@ -64,6 +64,14 @@ struct AtlantisSubWAM {
 struct AtlantisNPCEntry {
 	uint32 persoId;            // character ID referenced by CON scripts as ClicPerso
 	Common::String spriteFile; // canonical SPW file (others found via SPWATL*.TXT)
+	// Click rectangle at block +0x62 (x, y, w, h), as stored in the file;
+	// atlantis.exe FUN_00424a20 overwrites it from the sprite list.
+	int16 rectX = 0, rectY = 0, rectW = 0, rectH = 0;
+	// Views the NPC appears in: block +0x1e, 17 dwords used as a bitmap (bit b
+	// of dword k = view 32 * k + b), in the order atlantis.exe FUN_0045240c
+	// enumerates them; that enumeration ends on a 0, so a set bit for view 0
+	// ends it at once (empty list).
+	Common::Array<uint16> vues;
 };
 
 struct AtlantisPlace {

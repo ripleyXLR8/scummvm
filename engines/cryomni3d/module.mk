@@ -45,6 +45,7 @@ MODULE_OBJS += \
 	atlantis/menus.o \
 	atlantis/music.o \
 	atlantis/navigation.o \
+	atlantis/npc_click.o \
 	atlantis/place.o \
 	atlantis/puzzle_assets.o \
 	atlantis/puzzle_eclipse.o \

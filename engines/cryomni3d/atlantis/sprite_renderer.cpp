@@ -713,47 +713,9 @@ void CryOmni3DEngine_Atlantis::loadSpritePlaceList() {
 		if (line.empty() || line[0] == '#' || line[0] == ';')
 			continue;
 
-		Common::Array<Common::String> tok;
-		const char *tp = line.c_str();
-		while (*tp) {
-			while (*tp == ' ' || *tp == '\t') tp++;
-			if (!*tp) break;
-			const char *te = tp;
-			while (*te && *te != ' ' && *te != '\t') te++;
-			tok.push_back(Common::String(tp, (uint32)(te - tp)));
-			tp = te;
-		}
-		if (tok.size() < 4)
-			continue;
-
 		SpritePlaceEntry entry;
-		entry.placeId = (uint16)atoi(tok[0].c_str());
-		entry.type    = atoi(tok[1].c_str());
-		entry.frames  = atoi(tok[2].c_str());
-		entry.angle   = 0.f;
-		entry.persoId = 0;
-		entry.interactive = false;
-		// Trailing '-' on the placeId token marks the sprite as start-inactive.
-		entry.startActive = !tok[0].empty() && tok[0][tok[0].size() - 1] != '-';
-		entry.active = entry.startActive;
-		entry.frame  = 0;
-
-		// Two row formats, distinguished by token count (never 5 or 7):
-		//   4 tokens: placeId type frames spwFile
-		//   6 tokens: placeId type frames -persoId angle spwFile
-		if (tok.size() >= 6) {
-			int signedId  = atoi(tok[3].c_str());
-			entry.persoId = (signedId < 0) ? -signedId : signedId;
-			entry.angle   = (float)atof(tok[4].c_str());
-			// A leading '-' on the angle token marks the NPC's home (clickable)
-			// place — atof drops the sign on a zero magnitude, so check the raw
-			// token.
-			entry.interactive = (!tok[4].empty() && tok[4][0] == '-');
-			entry.spwFile = tok[5];
-		} else {
-			entry.spwFile = tok[3];
-		}
-
+		if (!parseSpritePlaceLine(line, entry))
+			continue;
 		_spritePlaceList.push_back(entry);
 	}
 
@@ -858,53 +820,18 @@ void CryOmni3DEngine_Atlantis::compositeSpfFrame(Common::SeekableReadStream *spf
 	decodeSPWPixels(spf, dst, frameIdx);
 }
 
-void CryOmni3DEngine_Atlantis::rebuildNpcPlaceBounds() {
-	// Always clear, even if !_warpLoaded, so stale bounds from the previous
-	// place can't false-positive a hit-test before the new place is composited.
-	_npcPlaceBounds.clear();
-	if (!_warpLoaded)
-		return;
-	for (const SpritePlaceEntry &entry : _spritePlaceList) {
-		if (entry.placeId != (uint16)_currentPlaceId)
+void CryOmni3DEngine_Atlantis::rebuildNpcRects() {
+	// atlantis.exe FUN_00424a20: see npc_click.h.  See atlantis-re:
+	// functions/graphics-FUN_00422d5c.md.
+	const Common::Array<AtlantisNPCEntry> &npcs = _wam.getNPCEntries();
+	initNpcClickRects(npcs, _npcRects);
+	for (const SpritePlaceEntry &e : _spritePlaceList) {
+		if (!npcRowMatches(npcs, e))
 			continue;
-		// Click target: a real perso, marked interactive, currently active and
-		// not hidden.  type 0 = normal NPC; type 3 = script-managed clickable
-		// props (ropes/traps flagged interactive via the '-00' angle prefix).
-		if (entry.persoId <= 0 || !entry.interactive)
-			continue;
-		if (entry.type != 0 && entry.type != 3)
-			continue;
-		if (!entry.active)
-			continue;
-		bool hidden = false;
-		for (int h : _hiddenPersos) if (h == entry.persoId) { hidden = true; break; }
-		if (hidden)
-			continue;
-
-		Common::SeekableReadStream *spw =
-		    openBigFileStream(kFileTypeSpriteCyclo, entry.spwFile);
-		if (!spw)
-			continue;
-		int16 x1, y1, x2, y2;
-		if (readSPWBounds(spw, x1, y1, x2, y2) && y2 >= y1) {
-			if (x2 >= x1) {
-				NPCBound nb;
-				nb.persoId    = entry.persoId;
-				nb.panoBounds = Common::Rect(x1, y1, x2 + 1, y2 + 1);
-				_npcPlaceBounds.push_back(nb);
-			} else {
-				// Sprite straddles the panorama's 0/2048 seam — split in two.
-				const int16 panoW = 2048;
-				NPCBound nbR, nbL;
-				nbR.persoId    = entry.persoId;
-				nbR.panoBounds = Common::Rect(x1, y1, panoW, y2 + 1);
-				_npcPlaceBounds.push_back(nbR);
-				nbL.persoId    = entry.persoId;
-				nbL.panoBounds = Common::Rect(0, y1, x2 + 1, y2 + 1);
-				_npcPlaceBounds.push_back(nbL);
-			}
-		}
-		delete spw;
+		Common::ScopedPtr<Common::SeekableReadStream> spw(openBigFileStream(kFileTypeSpriteCyclo, e.spwFile));
+		SpwFrame0 f;
+		if (spw && readSpwFrame0(*spw, f))
+			applyNpcRowRect(npcs, e, f, _npcRects);
 	}
 }
 
@@ -932,7 +859,7 @@ void CryOmni3DEngine_Atlantis::compositeNPCSprites() {
 		}
 	}
 
-	rebuildNpcPlaceBounds();
+	rebuildNpcRects();
 	recompositeSpriteLayer();
 }
 

@@ -22,7 +22,11 @@
 #include "graphics/surface.h"
 
 #include "cryomni3d/omni3d.h"
+#include "cryomni3d/atlantis/bigfile.h"
+#include "cryomni3d/atlantis/npc_click.h"
 #include "cryomni3d/atlantis/wam_parser.h"
+#include "common/archive.h"
+#include "common/fs.h"
 #include "../../../system/null_osystem.h"
 
 namespace GraphicsNavTest {
@@ -166,6 +170,116 @@ public:
 				TS_ASSERT_EQUALS(got, cases[ci].origId);
 			}
 		}
+	}
+
+	// NPC / object click areas over every WAM, against the ORIGINAL
+	// FUN_00421ebc + FUN_00424a20 + FUN_00422d5c run end to end under
+	// emulation on the game data (atlantis-re tools/emu/scripts_npc_click.py,
+	// evidence/golden/graphics_npc_click.txt): the NPC rectangles after the
+	// sprite list is loaded, and the hit-test result at a 48-px grid plus
+	// every rectangle edge +-1, in each view that has sprites.  Port:
+	// AtlantisWAMParser, parseSpritePlaceLine, readSpwFrame0,
+	// initNpcClickRects / applyNpcRowRect and npcHitTest (npc_click.cpp).
+	void test_npc_click_areas_data() {
+		using namespace CryOmni3D::Atlantis;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("graphics_navigation: no game data configured, skipped");
+			return;
+		}
+		AtlantisTest::Golden golden;
+		TS_ASSERT(AtlantisTest::loadGolden("graphics_npc_click.txt", golden));
+		if (!SearchMan.hasArchive("graphics_npc_data"))
+			SearchMan.addDirectory("graphics_npc_data", Common::FSNode(Common::Path(AtlantisTest::dataDir(), '/')));
+		BigFileArchive big;
+		for (int d = 1; d <= 4; d++)
+			TS_ASSERT(big.open(Common::Path(Common::String::format("BIGCD%d.BIG", d))));
+		uint wams = 0;
+		for (AtlantisTest::Golden::const_iterator it = golden.begin(); it != golden.end(); ++it) {
+			if (!it->_key.hasSuffix("|rects"))
+				continue;
+			Common::String name = it->_key.substr(0, it->_key.size() - 6);
+			wams++;
+			Common::ScopedPtr<Common::SeekableReadStream> ws(big.createReadStreamForMember("WAM\\" + name));
+			TS_ASSERT(ws);
+			if (!ws)
+				continue;
+			AtlantisWAMParser w;
+			w.loadStream(*ws);
+			const Common::Array<AtlantisNPCEntry> &npcs = w.getNPCEntries();
+
+			// Member names are looked up upper-cased, as the engine does
+			// (CryOmni3DEngine_Atlantis::openBigFileStream).
+			Common::Array<SpritePlaceEntry> entries;
+			Common::String listName = "SPRLIST\\" + w.spwListFile;
+			listName.toUppercase();
+			Common::ScopedPtr<Common::SeekableReadStream> ls(big.createReadStreamForMember(listName));
+			if (ls) {
+				Common::String text;
+				while (!ls->eos()) {
+					char c = (char)ls->readByte();
+					if (!ls->eos())
+						text += c;
+				}
+				const char *p = text.c_str();
+				while (*p) {
+					while (*p == '\r' || *p == '\n' || *p == ' ' || *p == '\t') p++;
+					const char *eol = p;
+					while (*eol && *eol != '\r' && *eol != '\n') eol++;
+					SpritePlaceEntry e;
+					if (eol > p && parseSpritePlaceLine(Common::String(p, eol - p), e))
+						entries.push_back(e);
+					p = eol;
+				}
+			}
+			Common::Array<NpcClickRect> rects;
+			initNpcClickRects(npcs, rects);
+			for (const SpritePlaceEntry &e : entries) {
+				if (!npcRowMatches(npcs, e))
+					continue;
+				Common::String spwName = "SPRITE\\CYCLO\\" + e.spwFile;
+				spwName.toUppercase();
+				Common::ScopedPtr<Common::SeekableReadStream> spw(big.createReadStreamForMember(spwName));
+				SpwFrame0 f;
+				if (spw && readSpwFrame0(*spw, f))
+					applyNpcRowRect(npcs, e, f, rects);
+			}
+			Common::String rtext;
+			for (uint i = 0; i < npcs.size(); i++)
+				rtext += Common::String::format("%u %u %s %d %d %d %d\n", i, npcs[i].persoId, npcs[i].spriteFile.c_str(),
+				                                rects[i].x, rects[i].y, rects[i].w, rects[i].h);
+			TSM_ASSERT_EQUALS((name + ": NPC rectangles").c_str(),
+			                  AtlantisTest::md5Hex((const byte *)rtext.c_str(), rtext.size()), it->_value);
+
+			Common::Array<Common::Point> pts;
+			for (int y = 0; y < 768; y += 48)
+				for (int x = 0; x < 2048; x += 48)
+					pts.push_back(Common::Point(x, y));
+			for (uint i = 0; i < rects.size(); i++) {
+				const int cxs[2] = { rects[i].x, rects[i].x + rects[i].w };
+				const int cys[2] = { rects[i].y, rects[i].y + rects[i].h };
+				for (int dx = -1; dx <= 1; dx++)
+					for (int dy = -1; dy <= 1; dy++)
+						for (int a = 0; a < 2; a++)
+							for (int b = 0; b < 2; b++)
+								pts.push_back(Common::Point(cxs[a] + dx, cys[b] + dy));
+			}
+			Common::Array<byte> res;
+			const char *vp = golden[name + "|vues"].c_str();
+			while (*vp && *vp != '-') {
+				uint16 vue = (uint16)atoi(vp);
+				while (*vp && *vp != ',') vp++;
+				if (*vp == ',') vp++;
+				for (const Common::Point &pt : pts) {
+					uint32 id = npcHitTest(npcs, rects, entries, vue, pt.x, pt.y);
+					for (int k = 0; k < 4; k++)
+						res.push_back((byte)(id >> (8 * k)));
+				}
+			}
+			TSM_ASSERT_EQUALS((name + ": hit-test results").c_str(),
+			                  AtlantisTest::md5Hex(res.data(), res.size()), golden[name + "|hits"]);
+		}
+		TS_ASSERT_EQUALS(wams, 38u);
+		SearchMan.remove("graphics_npc_data");
 	}
 
 	// Dialog camera FOV table (atlantis-cd-en-714240 @ 0x00496080, 4 floats,

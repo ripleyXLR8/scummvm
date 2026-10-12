@@ -437,7 +437,6 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 			for (SpritePlaceEntry &e : _spritePlaceList)
 				if (e.persoId == perso) e.active = false;
 			recompositeSpriteLayer();
-			rebuildNpcPlaceBounds();
 			debugC(1, kDebugScript, "execConSetCommand: hide perso %d", perso);
 		}
 		return;
@@ -721,7 +720,6 @@ void CryOmni3DEngine_Atlantis::showPerso(int perso) {
 	for (SpritePlaceEntry &e : _spritePlaceList)
 		if (e.persoId == perso) e.active = true;
 	recompositeSpriteLayer();
-	rebuildNpcPlaceBounds();
 	debugC(1, kDebugScript, "showPerso: %d", perso);
 }
 
