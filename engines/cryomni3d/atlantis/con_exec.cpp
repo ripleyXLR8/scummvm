@@ -393,6 +393,13 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 		return;
 	}
 
+	// AngleWarpX=N / AngleWarpY=N — turn the view to N degrees, then store
+	// the variable (atlantis.exe FUN_0042a100 @ 0x0042a995, 0x0042a9cf).
+	if (key == "anglewarpx")
+		_omni3dMan.setAlpha(conAngleRadians(value));
+	else if (key == "anglewarpy")
+		_omni3dMan.setBeta(conAngleRadians(value));
+
 	// hideperso=N — deactivate every sprite for perso N and
 	// add it to the persistent hidden list (atlantis.exe FUN_00427bd0).
 	if (key == "hideperso") {

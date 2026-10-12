@@ -74,6 +74,11 @@ struct ConSetCommand {
 void parseConSet(const ConVariableNames &names, const Common::Array<char> &text, uint32 pos,
                  ConSetCommand &out);
 
+// FUN_0042a100, AngleWarpX= / AngleWarpY=: the view angle in radians,
+// value * pi / 180 computed on the x87 and stored as a float (pi is the
+// float FUN_0045179a keeps at 0x00bcb594).
+float conAngleRadians(int32 value);
+
 // The CON clocks (atlantis.exe): ChapterTime, Time1 and Time2, in seconds.
 // See atlantis-re: formats/scripts-con.md (timers).
 struct ConClocks {

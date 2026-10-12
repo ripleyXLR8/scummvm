@@ -181,6 +181,11 @@ void parseConSet(const ConVariableNames &names, const Common::Array<char> &text,
 	}
 }
 
+float conAngleRadians(int32 value) {
+	const float pi = 3.14159265358979323846f;
+	return (float)((double)value * (double)pi / 180.0);
+}
+
 int32 ConClocks::timerValue(int timer, uint32 now) const {
 	if (timer == 1)
 		return time1Offset + (int32)((now - time1Start) / 1000);

@@ -214,6 +214,22 @@ public:
 		}
 	}
 
+	// AngleWarpX= / AngleWarpY=: the angle the ORIGINAL /set handler stores,
+	// after FUN_0045179a(75.137, 50.0), as float bits (atlantis-re
+	// tools/emu/scripts_angle.py).  Port: conAngleRadians.
+	void test_set_view_angle() {
+		static const struct { int32 value; uint32 bits; } kOrig[] = {
+			{ 90, 0x3fc90fdbu }, { 0, 0x00000000u }, { 359, 0x40c880e1u },
+			{ 45, 0x3f490fdbu }, { 20, 0x3eb2b8c3u }, { 30, 0x3f060a92u },   // "-30" reads 30
+		};
+		for (uint i = 0; i < ARRAYSIZE(kOrig); i++) {
+			float f = CryOmni3D::Atlantis::conAngleRadians(kOrig[i].value);
+			uint32 bits;
+			memcpy(&bits, &f, 4);
+			TS_ASSERT_EQUALS(bits, kOrig[i].bits);
+		}
+	}
+
 	uint runSynth(uint from, uint to) {
 		uint fails = 0;
 		if (!AtlantisTest::haveData()) {
