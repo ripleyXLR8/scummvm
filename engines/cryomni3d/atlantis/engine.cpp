@@ -467,6 +467,27 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 			continue;
 		}
 
+		// Any other return is a click with no NPC under the crosshair
+		// (atlantis.exe FUN_00423ad8): the zone goes to ClicZone, and with a
+		// zone or an object in hand FUN_004278a0 runs the /con click scan
+		// (0x00427b8c..0x00427bc2).  A transition then needs an empty hand
+		// (0x00423d2b).
+		_gameVars["cliczone"] = (int)actionId;
+		if (actionId != 0 || _inventory.selectedObject() != nullptr) {
+			runConClick();
+			if (shouldAbort())
+				break;
+			if (_nextPlaceId != uint(-1)) {
+				uint dest = _nextPlaceId;
+				_nextPlaceId = uint(-1);
+				executeTransition(dest);
+				continue;
+			}
+		}
+		_gameVars["cliczone"] = 0;
+		if (_inventory.selectedObject() != nullptr)
+			continue;
+
 		// A zone action in the place-id range is a navigation click: run the
 		// departure /sel sections (which may abort the move by clearing
 		// _nextPlaceId, or redirect it via /set(vue=N)), then transition.

@@ -466,11 +466,13 @@ void ConScript::parse(const char *buf, uint32 len) {
 			}
 			// The evaluator stops at the end of the line; the body starts two
 			// bytes later (callers of FUN_004298ac add 2).
-			readBody(t, t.lineEnd(en.evalOffset) + 2, sec);
+			sec.bodyOffset = (int32)t.lineEnd(en.evalOffset) + 2;
+			readBody(t, (uint32)sec.bodyOffset, sec);
 		} else {
 			const Header &hd = headers[h++];
 			sec.id = hd.id;
 			sec.lineOffset = (int32)hd.offset;
+			sec.bodyOffset = (int32)hd.offset;
 			readBody(t, hd.offset, sec);
 		}
 		_sections.push_back(sec);
@@ -505,6 +507,26 @@ bool conEntryAllowed(const ConSection &sec, const Common::Array<byte> &counters)
 		return true;
 	byte played = (sec.id >= 0 && (uint)sec.id < counters.size()) ? counters[sec.id] : 0;
 	return played < sec.conLimit;
+}
+
+int findConClickEntry(const ConScript &script, const Common::Array<byte> &counters,
+                      ConEntryTest test, void *ctx) {
+	const Common::Array<char> &text = script.text();
+	const Common::Array<ConSection> &secs = script.sections();
+	for (uint i = 0; i < secs.size(); i++) {
+		const ConSection &sec = secs[i];
+		if (!sec.isEntry || !sec.isCon || !conEntryAllowed(sec, counters))
+			continue;
+		if (!test(sec, ctx))
+			continue;
+		// 0x00425d47..0x00425d6d: subject entries are skipped and the scan
+		// goes on.
+		const uint32 b = (uint32)sec.bodyOffset;
+		if (b + 4 <= text.size() && (!strncmp(&text[b], "/Suj", 4) || !strncmp(&text[b], "/suj", 4)))
+			continue;
+		return (int)i;
+	}
+	return -1;
 }
 
 bool ConScript::gotoSection(int id, ConSection &out) const {

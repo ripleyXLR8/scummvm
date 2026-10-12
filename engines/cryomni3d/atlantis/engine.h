@@ -251,6 +251,11 @@ private:
 	// /con(clicperso=N) section for them (the subject topic menu lands with
 	// the cursor layer).  Mirrors atlantis.exe FUN_00425828.
 	void interactNPC(int persoId);
+	// FUN_00425cf4: after a click on a zone or with an object in hand, run the
+	// first eligible /con entry that is not a subject entry, then
+	// FUN_00425dd0 (drop the held object on its zone).
+	void runConClick();
+	void showPerso(int perso);
 	// Per-NPC enabled-subject table (atlantis.exe 0x602f10): /set(enablesuj)
 	// appends, /set(disablesuj) removes.  sujsForPerso creates-on-demand.
 	Common::Array<int> &sujsForPerso(int persoId);

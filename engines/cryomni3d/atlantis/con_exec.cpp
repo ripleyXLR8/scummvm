@@ -360,14 +360,7 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 
 	// showperso=N — reactivate every sprite for perso N and clear its hide.
 	if (key == "showperso") {
-		int perso = value;
-		for (int i = (int)_hiddenPersos.size() - 1; i >= 0; i--)
-			if (_hiddenPersos[i] == perso) _hiddenPersos.remove_at(i);
-		for (SpritePlaceEntry &e : _spritePlaceList)
-			if (e.persoId == perso) e.active = true;
-		recompositeSpriteLayer();
-		rebuildNpcPlaceBounds();
-		debugC(1, kDebugScript, "execConSetCommand: show perso %d", perso);
+		showPerso(value);
 		return;
 	}
 
@@ -569,6 +562,52 @@ bool CryOmni3DEngine_Atlantis::runConTimers() {
 			break;
 	}
 	return played;
+}
+
+void CryOmni3DEngine_Atlantis::showPerso(int perso) {
+	for (int i = (int)_hiddenPersos.size() - 1; i >= 0; i--)
+		if (_hiddenPersos[i] == perso) _hiddenPersos.remove_at(i);
+	for (SpritePlaceEntry &e : _spritePlaceList)
+		if (e.persoId == perso) e.active = true;
+	recompositeSpriteLayer();
+	rebuildNpcPlaceBounds();
+	debugC(1, kDebugScript, "showPerso: %d", perso);
+}
+
+void CryOmni3DEngine_Atlantis::runConClick() {
+	// atlantis.exe FUN_00425cf4 (flag 0x00496170 set: a play is counted).
+	struct Ctx {
+		static bool test(const ConSection &sec, void *ctx) {
+			const CryOmni3DEngine_Atlantis *e = (const CryOmni3DEngine_Atlantis *)ctx;
+			return e->evalSelSection(sec, 0, (int)e->_currentPlaceId);
+		}
+	};
+	int idx = findConClickEntry(_conScript, _conPlayCounters, &Ctx::test, this);
+	if (idx >= 0) {
+		ConSection &sec = _conScript.sections()[idx];
+		debugC(1, kDebugScript, "runConClick: section %d", sec.id);
+		bumpConPlayCounter(sec.id);
+		playConSection(sec);
+	}
+
+	// FUN_00425dd0: clicking zone 2000+N with object N in hand puts the
+	// object back into the place when the place's sprite list holds it.
+	const Object *held = _inventory.selectedObject();
+	const int heldId = (held && held->idOBJ() != uint(-1)) ? (int)held->idOBJ() : 0;
+	if (_gameVars.getValOrDefault("cliczone", 0) - 2000 == heldId) {
+		for (const SpritePlaceEntry &e : _spritePlaceList) {
+			if (e.placeId != _currentPlaceId || e.persoId != heldId)
+				continue;
+			showPerso(heldId);
+			inventoryRemove(_inventory, (uint)heldId);
+			_inventory.deselectObject();
+			setArrowCursor();
+			break;
+		}
+	}
+
+	_gameVars["clicperso"] = 0;
+	_gameVars["cliczone"] = 0;
 }
 
 void CryOmni3DEngine_Atlantis::bumpConPlayCounter(int section) {

@@ -141,6 +141,57 @@ public:
 		}
 	}
 
+	// Zone click / object in hand: the section the ORIGINAL FUN_00425cf4 runs
+	// (atlantis-re tools/emu/scripts_click.py: real evaluator and /con
+	// scanner, executor stubbed); 0 = none.  Port: findConClickEntry with the
+	// real ConEvaluator.
+	void test_con_click_entry() {
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("scripts_con_parse: no game data configured (VARIAS.CON), skipped");
+			return;
+		}
+		static const char *const kText =
+		    "/1\r\n/con(ClicPerso=600)\r\n[Seth] npc\r\n"
+		    "/2\r\n/con*(ClicZone=12)\r\n/suj3\r\n[Seth] subject\r\n"
+		    "/3\r\n/con*(ClicZone=12)\r\n[Seth] zone 12\r\n"
+		    "/4\r\n/con(ClicZone=12)&(FlagTemp1=1)\r\n[Seth] zone 12 flag\r\n"
+		    "/5\r\n/con*(ObjetEnMain=300)\r\n[Seth] object\r\n"
+		    "/000\r\n";
+		static const struct { const char *name; const char *var1; int val1; const char *var2; int val2; byte counter; int section; } kOrig[] = {
+			{ "zone12", "cliczone", 12, nullptr, 0, 0, 3 },
+			{ "zone12_flag", "cliczone", 12, "flagtemp1", 1, 0, 3 },
+			{ "zone13", "cliczone", 13, nullptr, 0, 0, 0 },
+			{ "object300", "objetenmain", 300, nullptr, 0, 0, 5 },
+			{ "npc600", "clicperso", 600, nullptr, 0, 0, 1 },
+			{ "npc600_played", "clicperso", 600, nullptr, 0, 1, 0 },
+		};
+		struct Ctx {
+			const Common::Array<char> *text;
+			ScriptsTest::VarState st;
+			static bool test(const ScriptsTest::ConSection &sec, void *ctx) {
+				Ctx *c = (Ctx *)ctx;
+				CryOmni3D::Inventory inv;
+				ScriptsTest::NullInventoryCb cb;
+				inv.init(1, new Common::Functor1Mem<uint, void, ScriptsTest::NullInventoryCb>(&cb, &ScriptsTest::NullInventoryCb::cb));
+				CryOmni3D::Atlantis::ConEvaluator eval(ScriptsTest::variasNames(), c->st.vars, inv);
+				return eval.evaluate(*c->text, (uint32)sec.condOffset);
+			}
+		};
+		ScriptsTest::ConScript script;
+		script.parse(kText, strlen(kText));
+		for (uint i = 0; i < ARRAYSIZE(kOrig); i++) {
+			Ctx ctx;
+			ctx.text = &script.text();
+			ctx.st.vars[kOrig[i].var1] = kOrig[i].val1;
+			if (kOrig[i].var2)
+				ctx.st.vars[kOrig[i].var2] = kOrig[i].val2;
+			Common::Array<byte> counters(CryOmni3D::Atlantis::kConPlayCounterCount, kOrig[i].counter);
+			int idx = CryOmni3D::Atlantis::findConClickEntry(script, counters, &Ctx::test, &ctx);
+			int section = idx < 0 ? 0 : script.sections()[idx].id;
+			TSM_ASSERT_EQUALS(kOrig[i].name, section, kOrig[i].section);
+		}
+	}
+
 	void test_parse_matches_original_interpreter() {
 		if (!AtlantisTest::haveData()) {
 			TS_WARN("scripts_con_parse: no game data configured, skipped");
