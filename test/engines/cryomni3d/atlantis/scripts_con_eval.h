@@ -165,6 +165,51 @@ public:
 		}
 	}
 
+	// /set parsing against the ORIGINAL FUN_0042a100 under emulation
+	// (atlantis-re audit/scripts/set_handler_emulation.txt, harness
+	// tools/emu/scripts_set.py: each line followed by "\r\n/1\r\n").
+	// Port: parseConSet (con_eval.cpp).
+	void test_set_parse() {
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("scripts_con_eval: no game data configured (VARIAS.CON), skipped");
+			return;
+		}
+		static const struct { const char *line; bool valid; const char *name; int value; int inventId; } kOrig[] = {
+			{ "/set(FlagTemp1=5)", true, "flagtemp1", 5, 0 },
+			{ "/set(FlagTemp1=-5)", true, "flagtemp1", 5, 0 },
+			{ "/set(FlagTemp1=abc)", true, "flagtemp1", 1, 0 },   // the 1 of the next line
+			{ "/set(parletemp=1)", true, "parletemp1", 1, 0 },
+			{ "/set(FlagTemp=1)", true, "flagtemp1", 1, 0 },
+			{ "/set(Foo=1)", false, "", 0, 0 },
+			{ "/set(abortdepart=1)", true, "abortdepart", 1, 0 },
+			{ "/set(newsound=14)", true, "newsound", 14, 0 },
+			{ "/set(startpuzzle=2)", true, "startpuzzle", 2, 0 },
+			{ "/set(Disable=7)", true, "disable", 7, 0 },
+			{ "/set(TestTime1=1)", true, "testtime1", 1, 0 },
+			{ "/set(gameover=1)", true, "gameover", 1, 0 },
+			{ "/set(invent262=1)", true, "", 1, 262 },
+			{ "/set(invent262=0)", true, "", 0, 262 },
+			{ "/set(invent262=2)", true, "", 2, 262 },
+		};
+		for (uint i = 0; i < ARRAYSIZE(kOrig); i++) {
+			Common::String line = Common::String(kOrig[i].line) + "\r\n/1\r\n";
+			Common::Array<char> text(line.c_str(), line.size());
+			CryOmni3D::Atlantis::ConSetCommand set;
+			CryOmni3D::Atlantis::parseConSet(ScriptsTest::variasNames(), text, 0, set);
+			TSM_ASSERT_EQUALS(kOrig[i].line, set.valid, kOrig[i].valid);
+			if (!set.valid)
+				continue;
+			if (kOrig[i].inventId) {
+				TSM_ASSERT(kOrig[i].line, set.invent);
+				TSM_ASSERT_EQUALS(kOrig[i].line, set.inventId, kOrig[i].inventId);
+				TSM_ASSERT_EQUALS(kOrig[i].line, set.inventValue, kOrig[i].value);
+			} else {
+				TSM_ASSERT_EQUALS(kOrig[i].line, set.name, Common::String(kOrig[i].name));
+				TSM_ASSERT_EQUALS(kOrig[i].line, set.value, kOrig[i].value);
+			}
+		}
+	}
+
 	uint runSynth(uint from, uint to) {
 		uint fails = 0;
 		if (!AtlantisTest::haveData()) {

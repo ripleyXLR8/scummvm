@@ -76,6 +76,7 @@ struct ConSectionItem {
 	bool           isSet = false;
 	ConLine        line;    // valid when !isSet
 	Common::String setCmd;  // valid when  isSet
+	int32          offset = -1;  // position of the "/set" in ConScript::text()
 };
 
 // One term of an entry line's condition, used only to find ClicPerso and
@@ -153,6 +154,7 @@ public:
 	Common::Array<ConSection>       &sections()  { return _sections; }
 	const Common::Array<ConSection> &sections()  const { return _sections; }
 	const Common::Array<Common::String> &initCmds() const { return _initCmds; }
+	const Common::Array<int32> &initCmdOffsets() const { return _initCmdOffsets; }
 	// The file as loaded: the condition evaluator reads the condition lines
 	// from it, as the original does.
 	const Common::Array<char> &text() const { return _text; }
@@ -161,6 +163,7 @@ private:
 	Common::Array<char>          _text;
 	Common::Array<ConSection>    _sections;
 	Common::Array<Common::String> _initCmds;
+	Common::Array<int32>          _initCmdOffsets;
 };
 
 } // namespace Atlantis

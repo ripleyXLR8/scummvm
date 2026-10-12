@@ -238,6 +238,7 @@ ConSectionItem setItem(const ConText &t, uint32 pos) {
 	rtrim(s);
 	ConSectionItem item;
 	item.isSet = true;
+	item.offset = (int32)pos;
 	item.setCmd = s.size() > 5 ? s.substr(5) : Common::String();
 	if (!item.setCmd.empty() && item.setCmd.lastChar() == ')')
 		item.setCmd.deleteLastChar();
@@ -386,6 +387,7 @@ void ConScript::reset() {
 	_text.clear();
 	_sections.clear();
 	_initCmds.clear();
+	_initCmdOffsets.clear();
 }
 
 void ConScript::parse(const char *buf, uint32 len) {
@@ -404,7 +406,10 @@ void ConScript::parse(const char *buf, uint32 len) {
 				ConSection init;
 				at = scanCommand(t, (uint32)at, init);
 				if (!init.items.empty())
+				{
 					_initCmds.push_back(init.items[0].setCmd);
+					_initCmdOffsets.push_back(init.items[0].offset);
+				}
 				if (at == kStop)
 					at = findHeader(t, init.gotoId);
 			}

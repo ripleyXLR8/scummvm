@@ -232,7 +232,9 @@ private:
 	// Run the /INIT block's /set commands once after a CON load.
 	void execConInitCommands();
 	// Apply one /set command string (e.g. "vue=12", "flagtemp3=1").
-	void execConSetCommand(const Common::String &cmd);
+	// offset: position of the "/set" in the CON text (-1: parse cmd alone).
+	void execConSetCommand(const Common::String &cmd, int32 offset = -1);
+	void execConInventCommand(uint objId, int value);
 	// CON /set(StartPuzzle=N) — run minigame N and write FinPuzzle back
 	// (255 = win; smaller values denote per-puzzle loss variants).  Puzzles
 	// without a handler auto-win so their CHAPI script chains keep

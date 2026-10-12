@@ -125,6 +125,62 @@ bool compareTerm(const TextCursor &t, uint32 pos, byte op, uint32 var) {
 
 } // End of anonymous namespace
 
+void parseConSet(const ConVariableNames &names, const Common::Array<char> &text, uint32 pos,
+                 ConSetCommand &out) {
+	out = ConSetCommand();
+	const TextCursor t(text);
+	uint32 p = pos;
+	// Head loop: bounded by the size of the CON file, like the evaluator.
+	for (uint32 i = 0; i < text.size(); i++) {
+		if (t.at(p++) == '(')
+			break;
+	}
+	// The key buffer is 13 zeroed bytes (0x0042a129); longer keys overflow
+	// the stack in the original and are cut here.
+	byte key[13];
+	memset(key, 0, sizeof(key));
+	uint len = 0;
+	do {
+		if (len < sizeof(key))
+			key[len] = t.at(p);
+		len++;
+		p++;
+	} while (isKeyChar(t.at(p)) && p < text.size() + 1);
+	out.keyEnd = p;
+	const uint klen = MIN<uint>(len, sizeof(key));
+	for (uint i = 0; i < klen; i++)
+		if (key[i] >= 'a' && key[i] <= 'z')
+			key[i] -= 0x20;
+
+	if (memcmp(key, "INVENT", 6) == 0) {
+		out.valid = out.invent = true;
+		out.inventId = atoiBuf(key, sizeof(key), 6);
+		out.inventValue = atoiAt(t, p + 1);
+		return;
+	}
+
+	int index = names.index((const char *)key, klen);
+	if (index < 0) {
+		// The original shows an error dialog.
+		warning("CON /set: unknown variable '%s'", Common::String((const char *)key, klen).c_str());
+		return;
+	}
+	out.name = names.name((uint)index);
+	if (out.name == "changewam") {
+		for (uint32 q = p + 1; q < text.size() && t.at(q) != ')'; q++)
+			out.wamName += (char)t.at(q);
+		out.valid = out.changeWam = true;
+		return;
+	}
+	for (uint i = 0; i < 16; i++) {
+		if (isAtoiDigit(t.at(p + i))) {
+			out.value = atoiAt(t, p + i);
+			out.valid = true;
+			return;
+		}
+	}
+}
+
 int32 ConClocks::timerValue(int timer, uint32 now) const {
 	if (timer == 1)
 		return time1Offset + (int32)((now - time1Start) / 1000);

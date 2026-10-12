@@ -361,7 +361,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 			// the APC track is that line's index within the section.
 			if (scumm_strnicmp(item.setCmd.c_str(), "gameover=", 9) == 0 &&
 			        atoi(item.setCmd.c_str() + 9) != 0) {
-				execConSetCommand(item.setCmd);
+				execConSetCommand(item.setCmd, item.offset);
 				pendingGameOver = atoi(item.setCmd.c_str() + 9);
 				for (uint j = itemIdx + 1; j < sec.items.size(); ++j) {
 					if (!sec.items[j].isSet) {
@@ -373,7 +373,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 				break;
 			}
 			const uint placeBeforeSet = _nextPlaceId;
-			execConSetCommand(item.setCmd);
+			execConSetCommand(item.setCmd, item.offset);
 			// A chapter reload reparsed _conScript: `sec`/`item`/the section
 			// list are dangling now.  Stop at once.
 			if (_currentCONChapter != entryChapter)

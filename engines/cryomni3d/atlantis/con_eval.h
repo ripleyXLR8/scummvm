@@ -53,6 +53,27 @@ private:
 	Common::Array<Common::String> _names;    // lower-case, one per line
 };
 
+// A /set command as atlantis.exe FUN_0042a100 reads it from the CON text.
+struct ConSetCommand {
+	bool valid = false;           // false: the original returns 0 and does nothing
+	bool invent = false;          // INVENTnnn (FUN_0042b328)
+	int32 inventId = 0;
+	int32 inventValue = 0;
+	bool changeWam = false;       // ChangeWam: a file name, no number
+	Common::String wamName;
+	Common::String name;          // lower-case VARIAS.CON name of the key
+	int32 value = 0;
+	uint32 keyEnd = 0;            // text offset of the byte that ended the key
+};
+
+// FUN_0042a100's parse: from pos (the "/set"), skip to '(', copy the key up
+// to one of "=<>!#,", upper-case it; INVENT: id = atoi(key + 6), value =
+// atoi(byte after the terminator); otherwise look the key up by prefix
+// (unknown: invalid); ChangeWam takes the text up to ')'; any other key takes
+// the first digit run among the 16 bytes from the terminator (none: invalid).
+void parseConSet(const ConVariableNames &names, const Common::Array<char> &text, uint32 pos,
+                 ConSetCommand &out);
+
 // The CON clocks (atlantis.exe): ChapterTime, Time1 and Time2, in seconds.
 // See atlantis-re: formats/scripts-con.md (timers).
 struct ConClocks {

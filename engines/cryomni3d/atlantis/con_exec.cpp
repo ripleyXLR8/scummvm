@@ -124,8 +124,8 @@ void CryOmni3DEngine_Atlantis::loadConScript(int chapter) {
 }
 
 void CryOmni3DEngine_Atlantis::execConInitCommands() {
-	for (const Common::String &cmd : _conScript.initCmds())
-		execConSetCommand(cmd);
+	for (uint i = 0; i < _conScript.initCmds().size(); i++)
+		execConSetCommand(_conScript.initCmds()[i], _conScript.initCmdOffsets()[i]);
 }
 
 int CryOmni3DEngine_Atlantis::resolveSpeakerPersoId(const Common::String &speaker) const {
@@ -202,14 +202,63 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 		runArrivalSelSections((int)_currentPlaceId, (int)_currentPlaceId);
 }
 
-void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
+void CryOmni3DEngine_Atlantis::execConInventCommand(uint objId, int value) {
+	// atlantis.exe FUN_0042b328 appends a record without a duplicate check;
+	// FUN_0042b3ec removes the first record with that id and shifts the rest
+	// down.  See atlantis-re: functions/graphics-FUN_0042b328.md.
+	if (value) {
+		Object *obj = findInventoryObject(_objects, objId);
+		if (obj) {
+			inventoryAppend(_inventory, obj);
+			// Remember the just-given object so it shows centre-bottom for
+			// the rest of the dialog (atlantis.exe DAT_0049619c); the sprite
+			// index is the object's slot in _objects (parallel to _objSprites).
+			_dialogGivenObjSprite = (int)(obj - &_objects.front());
+			debugC(1, kDebugScript, "execConSetCommand: added object %u to inventory", objId);
+		} else {
+			debugC(1, kDebugScript, "execConSetCommand: invent%u=1 — object not defined", objId);
+		}
+	} else {
+		inventoryRemove(_inventory, objId);
+		Object *sel = _inventory.selectedObject();
+		if (sel && sel->idOBJ() == objId)
+			_inventory.deselectObject();
+		debugC(1, kDebugScript, "execConSetCommand: removed object %u from inventory", objId);
+	}
+}
+
+void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int32 offset) {
+	// Read the command as atlantis.exe FUN_0042a100 does: from the CON text,
+	// so that a value search running past the line sees the same bytes.  See
+	// atlantis-re: functions/scripts-FUN_0042a100.md.
+	ConSetCommand set;
+	if (offset >= 0) {
+		parseConSet(_conVarNames, _conScript.text(), (uint32)offset, set);
+	} else {
+		Common::String line = "/set(" + cmd + ")\r\n";
+		Common::Array<char> text(line.c_str(), line.size());
+		parseConSet(_conVarNames, text, 0, set);
+	}
+	if (!set.valid)
+		return;
+
+	// inventN=v — v != 0 adds object N, v == 0 removes it (FUN_0042b328).
+	if (set.invent) {
+		execConInventCommand((uint)set.inventId, set.inventValue);
+		return;
+	}
+
+	const Common::String &key = set.name;
+	const int value = set.value;
+	// The raw text after the key, for the commands that read more than one
+	// number (EnableSuj,perso=suj,suj...).
 	const char *p = cmd.c_str();
+	while (*p && !strchr("=<>!#,", *p))
+		p++;
 
 	// enableSuj,persoId=suj1,suj2,... / disableSuj,persoId=sujId[,sujId...]
-	// These carry the perso before '=' and a comma-separated subject list
-	// after, so they're parsed on the raw string before the key/value split.
-	if (scumm_strnicmp(p, "enablesuj,", 10) == 0) {
-		p += 10;
+	if (key == "enablesuj" && *p == ',') {
+		p++;
 		int perso = atoi(p);
 		while (*p && *p != '=') p++;
 		if (*p == '=') {
@@ -228,8 +277,8 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 		}
 		return;
 	}
-	if (scumm_strnicmp(p, "disablesuj,", 11) == 0) {
-		p += 11;
+	if (key == "disablesuj" && *p == ',') {
+		p++;
 		int perso = atoi(p);
 		while (*p && *p != '=') p++;
 		if (*p == '=') {
@@ -247,13 +296,6 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 		}
 		return;
 	}
-
-	const char *eq = strchr(p, '=');
-	if (!eq)
-		return;
-	Common::String key(p, (uint)(eq - p));
-	key.toLowercase();
-	int value = atoi(eq + 1);
 
 	// Time1=N / Time2=N — restart the timer at N seconds; the variable itself
 	// is written by updateConClocks (atlantis.exe FUN_0042a100 @ 0x0042a321,
@@ -340,9 +382,9 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 		return;
 	}
 
-	// hideperso=N / disableperso=N — deactivate every sprite for perso N and
+	// hideperso=N — deactivate every sprite for perso N and
 	// add it to the persistent hidden list (atlantis.exe FUN_00427bd0).
-	if (key == "hideperso" || key == "disableperso") {
+	if (key == "hideperso") {
 		int perso = value;
 		if (perso > 0) {
 			bool found = false;
@@ -361,34 +403,6 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 	// showperso=N — reactivate every sprite for perso N and clear its hide.
 	if (key == "showperso") {
 		showPerso(value);
-		return;
-	}
-
-	// inventN=1 — add object N to the inventory; inventN=0 — remove it.
-	// atlantis.exe FUN_0042b328 appends a record without a duplicate check;
-	// FUN_0042b3ec removes the first record with that id and shifts the rest
-	// down.  See atlantis-re: functions/graphics-FUN_0042b328.md.
-	if (key.hasPrefix("invent") && key.size() > 6 && Common::isDigit(key[6])) {
-		uint objId = (uint)atoi(key.c_str() + 6);
-		if (value) {
-			Object *obj = findInventoryObject(_objects, objId);
-			if (obj) {
-				inventoryAppend(_inventory, obj);
-				// Remember the just-given object so it shows centre-bottom for
-				// the rest of the dialog (atlantis.exe DAT_0049619c); the sprite
-				// index is the object's slot in _objects (parallel to _objSprites).
-				_dialogGivenObjSprite = (int)(obj - &_objects.front());
-				debugC(1, kDebugScript, "execConSetCommand: added object %u to inventory", objId);
-			} else {
-				debugC(1, kDebugScript, "execConSetCommand: invent%u=1 — object not defined", objId);
-			}
-		} else {
-			inventoryRemove(_inventory, objId);
-			Object *sel = _inventory.selectedObject();
-			if (sel && sel->idOBJ() == objId)
-				_inventory.deselectObject();
-			debugC(1, kDebugScript, "execConSetCommand: removed object %u from inventory", objId);
-		}
 		return;
 	}
 
