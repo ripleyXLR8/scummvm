@@ -152,19 +152,33 @@ void APCStreamImpl::queuePacket(Common::SeekableReadStream *data) {
 }
 
 int16 APCStreamImpl::decodeIMA(byte code, Status *status) {
-	int32 E = (2 * (code & 0x7) + 1) * status->step / 8;
-	int32 diff = (code & 0x08) ? -E : E;
-	// In Cryo APC data is only truncated and not CLIPed as expected
-	int16 samp = (status->last + diff);
+	// Cryo's decoder adds step / 8 and, for each set bit of the code, step,
+	// step / 2 or step / 4, each shift truncated separately.  This differs from
+	// the usual (2 * code + 1) * step / 8 and the error would accumulate in the
+	// predictor.
+	int32 step = status->step;
+	int32 diff = step >> 3;
+	if (code & 4)
+		diff += step;
+	if (code & 2)
+		diff += step >> 1;
+	if (code & 1)
+		diff += step >> 2;
+	if (code & 8)
+		diff = -diff;
+
+	// The predictor is kept at full 32-bit width (wrapping like the original
+	// without signed overflow); samples are only truncated, not clipped, to
+	// 16 bits on output.
+	status->last = (int32)((uint32)status->last + (uint32)diff);
 
 	int32 index = status->stepIndex + Ima_ADPCMStream::_stepAdjustTable[code];
 	index = CLIP<int32>(index, 0, ARRAYSIZE(Ima_ADPCMStream::_imaTable) - 1);
 
-	status->last = samp;
 	status->stepIndex = index;
 	status->step = Ima_ADPCMStream::_imaTable[index];
 
-	return samp;
+	return (int16)status->last;
 }
 
 PacketizedAudioStream *makeAPCStream(Common::SeekableReadStream &header) {
