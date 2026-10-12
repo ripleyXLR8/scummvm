@@ -207,19 +207,12 @@ void AtlantisWAMParser::loadStream(Common::SeekableReadStream &stream) {
 		AtlantisNPCEntry npc;
 		for (uint32 p = 2 + 4 + 13; p < 0x1e; p++)
 			stream.readByte();
-		bool viewZero = false;
 		for (uint k = 0; k < 17; k++) {
 			uint32 bits = stream.readUint32LE();
-			for (uint b = 0; b < 32; b++) {
-				if (!(bits >> b & 1))
-					continue;
-				if (k == 0 && b == 0)
-					viewZero = true;
-				npc.vues.push_back((uint16)(32 * k + b));
-			}
+			for (uint b = (k == 0) ? 1 : 0; b < 32; b++)
+				if (bits >> b & 1)
+					npc.vues.push_back((uint16)(32 * k + b));
 		}
-		if (viewZero)
-			npc.vues.clear();
 		npc.rectX = stream.readSint16LE();
 		npc.rectY = stream.readSint16LE();
 		npc.rectW = stream.readSint16LE();

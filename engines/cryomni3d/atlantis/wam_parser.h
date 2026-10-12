@@ -69,8 +69,7 @@ struct AtlantisNPCEntry {
 	int16 rectX = 0, rectY = 0, rectW = 0, rectH = 0;
 	// Views the NPC appears in: block +0x1e, 17 dwords used as a bitmap (bit b
 	// of dword k = view 32 * k + b), in the order atlantis.exe FUN_0045240c
-	// enumerates them; that enumeration ends on a 0, so a set bit for view 0
-	// ends it at once (empty list).
+	// enumerates them.  It never returns view 0, even when that bit is set.
 	Common::Array<uint16> vues;
 };
 
