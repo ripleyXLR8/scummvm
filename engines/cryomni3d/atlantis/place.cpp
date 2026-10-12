@@ -89,8 +89,12 @@ void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 	// starts from the record atlantis.exe FUN_0042c054 sets up before the
 	// player menu: object 257 alone.  See atlantis-re:
 	// functions/graphics-FUN_0042b328.md.
-	if (chapter == 1)
+	if (chapter == 1) {
 		inventoryReset(_inventory, _objects);
+		// FUN_00423760 zeroes the /con play counters when a game starts.
+		for (byte &b : _conPlayCounters)
+			b = 0;
+	}
 
 	if ((uint)chapter != _currentCONChapter) {
 		_currentCONChapter = (uint)chapter;

@@ -105,7 +105,6 @@ struct ConSection {
 	int  gotoId    = 0;       // /goN redirect (0 = no redirect)
 	int32 condOffset = -1;    // where the scanner starts the evaluation (-1 = none)
 	int32 lineOffset = -1;    // start of the entry line, or of the header
-	mutable bool played = false;  // set after first execution (for one-shot arrival sections)
 
 	// /suj supports a comma-separated list (`/suj1,2` means "this
 	// section fires when ANY of subjects 1 or 2 is enabled for the
@@ -118,6 +117,15 @@ struct ConSection {
 	Common::Array<ConCondition>    conditions;  // terms of the entry line
 	Common::Array<ConSectionItem>  items;       // what the section executor runs, up to /go
 };
+
+// Number of /con play counters: the byte array at 0x006cc6cc (0x5dc bytes).
+static const uint kConPlayCounterCount = 0x5dc;
+
+// FUN_004281f8: a /con entry is skipped while the play counter of its
+// section has reached the entry's limit; /con* entries are never skipped.
+// Sections past the end of the array read as 0 (the original reads other
+// data there).  See atlantis-re: formats/scripts-con.md.
+bool conEntryAllowed(const ConSection &sec, const Common::Array<byte> &counters);
 
 // Parses a CON file buffer into sections and INIT commands.
 class ConScript {

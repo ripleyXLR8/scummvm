@@ -102,6 +102,7 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_propAnimFrame(0),
 	_propAnimNextMs(0) {
 	_placeVisits.resize(1500, 0);
+	_conPlayCounters.resize(kConPlayCounterCount, 0);
 	for (int i = 0; i < 4; i++)
 		_sonMenuKnobX[i] = 0;
 }

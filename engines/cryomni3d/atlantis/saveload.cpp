@@ -45,7 +45,7 @@ static const int32  kSaveSize        = 1792;
 static const uint   kSaveDescriptionLen = 20;
 static const uint   kWAMNameLen      = 32;
 static const uint32 kExtMagic        = 0x41544C53u;  // 'ATLS'
-static const uint32 kExtVersion      = 4;
+static const uint32 kExtVersion      = 5;
 
 // Player-profile file (cannot collide with the "atlantis.NNNN" save files).
 static const char  *kPlayersFile    = "atlantis-players.dat";
@@ -132,6 +132,9 @@ void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &save
 	// selection; it is not a game variable, so persist it explicitly.
 	out->writeUint32BE((uint32)_musicTrackId);
 	out->writeUint32BE(0);                     // ext v4: shown-perso count (not modelled yet)
+	// ext v5: the /con play counters (the original saves the same 0x5dc
+	// bytes, FUN_0042d6b8).
+	out->write(_conPlayCounters.begin(), _conPlayCounters.size());
 
 	out->finalize();
 	delete out;
@@ -183,6 +186,7 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	Common::Array<SujState> savedSujEnabled;
 	Common::HashMap<Common::String, int> savedGameVars;
 	uint32 savedCONChapter = 0;
+	Common::Array<byte> savedConCounters;   // empty: saved before ext v5
 	int savedMusicTrack = 0;
 	bool hasExt = (in->size() > kSaveSize);
 	if (hasExt) {
@@ -221,6 +225,12 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 			if (ver >= 3 && !in->eos())
 				savedMusicTrack = (int)in->readUint32BE();
 			// ext v4 shown-persos is not modelled yet — ignored.
+			if (ver >= 4 && !in->eos())
+				(void)in->readUint32BE();
+			if (ver >= 5 && !in->eos()) {
+				savedConCounters.resize(kConPlayCounterCount);
+				in->read(savedConCounters.begin(), savedConCounters.size());
+			}
 		}
 	}
 	delete in;
@@ -258,6 +268,11 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 		for (const Common::String &k : persistKeys)
 			_gameVars[k] = 0;
 	}
+
+	// Play counters: from the save, or zero for saves written before they
+	// were kept.
+	for (uint i = 0; i < _conPlayCounters.size(); i++)
+		_conPlayCounters[i] = (i < savedConCounters.size()) ? savedConCounters[i] : 0;
 
 	if (hasExt) {
 		_hiddenPersos = savedHiddenPersos;

@@ -500,6 +500,13 @@ void ConScript::parse(const char *buf, uint32 len) {
 	}
 }
 
+bool conEntryAllowed(const ConSection &sec, const Common::Array<byte> &counters) {
+	if (sec.repeatable)
+		return true;
+	byte played = (sec.id >= 0 && (uint)sec.id < counters.size()) ? counters[sec.id] : 0;
+	return played < sec.conLimit;
+}
+
 bool ConScript::gotoSection(int id, ConSection &out) const {
 	const ConText t(_text);
 	int32 pos = findHeader(t, id);

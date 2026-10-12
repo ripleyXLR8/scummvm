@@ -493,6 +493,11 @@ private:
 	uint32 _chapterStartMs;    // wall-clock at chapter load (for `chaptertime`)
 	Common::HashMap<Common::String, int> _gameVars;
 	ConVariableNames _conVarNames;             // VARIAS.CON, for conditions
+	// /con play counters (atlantis.exe 0x006cc6cc), one byte per section:
+	// incremented each time a /con entry plays and by Disable=N; zeroed when a
+	// game starts, saved with the game.
+	Common::Array<byte> _conPlayCounters;
+	void bumpConPlayCounter(int section);
 	Common::Array<byte> _placeVisits;          // per-place visit counts (nbvisite)
 	mutable Common::RandomSource _conRng;      // for /sel `random` conditions
 

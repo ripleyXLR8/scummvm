@@ -509,9 +509,8 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		// (atlantis.exe FUN_00425c04).
 		ConSection target;
 		if (_conScript.gotoSection(sec.gotoId, target)) {
-			for (ConSection &s : _conScript.sections()) {
+			for (const ConSection &s : _conScript.sections()) {
 				if (s.id == sec.gotoId) {
-					s.played = true;
 					target.isCon = s.isCon;
 					break;
 				}

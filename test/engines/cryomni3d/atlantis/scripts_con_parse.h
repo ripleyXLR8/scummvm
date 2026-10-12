@@ -112,6 +112,35 @@ public:
 	void test_synth_sel_twice() { TS_ASSERT(ScriptsParseTest::checkSynth("sel_twice")); }
 
 	// Data test: every SCENAR\CHAPI*.CON of the four discs.
+	// /con play limits: entries the ORIGINAL /con scanner (FUN_004281f8)
+	// finds with every play counter at 0, 1, 2 and 255 (atlantis-re
+	// tools/emu/scripts_con_counts.py, an evaluator that always fails so
+	// the whole file is walked); port: conEntryAllowed.
+	void test_con_play_limits() {
+		static const char *const kText =
+		    "/1\r\n/con(ClicPerso=600)\r\n[Seth] A\r\n/2\r\n/con2(ClicPerso=600)\r\n[Seth] B\r\n"
+		    "/3\r\n/con*(ClicPerso=600)\r\n[Seth] C\r\n/4\r\n/con300(ClicPerso=600)\r\n[Seth] D\r\n/000\r\n";
+		static const struct { byte counter; const char *ids; } kOriginal[] = {
+			{ 0, "1 2 3 4" }, { 1, "2 3 4" }, { 2, "3 4" }, { 255, "3 4" },
+		};
+		ScriptsTest::ConScript script;
+		script.parse(kText, strlen(kText));
+		for (uint c = 0; c < ARRAYSIZE(kOriginal); c++) {
+			Common::Array<byte> counters(CryOmni3D::Atlantis::kConPlayCounterCount, kOriginal[c].counter);
+			Common::String ids;
+			for (uint i = 0; i < script.sections().size(); i++) {
+				const ScriptsTest::ConSection &sec = script.sections()[i];
+				if (!sec.isEntry || !sec.isCon || !CryOmni3D::Atlantis::conEntryAllowed(sec, counters))
+					continue;
+				if (!ids.empty())
+					ids += " ";
+				ids += Common::String::format("%d", sec.id);
+			}
+			TSM_ASSERT_EQUALS(Common::String::format("counter %u", kOriginal[c].counter).c_str(),
+			                  ids, Common::String(kOriginal[c].ids));
+		}
+	}
+
 	void test_parse_matches_original_interpreter() {
 		if (!AtlantisTest::haveData()) {
 			TS_WARN("scripts_con_parse: no game data configured, skipped");

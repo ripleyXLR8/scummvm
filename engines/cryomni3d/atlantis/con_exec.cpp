@@ -254,6 +254,13 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd) {
 	key.toLowercase();
 	int value = atoi(eq + 1);
 
+	// Disable=N — count a play of section N, which disables /con N
+	// (atlantis.exe FUN_0042a100 @ 0x0042a41a); the variable is not stored.
+	if (key == "disable") {
+		bumpConPlayCounter(value);
+		return;
+	}
+
 	if (key == "vue") {
 		// Schedule a place change (gameStep enters it next iteration).
 		_nextPlaceId = (uint)value;
@@ -521,6 +528,14 @@ private:
 
 } // End of anonymous namespace
 
+void CryOmni3DEngine_Atlantis::bumpConPlayCounter(int section) {
+	// A byte: it wraps after 255 plays, as in the original.
+	if (section >= 0 && (uint)section < _conPlayCounters.size())
+		_conPlayCounters[section]++;
+	else
+		warning("bumpConPlayCounter: section %d out of range", section);
+}
+
 bool CryOmni3DEngine_Atlantis::evalSelSection(const ConSection &sec,
                                                int departZone, int currentVue) const {
 	// One random roll per section so multiple `random` clauses in the same
@@ -543,13 +558,13 @@ void CryOmni3DEngine_Atlantis::runArrivalSelSections(int arrivedVue, int fromVue
 	// FUN_004280f8).  This is also what runs each chapter's intro section
 	// (/sel(initflag=0), the first /sel after /FININIT).
 	for (ConSection &sec : _conScript.sections()) {
-		if (!sec.isEntry || sec.isCon || sec.isTimer || sec.played)
+		// /sel entries have no play counter (atlantis.exe FUN_004280f8).
+		if (!sec.isEntry || sec.isCon || sec.isTimer)
 			continue;
 		if (!evalSelSection(sec, 0, arrivedVue))
 			continue;
 		debugC(1, kDebugScript, "runArrivalSelSections: vue=%d firing section %d",
 		      arrivedVue, sec.id);
-		sec.played = true;
 		playConSection(sec);
 		break;   // first match only
 	}
@@ -630,7 +645,7 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 			continue;
 		if (!hasClicPerso && hasClicZone)
 			continue;
-		if (sec.played)
+		if (!conEntryAllowed(sec, _conPlayCounters))
 			continue;
 		if (!evalSelSection(sec, 0, (int)_currentPlaceId))
 			continue;
@@ -671,7 +686,9 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 			choice = showSubjectMenu(options);   // let the player pick a topic
 		if (choice >= 0 && !shouldAbort()) {
 			ConSection *sec = options[(uint)choice];
-			sec->played = true;
+			// The executor counts the play when it is entered from a /con
+			// click (atlantis.exe FUN_0042844c @ 0x00428493).
+			bumpConPlayCounter(sec->id);
 			playConSection(*sec);
 		}
 	}
