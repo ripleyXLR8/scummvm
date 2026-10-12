@@ -306,12 +306,9 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		actionId = 0;
 		int centrePerso = 0;
 		if (_currentPlace && _warpLoaded) {
-			Common::Point pan = _omni3dMan.mapMouseCoords(Common::Point(320, 240));
-			pan.y = 768 - pan.y; // flip Y to top-left origin
+			Common::Point pan = hitTestPoint(_omni3dMan.mapMouseCoords(Common::Point(320, 240)));
 			npcPanoHitTest(pan, centrePerso);
-			int16 hit = _currentPlace->hitTest(pan.x, pan.y);
-			if (hit > 0)
-				actionId = (uint)hit;
+			actionId = _currentPlace->hitTest(pan.x, pan.y);
 		}
 
 		// Cursor: a carried object shows the item cursor; otherwise it reflects

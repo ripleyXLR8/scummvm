@@ -230,14 +230,21 @@ const AtlantisTransition *AtlantisPlace::findTransition(uint16 dstPlaceId) const
 	return nullptr;
 }
 
-int16 AtlantisPlace::hitTest(int16 x, int16 y) const {
+uint16 AtlantisPlace::hitTest(int16 x, int16 y) const {
+	// atlantis.exe FUN_00422bb0: the zone fields are sign-extended, then every
+	// compare is unsigned (JC/JNC), so a zone with a negative x or y never
+	// matches.  See atlantis-re: functions/FUN_00422bb0.md.
+	const uint32 px = (uint32)(int32)x;
+	const uint32 py = (uint32)(int32)y;
+	uint16 best = 0;
 	for (const AtlantisZone &z : zones) {
-		if (z.action == 0)
-			continue;
-		if (x >= z.x && x < z.x + z.w && y >= z.y && y < z.y + z.h)
-			return z.action;
+		const int32 zx = z.x, zy = z.y;
+		if (px >= (uint32)zx && (uint32)(zx + z.w) >= px &&
+		    py >= (uint32)zy && (uint32)(zy + z.h) >= py &&
+		    (uint16)z.action > best)
+			best = (uint16)z.action;
 	}
-	return 0;
+	return best;
 }
 
 } // namespace Atlantis

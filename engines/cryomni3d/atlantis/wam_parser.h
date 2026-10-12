@@ -75,9 +75,18 @@ struct AtlantisPlace {
 	// Returns the transition to dstPlaceId, or nullptr.
 	const AtlantisTransition *findTransition(uint16 dstPlaceId) const;
 
-	// Returns the action for the point (panorama coordinates), or 0.
-	int16 hitTest(int16 x, int16 y) const;
+	// Returns the action for the point (panorama coordinates), or 0.  Matches
+	// atlantis.exe FUN_00422bb0: inclusive bounds compared as unsigned values,
+	// largest action of all the zones that contain the point.
+	uint16 hitTest(int16 x, int16 y) const;
 };
+
+// The panorama point the original hit-tests (zones and NPCs) for an
+// Omni3DManager::mapMouseCoords() result: FUN_0045166f returns y = 0x2ff - v.
+// See atlantis-re: functions/FUN_00422bb0.md.
+inline Common::Point hitTestPoint(const Common::Point &mapped) {
+	return Common::Point(mapped.x, 767 - mapped.y);
+}
 
 class AtlantisWAMParser {
 public:
