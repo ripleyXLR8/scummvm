@@ -413,6 +413,30 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 		case kAbortQuit:
 			stopGame = true;
 			break;
+		case kAbortFinished:
+			// atlantis.exe main loop @ 0x00419775: Exit == 86 (CHAPI085, the
+			// only value shipped) -> FUN_0041a66c: up to 0x578 ticks of the
+			// 200 Hz timer (7 s) or a left click, then the credits
+			// (FUN_0041a72c, playQuitOutro), then the program ends.
+			if (_gameVars.getValOrDefault("exit", 0) == 86) {
+				// The game is over: nothing is pending any more, so the wait and
+				// the credits are not cut short by shouldAbort().
+				_isPlaying = false;
+				_abortCommand = kAbortNoAbort;
+				uint32 start = g_system->getMillis();
+				while (!shouldQuit() && g_system->getMillis() - start < 0x578 * kSpriteTickMs &&
+				        getCurrentMouseButton() != 1) {
+					pollEvents();
+					g_system->delayMillis(10);
+				}
+				playQuitOutro();
+				stopGame = true;
+			} else {
+				warning("gameStep: Exit=%d, only 86 is handled", _gameVars.getValOrDefault("exit", 0));
+				_gameVars["exit"] = 0;
+				nextStep = 0;
+			}
+			break;
 		default:
 			// Any other exit returns to the main menu.
 			nextStep = 0;
@@ -426,6 +450,13 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 
 void CryOmni3DEngine_Atlantis::gameStep() {
 	while (!_abortCommand) {
+		// The place loop FUN_00423ad8 returns as soon as Exit is set
+		// (0x00423b26, 0x00423bb3, 0x00423cf0); the main loop then ends the
+		// game when it is 86 (0x00419787).
+		if (_gameVars.getValOrDefault("exit", 0) != 0) {
+			_abortCommand = kAbortFinished;
+			break;
+		}
 		// Enter a pending place (set by changeChapter, a zone transition or a
 		// CON /set(vue=N)), then run its arrival /sel sections — which may
 		// chain on by setting _nextPlaceId again (the chapter intro flow).
