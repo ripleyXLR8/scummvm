@@ -9,7 +9,7 @@
 // 0x00429eb0/0x00429f44/0x00429fd8/0x0042a06c (= < > !, unsigned),
 // 0x00429e54 (INVENTnnn -> inventory table 0x006ce138).
 // Port: con_script.cpp parseConditions (real code, through ConScript::parse)
-// + con_exec.cpp evalSelSection (FAITHFUL COPY, scripts_con_common.h).
+// + con_eval.cpp ConEvaluator (real code, the evaluator of evalSelSection).
 //
 // Expected values were produced by running the ORIGINAL evaluator under
 // emulation: atlantis-re/tools/emu/scripts_eval.py synth / golden.
@@ -104,35 +104,6 @@ public:
 	void setUp() override { Common::install_null_g_system(); }
 	void tearDown() override { Common::uninstall_null_g_system(); }
 
-	// The copy of evalSelSection must still match the port source.
-	void test_eval_copy_is_current() {
-		Common::String src = AtlantisTest::configValue("src");
-		if (src.empty()) {
-			TS_WARN("scripts_con_eval: no src= in atlantis_test.cfg, copy check skipped");
-			return;
-		}
-		Common::FSNode node(Common::Path(src, '/').join("engines/cryomni3d/atlantis/con_exec.cpp"));
-		Common::File f;
-		TS_ASSERT(f.open(node));
-		if (!f.isOpen())
-			return;
-		Common::Array<char> buf(f.size() + 1);
-		f.read(buf.begin(), f.size());
-		buf[f.size()] = 0;
-		const char *st = strstr(buf.begin(), "\nbool CryOmni3DEngine_Atlantis::evalSelSection(");
-		TS_ASSERT(st);
-		if (!st)
-			return;
-		st++;
-		const char *en = strstr(st, "\n}\n");
-		TS_ASSERT(en);
-		if (!en)
-			return;
-		en += 3;
-		TS_ASSERT_EQUALS(AtlantisTest::md5Hex((const byte *)st, en - st),
-		                 Common::String(ScriptsTest::kEvalSelSectionMd5));
-	}
-
 	// Synthetic cases, grouped by the behaviour they probe (indices into
 	// kSynth).  Each group asserts that the port agrees with the original.
 	void test_synth_operators()      { TS_ASSERT_EQUALS(runSynth(0, 8), 0u); }
@@ -153,7 +124,7 @@ public:
 			ScriptsEvalTest::stateFor(c, st);
 			Common::Array<ScriptsTest::ConCondition> conds;
 			ScriptsTest::portParseLine(c.text, conds);
-			bool port = ScriptsTest::portEvalCopy(conds, st);
+			bool port = ScriptsTest::portEval(conds, st);
 			if (port != c.expected) {
 				fails++;
 				TS_WARN(Common::String::format("scripts_con_eval: case %u '%s': original=%d port=%d",
@@ -212,7 +183,7 @@ public:
 				for (uint k = 0; k < 64; k++) {
 					ScriptsTest::VarState st;
 					ScriptsTest::makeState(i, k, varNames, lines[i], st);
-					bits += ScriptsTest::portEvalCopy(conds, st) ? '1' : '0';
+					bits += ScriptsTest::portEval(conds, st) ? '1' : '0';
 				}
 			}
 			Common::String key = files[f].substr(7);

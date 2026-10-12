@@ -10,14 +10,12 @@
 //    as atlantis-re/tools/emu/scripts_con.py writes from the ORIGINAL
 //    interpreter (atlantis-cd-en-714240 @ 0x004280f8/0x004281f8/0x0042bef4/
 //    0x0042bfa4 entry scanners, 0x0042844c section executor, 0x00425eb0 /INIT).
-//  - portEvalCopy()     FAITHFUL COPY of CryOmni3DEngine_Atlantis::evalSelSection
-//    (con_exec.cpp), which is an engine method and cannot be called from a
-//    test.  Only the source of the left-hand value changed: every key is read
-//    from a variable map (the engine reads departvue/vue/objetenmain/
-//    chaptertime/nbvisite/random from live engine state; the test sets that
-//    state to the same values), invent<N> reads an inventory id set.
-//    scripts_con_eval.h checks that the copied span still hashes to
-//    kEvalSelSectionMd5 (needs src= in atlantis_test.cfg).
+//  - portEval()         runs the REAL condition evaluator, ConEvaluator
+//    (con_eval.cpp), on a variable map and an inventory built with the real
+//    inventory unit (inventory.cpp).  The engine's evalSelSection uses the
+//    same class; only the keys it reads from live engine state (departvue,
+//    vue, objetenmain, chaptertime, nbvisite, random) come from an engine
+//    subclass, and the test gives them through the variable map instead.
 //  - the deterministic variable-state generator mirrored from
 //    atlantis-re/tools/emu/scripts_eval.py.
 
@@ -29,18 +27,19 @@
 #include "common/str.h"
 #include "common/util.h"
 
+#include "common/func.h"
+
+#include "cryomni3d/objects.h"
+#include "cryomni3d/sprites.h"
+#include "cryomni3d/atlantis/con_eval.h"
 #include "cryomni3d/atlantis/con_script.h"
+#include "cryomni3d/atlantis/inventory.h"
 
 namespace ScriptsTest {
 
 using CryOmni3D::Atlantis::ConCondition;
 using CryOmni3D::Atlantis::ConScript;
 using CryOmni3D::Atlantis::ConSection;
-
-// md5 of the evalSelSection span of engines/cryomni3d/atlantis/con_exec.cpp
-// (from "bool CryOmni3DEngine_Atlantis::evalSelSection(" to the closing
-// "\n}\n") when portEvalCopy() was written (scummvm 693c26414e5).
-static const char *const kEvalSelSectionMd5 = "2771cf7471587c05e8a5a44151663559";
 
 struct BigEntry {
 	int cd;
@@ -251,40 +250,27 @@ inline void portParseLine(const Common::String &line, Common::Array<ConCondition
 		out = script.sections()[0].conditions;
 }
 
-// FAITHFUL COPY of CryOmni3DEngine_Atlantis::evalSelSection (con_exec.cpp,
-// scummvm 693c26414e5); see the header comment for the one substitution.
-inline bool portEvalCopy(const Common::Array<ConCondition> &conditions, const VarState &st) {
-	if (conditions.empty())
-		return true;
-	for (uint i = 0; i < conditions.size(); i++) {
-		const ConCondition &cc = conditions[i];
-		int lhs;
-		if (cc.key.hasPrefix("invent") && cc.key.size() > 6 && Common::isDigit(cc.key[6])) {
-			uint objId = (uint)atoi(cc.key.c_str() + 6);
-			lhs = 0;
-			for (uint k = 0; k < st.inventory.size(); k++)
-				if ((uint)st.inventory[k] == objId) { lhs = 1; break; }
-		} else {
-			Common::HashMap<Common::String, int>::const_iterator it = st.vars.find(cc.key);
-			lhs = (it != st.vars.end()) ? it->_value : 0;
-		}
-		bool ok;
-		switch (cc.op) {
-		case '=': ok = (lhs == cc.value); break;
-		case '<': ok = (lhs <  cc.value); break;
-		case '>': ok = (lhs >  cc.value); break;
-		case '!': ok = (lhs != cc.value); break;
-		default:  ok = false;             break;
-		}
-		if (cc.nextSep == '&') {
-			if (!ok) return false;
-		} else if (cc.nextSep == '|') {
-			if (ok) return true;
-		} else {
-			return ok;
-		}
-	}
-	return true;
+struct NullInventoryCb {
+	void cb(uint) {}
+};
+
+// The port's condition evaluator on a test state: variables from st.vars,
+// inventory records for st.inventory (one per id, in order).
+inline bool portEval(const Common::Array<ConCondition> &conditions, const VarState &st) {
+	static const CryOmni3D::Sprites sprites;
+	static NullInventoryCb nullCb;
+	Common::Array<uint> ids;
+	for (uint i = 0; i < st.inventory.size(); i++)
+		ids.push_back((uint)st.inventory[i]);
+	CryOmni3D::Objects objects;
+	CryOmni3D::Atlantis::buildInventoryCatalogue(sprites, ids, objects);
+	CryOmni3D::Inventory inventory;
+	inventory.init(MAX<uint>(ids.size(), 1),
+	               new Common::Functor1Mem<uint, void, NullInventoryCb>(&nullCb, &NullInventoryCb::cb));
+	for (uint i = 0; i < objects.size(); i++)
+		CryOmni3D::Atlantis::inventoryAppend(inventory, &objects[i]);
+	CryOmni3D::Atlantis::ConEvaluator eval(st.vars, inventory);
+	return eval.evaluate(conditions);
 }
 
 } // End of namespace ScriptsTest
