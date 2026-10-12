@@ -52,6 +52,23 @@ endif
 	TEST_LIBS += engines/ultima/libultima.a
 endif
 
+ifeq ($(ENABLE_CRYOMNI3D), STATIC_PLUGIN)
+ifdef ENABLE_ATLANTIS
+	# Override CRYOMNI3D_TESTS to build a subset of these tests.
+	CRYOMNI3D_TESTS ?= $(srcdir)/test/engines/cryomni3d/atlantis/*.h
+	TESTS += $(CRYOMNI3D_TESTS)
+endif
+	# The engine and libvideo depend on libaudio and libimage: link them first.
+	TEST_LIBS := engines/cryomni3d/libcryomni3d.a video/libvideo.a $(TEST_LIBS)
+	# Some Atlantis tests reach engine code, which needs the engine framework,
+	# GUI and backends: resolve everything as one group.
+	CRYOMNI3D_TEST_LINK = $(DETECT_OBJS) -Wl,--start-group engines/cryomni3d/libcryomni3d.a \
+		engines/libengines.a gui/libgui.a backends/libbackends.a base/libbase.a \
+		graphics/libgraphics.a image/libimage.a video/libvideo.a audio/libaudio.a \
+		math/libmath.a common/formats/libformats.a common/compression/libcompression.a \
+		common/libcommon.a -Wl,--end-group
+endif
+
 ifeq ($(ENABLE_TWINE), STATIC_PLUGIN)
 	TESTS += $(srcdir)/test/engines/twine/*.h
 	TEST_LIBS += engines/twine/libtwine.a
@@ -86,7 +103,7 @@ endif
 test: test/runner
 	./test/runner
 test/runner: test/runner.cpp $(TEST_LIBS) copy-dat
-	+$(QUIET_CXX)$(LD) $(TEST_CXXFLAGS) $(CPPFLAGS) $(TEST_CFLAGS) -o $@ test/runner.cpp $(TEST_LIBS) $(TEST_LDFLAGS)
+	+$(QUIET_CXX)$(LD) $(TEST_CXXFLAGS) $(CPPFLAGS) $(TEST_CFLAGS) -o $@ test/runner.cpp $(TEST_LIBS) $(CRYOMNI3D_TEST_LINK) $(TEST_LDFLAGS)
 test/runner.cpp: $(TESTS) $(srcdir)/test/module.mk
 	@mkdir -p test
 	$(srcdir)/test/cxxtest/bin/cxxtestgen $(TEST_FLAGS) -o $@ $+
