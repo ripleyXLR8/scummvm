@@ -1,0 +1,334 @@
+// Audit "graphics", element 2: inventory model and inventory toolbar.
+//
+// ORIGINAL (atlantis-cd-en-714240):
+//   FUN_0042c054  start-up reset: 1 record {sprite 0, object 257}
+//   FUN_0042b328  "/set(INVENTnnn=v)": append {sprite, nnn} (no duplicate
+//                 check; sprite = last index i with table[i]==nnn, table
+//                 0x004967b0 scanned up to the -1 terminator); v==0 -> FUN_0042b3ec
+//   FUN_0042b3ec  remove the first record with that id and shift the tail down
+//   FUN_0042c2c4 / FUN_0042c8ac  bar drawing: OBJETS0 sprite 0 at hotspot
+//                 (0, 443), icon of record first+i at hotspot (i*70+42, 443)
+//   FUN_0042c098  click: record = x/70 + first, valid when x/70 + 1 <= end
+//                 and y >= 409; takes the record's object
+// The record lists below were produced by running FUN_0042c054/FUN_0042b328/
+// FUN_0042b3ec under Unicorn (atlantis-re/tools/emu/graphics_inventory.py).
+// The geometry/hit-test rules are read from the disassembly (level B).
+//
+// PORT code exercised directly (linked): CryOmni3D::Inventory (objects.cpp),
+// Atlantis_Toolbar::hitTestZones / callbackInventory / addZone (toolbar.cpp);
+// init() itself cannot run (see initToolbarNoGfx).
+// FAITHFUL COPIES (stated explicitly):
+//  - portInvent(): the "inventN" branch of execConSetCommand (con_exec.cpp);
+//  - portSetupObjects(): setupObjects (exetables.cpp): default Object + rename;
+//  - the inventory-table loop of loadAtlantisExeTables (exetables.cpp);
+//  - the bar-sprite placement of engine.cpp (addMenuSprite(..., 0, s.yoff))
+//    combined with Atlantis_Toolbar::drawToolbar's baseY formula.
+
+#include "atlantis_test_helper.h"
+#include "../../../system/null_osystem.h"
+
+#include "common/array.h"
+#include "common/func.h"
+#include "common/rect.h"
+#include "common/str.h"
+#include "graphics/managed_surface.h"
+#include "graphics/pixelformat.h"
+#include "graphics/surface.h"
+
+#include "cryomni3d/cryomni3d.h"
+#include "cryomni3d/objects.h"
+
+#define private public
+#include "cryomni3d/atlantis/toolbar.h"
+#undef private
+
+namespace GraphicsToolbarTest {
+
+struct NullCb {
+	void cb(uint) {}
+};
+
+// FAITHFUL COPY of setupObjects() (exetables.cpp) for a list of ids.
+inline void portSetupObjects(CryOmni3D::Objects &objects, const Common::Array<uint> &ids) {
+	objects.clear();
+	objects.resize(ids.size());
+	for (uint i = 0; i < ids.size(); i++)
+		objects[i].rename(ids[i]);
+}
+
+// FAITHFUL COPY of the inventN branch of execConSetCommand (con_exec.cpp).
+inline void portInvent(CryOmni3D::Objects &objects, CryOmni3D::Inventory &inv, uint objId, int value) {
+	if (value) {
+		CryOmni3D::Object *obj = nullptr;
+		for (CryOmni3D::Object &o : objects)
+			if (o.idOBJ() == objId) { obj = &o; break; }
+		if (obj) {
+			if (!inv.inInventoryByNameID(objId))
+				inv.add(obj);
+		}
+	} else {
+		inv.removeByNameID(objId);
+		CryOmni3D::Object *sel = inv.selectedObject();
+		if (sel && sel->idOBJ() == objId)
+			inv.deselectObject();
+	}
+}
+
+// Ids carried, in toolbar order (holes skipped, as drawToolbar skips them).
+inline Common::String order(const CryOmni3D::Inventory &inv) {
+	Common::String s;
+	for (uint i = 0; i < inv.size(); i++)
+		if (inv[i]) {
+			if (!s.empty())
+				s += " ";
+			s += Common::String::format("%u", inv[i]->idOBJ());
+		}
+	return s;
+}
+
+// Atlantis_Toolbar::init() calls g_system->getScreenFormat(), which the
+// test null OSystem cannot serve (no graphics manager in test mode).  This is
+// a FAITHFUL COPY of init()'s zone set-up (toolbar.cpp) plus the 82-row
+// destination surface hitTestZones() reads; everything else is real code.
+inline void initToolbarNoGfx(CryOmni3D::Atlantis::Atlantis_Toolbar &tb, CryOmni3D::Inventory *inv) {
+	typedef CryOmni3D::Atlantis::Atlantis_Toolbar T;
+	tb._inventory = inv;
+	tb._engine = nullptr;
+	tb._destSurface.create(640, 82, Graphics::PixelFormat(2, 5, 6, 5, 0, 11, 5, 0, 0));
+	static const int kSlotCenters[9] = {42, 112, 182, 252, 322, 392, 462, 532, 602};
+	const int kSlotHalfW = 25, kSlotTop = 25, kSlotBot = 65;
+	T::ZoneCallback cbs[9] = {
+		&T::callbackInventory<0>, &T::callbackInventory<1>, &T::callbackInventory<2>,
+		&T::callbackInventory<3>, &T::callbackInventory<4>, &T::callbackInventory<5>,
+		&T::callbackInventory<6>, &T::callbackInventory<7>, &T::callbackInventory<8>,
+	};
+	for (uint i = 0; i < 9; i++)
+		tb.addZone(Common::Rect(kSlotCenters[i] - kSlotHalfW, kSlotTop,
+		                        kSlotCenters[i] + kSlotHalfW, kSlotBot), cbs[i]);
+}
+
+} // End of namespace GraphicsToolbarTest
+
+class GraphicsToolbarTestSuite : public CxxTest::TestSuite {
+public:
+	void setUp() override { Common::install_null_g_system(); }
+	void tearDown() override { Common::uninstall_null_g_system(); }
+
+	void runScenario(const char *name, const uint (*ops)[2], uint nops, const char *origOrder) {
+		using namespace GraphicsToolbarTest;
+		Common::Array<uint> ids;
+		for (uint i = 0; i < nops; i++) {
+			bool seen = false;
+			for (uint k = 0; k < ids.size(); k++)
+				seen |= ids[k] == ops[i][0];
+			if (!seen)
+				ids.push_back(ops[i][0]);
+		}
+		CryOmni3D::Objects objects;
+		portSetupObjects(objects, ids);
+		CryOmni3D::Inventory inv;
+		NullCb nc;
+		inv.init(20, new Common::Functor1Mem<uint, void, NullCb>(&nc, &NullCb::cb));
+		for (uint i = 0; i < nops; i++)
+			portInvent(objects, inv, ops[i][0], ops[i][1]);
+		Common::String got = order(inv);
+		if (got != origOrder)
+			TS_WARN(Common::String::format("inventory %s: port [%s] original [%s]", name, got.c_str(), origOrder).c_str());
+		TS_ASSERT_EQUALS(got, Common::String(origOrder));
+	}
+
+	// Original record lists (graphics_inventory.py, started from an empty list).
+	void test_inventory_order_after_remove() {
+		static const uint ops[][2] = {{300, 1}, {301, 1}, {302, 1}, {301, 0}, {304, 1}};
+		runScenario("order_after_remove", ops, ARRAYSIZE(ops), "300 302 304");
+	}
+	void test_inventory_duplicate_add() {
+		static const uint ops[][2] = {{300, 1}, {300, 1}};
+		runScenario("duplicate_add", ops, ARRAYSIZE(ops), "300 300");
+	}
+	void test_inventory_remove_one_of_duplicates() {
+		static const uint ops[][2] = {{300, 1}, {301, 1}, {300, 1}, {300, 0}};
+		runScenario("remove_one_of_duplicates", ops, ARRAYSIZE(ops), "301 300");
+	}
+
+	// Start-up inventory: FUN_0042c054 (called at 0x00419605) leaves object
+	// 257 (OBJETS1 sprite 0) in record 0; no CON script gives or removes 257.
+	// The port's new game starts from Inventory::clear() (place.cpp) - this
+	// documents the original state the port does not reproduce.
+	void test_inventory_startup_record() {
+		static const char *const kOriginalStartup = "257";
+		CryOmni3D::Inventory inv;
+		GraphicsToolbarTest::NullCb nc;
+		inv.init(20, new Common::Functor1Mem<uint, void, GraphicsToolbarTest::NullCb>(&nc, &GraphicsToolbarTest::NullCb::cb));
+		inv.clear();   // what place.cpp does for chapter 1
+		TS_ASSERT_EQUALS(GraphicsToolbarTest::order(inv), Common::String(kOriginalStartup));
+	}
+
+	// Object id -> OBJETS1 sprite index: original FUN_0042b328 over the table
+	// at 0x004967b0 up to -1 (golden graphics_inventory.txt) versus the port's
+	// loop (stops at the first id <= 0) and its index-in-list mapping.
+	void test_inventory_icon_table() {
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("graphics_toolbar: no atlantis_test.cfg, data test skipped");
+			return;
+		}
+		AtlantisTest::Golden golden;
+		TS_ASSERT(AtlantisTest::loadGolden("graphics_inventory.txt", golden));
+		Common::FSNode node(Common::Path(AtlantisTest::dataDir(), '/').appendComponent("atlantis.exe"));
+		Common::File exe;
+		TS_ASSERT(exe.open(node));
+		if (!exe.isOpen())
+			return;
+		// FAITHFUL COPY of loadAtlantisExeTables' inventory loop.
+		Common::Array<uint> ids;
+		exe.seek((0x004967b0 - 0x400000 - 0x90000) + 0x71200);
+		for (int i = 0; i < 64 && !exe.eos(); i++) {
+			int32 id = exe.readSint32LE();
+			if (id <= 0)
+				break;
+			ids.push_back((uint)id);
+		}
+		uint missing = 0, wrong = 0;
+		for (AtlantisTest::Golden::const_iterator it = golden.begin(); it != golden.end(); ++it) {
+			uint id = atoi(it->_key.c_str());
+			int portIdx = -1;
+			for (uint i = 0; i < ids.size(); i++)
+				if (ids[i] == id) { portIdx = (int)i; break; }   // setupObjects + first match
+			int origIdx = atoi(it->_value.c_str());
+			if (portIdx < 0) {
+				missing++;
+				TS_WARN(Common::String::format("object %u (original sprite %d) is not in the port's table", id, origIdx).c_str());
+			} else if (portIdx != origIdx) {
+				wrong++;
+				TS_WARN(Common::String::format("object %u: port sprite %d, original %d", id, portIdx, origIdx).c_str());
+			}
+		}
+		TS_WARN(Common::String::format("inventory table: port %u ids, original %u ids; %u missing, %u wrong",
+		                               ids.size(), golden.size(), missing, wrong).c_str());
+		TS_ASSERT_EQUALS(missing, 0u);
+		TS_ASSERT_EQUALS(wrong, 0u);
+	}
+
+	// Icon hotspots: original (i*70+42, 443); port = centre of the toolbar's
+	// zone rect (rects from the faithful copy of init()), origin y = 480-82.
+	void test_icon_hotspots() {
+		CryOmni3D::Atlantis::Atlantis_Toolbar tb;
+		GraphicsToolbarTest::initToolbarNoGfx(tb, nullptr);
+		TS_ASSERT_EQUALS(tb._zones.size(), 9u);
+		for (uint i = 0; i < tb._zones.size(); i++) {
+			const Common::Rect &r = tb._zones[i].rect;
+			TS_ASSERT_EQUALS((r.left + r.right) / 2, (int)(i * 70 + 42));
+			TS_ASSERT_EQUALS((r.top + r.bottom) / 2 + (480 - 82), 443);
+		}
+	}
+
+	// Bar background: original OBJETS0 sprite 0 drawn with hotspot (0, 443),
+	// i.e. top = 443 - yoff; port: addMenuSprite(tx=0, ty=yoff) and drawToolbar
+	// baseY = (ty - yoff) + _position = 0 -> screen 398 when open.
+	void test_bar_background_position() {
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("graphics_toolbar: no atlantis_test.cfg, data test skipped");
+			return;
+		}
+		// OBJETS0.SPR header from the archive (port-independent reader).
+		Common::SeekableReadStream *s = nullptr;
+		{
+			for (int cd = 1; cd <= 4 && !s; cd++) {
+				Common::FSNode n(Common::Path(AtlantisTest::dataDir(), '/')
+				                 .appendComponent(Common::String::format("BIGCD%d.BIG", cd)));
+				Common::File f;
+				if (!f.open(n))
+					continue;
+				f.seek(16);
+				uint32 cnt = f.readUint32LE();
+				f.seek(24);
+				uint32 base = f.readUint32LE();
+				f.seek(32);
+				uint32 seq = 0;
+				for (uint32 i = 0; i < cnt; i++) {
+					uint32 rec[8];
+					for (int k = 0; k < 8; k++)
+						rec[k] = f.readUint32LE();
+					Common::String name;
+					for (uint32 k = 0; k < rec[0]; k++) {
+						char c = (char)f.readByte();
+						if (c)
+							name += c;
+					}
+					name.toUppercase();
+					if (name == "SPRITE\\2D\\OBJETS0.SPR") {
+						int32 here = f.pos();
+						f.seek(base + seq + 2 + 512 + 2 + 4);
+						byte *b = (byte *)malloc(8);
+						f.read(b, 8);
+						s = new Common::MemoryReadStream(b, 8, DisposeAfterUse::YES);
+						f.seek(here);
+						break;
+					}
+					seq += rec[2];
+				}
+			}
+		}
+		TS_ASSERT(s);
+		if (!s)
+			return;
+		/* w = */ s->readUint16LE();
+		/* h = */ s->readUint16LE();
+		int16 xoff = s->readSint16LE();
+		int16 yoff = s->readSint16LE();
+		delete s;
+		int origLeft = 0 - xoff, origTop = 443 - yoff;
+		int portLeft = 0 - xoff, portTop = (480 - 82) + ((yoff - yoff) + 0);
+		TS_ASSERT_EQUALS(portLeft, origLeft);
+		TS_ASSERT_EQUALS(portTop, origTop);
+	}
+
+	// Click hit-test over the whole bar.  Original FUN_0042c098 model:
+	// record = x/70 + first when x/70 + 1 <= end and y >= 409.  Port: real
+	// hitTestZones on toolbar-local coordinates, record = zone + offset.
+	void test_click_hit_test() {
+		CryOmni3D::Atlantis::Atlantis_Toolbar tb;
+		GraphicsToolbarTest::initToolbarNoGfx(tb, nullptr);
+		static const int firsts[] = {0, 2};
+		uint diffs = 0, firstDiffX = 0;
+		for (uint fi = 0; fi < ARRAYSIZE(firsts); fi++) {
+			int first = firsts[fi], end = first + 9;
+			for (int y = 380; y < 480; y++)
+				for (int x = 0; x < 640; x++) {
+					int orig = (x / 70 + 1 <= end && y >= 409) ? x / 70 + first : -1;
+					Common::Array<CryOmni3D::Atlantis::Atlantis_Toolbar::Zone>::const_iterator it =
+					    tb.hitTestZones(Common::Point(x, y - (480 - 82)));
+					int port = (it == tb._zones.end()) ? -1 : (int)(it - tb._zones.begin()) + first;
+					if (orig != port) {
+						if (!diffs)
+							firstDiffX = x;
+						diffs++;
+					}
+				}
+		}
+		if (diffs)
+			TS_WARN(Common::String::format("toolbar click: %u points differ (first at x=%u)", diffs, firstDiffX).c_str());
+		TS_ASSERT_EQUALS(diffs, 0u);
+	}
+
+	// Taking an item: the original click takes the record's object
+	// (FUN_0042c098 writes it to the held-object slot 0x611210[...]).  The
+	// port's callbackInventory refuses objects whose valid() is false, and
+	// setupObjects builds every object with the default constructor
+	// (_valid = false) and rename() only.
+	void test_take_item() {
+		using namespace GraphicsToolbarTest;
+		Common::Array<uint> ids;
+		ids.push_back(300);
+		CryOmni3D::Objects objects;
+		portSetupObjects(objects, ids);
+		CryOmni3D::Inventory inv;
+		NullCb nc;
+		inv.init(20, new Common::Functor1Mem<uint, void, NullCb>(&nc, &NullCb::cb));
+		inv.add(&objects[0]);
+		CryOmni3D::Atlantis::Atlantis_Toolbar tb;
+		initToolbarNoGfx(tb, &inv);
+		// Pressed on slot 0: no engine call on this path.
+		TS_ASSERT_EQUALS(tb.callbackInventory(0, CryOmni3D::kDragStatus_Pressed), 1u);
+	}
+};
