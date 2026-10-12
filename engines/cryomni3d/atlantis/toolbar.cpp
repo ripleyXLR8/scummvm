@@ -230,6 +230,7 @@ bool Atlantis_Toolbar::displayToolbar(const Graphics::Surface *original) {
 
 	_inventorySelected = uint(-1);
 	_inventoryHovered  = uint(-1);
+	_guestClicked = 0;
 	updateZones();
 
 	// Slide the bar up.
@@ -325,6 +326,19 @@ bool Atlantis_Toolbar::handleToolbarEvents(const Graphics::Surface *original) {
 		mousePosInToolbar -= Common::Point(0, 480 - _destSurface.h);
 
 		DragStatus drag = _engine->getDragStatus();
+		// A click on a guest portrait (other than 592) closes the bar for a
+		// conversation with that guest (atlantis.exe FUN_0042c8ac @ 0x0042cbfe,
+		// FUN_0042bdb8; the portrait test comes before the item click).
+		if (drag == kDragStatus_Pressed) {
+			const Common::Point ms = _engine->getMousePos();
+			int32 g = _engine->guestAt(ms.x, ms.y);
+			if (g != 0 && g != 592) {
+				_engine->waitMouseRelease();
+				_guestClicked = g;
+				exitToolbar = true;
+				break;
+			}
+		}
 		bool redrawToolbar = false;
 		bool tookItem = false;
 		if (captureEvent(mousePosInToolbar, drag)) {

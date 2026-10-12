@@ -683,6 +683,19 @@ void CryOmni3DEngine_Atlantis::addGuest(int32 guestId) {
 	_guests = next;
 }
 
+void CryOmni3DEngine_Atlantis::talkToGuest(int32 guestId) {
+	// FUN_00425828 with 0x00496144 = 1: the other guests are hidden for the
+	// conversation, then restored.
+	byte saved[AtlantisGuests::kSlots];
+	memcpy(saved, _guests.sprite, sizeof(saved));
+	for (uint i = 0; i < _guests.count; i++)
+		if (_guests.id[i] != guestId)
+			_guests.sprite[i] = AtlantisGuests::kHidden;
+	interactNPC(guestId);
+	if (_guests.count <= AtlantisGuests::kSlots)
+		memcpy(_guests.sprite, saved, sizeof(saved));
+}
+
 void CryOmni3DEngine_Atlantis::subGuest(int32 guestId) {
 	// FUN_0042b6c0: each matching record is hidden, slides out to the right,
 	// then the following records move down.

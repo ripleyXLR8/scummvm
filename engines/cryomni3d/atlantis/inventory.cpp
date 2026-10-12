@@ -103,6 +103,18 @@ void AtlantisGuests::add(int32 guestId, const Common::Array<int32> &table) {
 	count++;
 }
 
+int32 AtlantisGuests::at(int x, int y) const {
+	if (count == 0)
+		return 0;
+	const int x0 = 540 - 100 * ((int)count - 1);
+	const int y0 = 350;
+	if (x < x0 || x > x0 + (int)count * 85 || y < y0 || y > y0 + 100)
+		return 0;
+	const int cell = ((y - y0) / 100) * (int)count + (x - x0) / 85;
+	const int k = (int)count - 1 - cell;
+	return (k >= 0) ? id[k] : 0;
+}
+
 void AtlantisGuests::removeAt(uint i) {
 	for (uint k = i; k < count && k + 1 < kSlots; k++) {
 		id[k] = id[k + 1];

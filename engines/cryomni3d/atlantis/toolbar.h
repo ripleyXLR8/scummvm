@@ -50,6 +50,9 @@ public:
 
 	bool displayToolbar(const Graphics::Surface *original);
 	void inventoryChanged(uint newPosition);
+	// The guest whose portrait was clicked in the open bar (0: none); the
+	// caller talks to it (atlantis.exe FUN_0042c8ac @ 0x0042cbfe).
+	int32 guestClicked() const { return _guestClicked; }
 
 private:
 	typedef uint(Atlantis_Toolbar::*ZoneCallback)(uint dragStatus);
@@ -67,6 +70,7 @@ private:
 
 	Graphics::PixelFormat _format;
 
+	int32 _guestClicked = 0;
 	uint _inventoryOffset;
 	uint _inventoryMaxOffset;
 	uint _inventoryHovered;

@@ -93,6 +93,12 @@ struct AtlantisGuests {
 	// removal the scan goes on at the next index, so it skips the record
 	// that moved into the freed slot.
 	void remove(int32 guestId);
+	// FUN_0042bdb8: the guest whose portrait cell holds (x, y), 0 if none.
+	// Grid FUN_004211f0 at x0 = 540 - 100 * (count - 1), y0 = 350, cells
+	// 85 x 100, count columns, one row, edges inclusive; the record is
+	// count - 1 - cell.  On the right and bottom edge pixels the original
+	// reads the memory before the list; 0 here.
+	int32 at(int x, int y) const;
 };
 
 } // End of namespace Atlantis

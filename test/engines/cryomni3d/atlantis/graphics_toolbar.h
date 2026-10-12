@@ -249,6 +249,34 @@ public:
 		}
 	}
 
+	// Guest portrait hit-test: the id the ORIGINAL FUN_0042bdb8 returns
+	// (atlantis-re tools/emu/scripts_guest_hit.py), for 1, 2 and 3 guests.
+	// The two points where the original reads before the list (x = x0 +
+	// count * 85, y = 450) are left out.  Port: AtlantisGuests::at.
+	void test_guest_hit() {
+		static const int32 kTable[] = { 562, 561, 587, 597, 543, 681, 682, 592, 523 };
+		Common::Array<int32> table(kTable, ARRAYSIZE(kTable));
+		static const int32 kIds[] = { 587, 562, 523 };
+		static const struct { uint n; int x, y; int32 id; } kOrig[] = {
+			{ 1, 440, 350, 0 }, { 1, 440, 449, 0 }, { 1, 439, 400, 0 }, { 1, 539, 400, 0 },
+			{ 1, 540, 400, 587 }, { 1, 610, 400, 587 }, { 1, 624, 400, 587 }, { 1, 626, 400, 0 },
+			{ 1, 500, 349, 0 },
+			{ 2, 440, 350, 562 }, { 2, 440, 449, 562 }, { 2, 439, 400, 0 }, { 2, 525, 400, 587 },
+			{ 2, 539, 400, 587 }, { 2, 540, 400, 587 }, { 2, 609, 400, 587 }, { 2, 611, 400, 0 },
+			{ 2, 340, 400, 0 }, { 2, 500, 349, 0 },
+			{ 3, 440, 350, 562 }, { 3, 440, 449, 562 }, { 3, 439, 400, 562 }, { 3, 525, 400, 587 },
+			{ 3, 540, 400, 587 }, { 3, 610, 400, 0 }, { 3, 340, 400, 523 }, { 3, 339, 400, 0 },
+			{ 3, 239, 400, 0 }, { 3, 500, 349, 0 },
+		};
+		for (uint i = 0; i < ARRAYSIZE(kOrig); i++) {
+			CryOmni3D::Atlantis::AtlantisGuests g;
+			for (uint k = 0; k < kOrig[i].n; k++)
+				g.add(kIds[k], table);
+			TSM_ASSERT_EQUALS(Common::String::format("%u guests at (%d,%d)", kOrig[i].n, kOrig[i].x, kOrig[i].y).c_str(),
+			                  g.at(kOrig[i].x, kOrig[i].y), kOrig[i].id);
+		}
+	}
+
 	// Icon hotspots: original (i*70+42, 443); port = centre of the toolbar's
 	// zone rect (rects from the faithful copy of init()), origin y = 480-82.
 	void test_icon_hotspots() {

@@ -388,8 +388,25 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				setItemCursor(_inventory.selectedObject());
 			else
 				setArrowCursor();
-			displayToolbar(_warpLoaded ? _omni3dMan.getSurface() : nullptr);
+			// The bar is drawn over the view with the guest portraits (atlantis.exe
+			// FUN_0042c8ac draws them each frame, FUN_0042bd08).
+			Graphics::ManagedSurface barFrame;
+			const Graphics::Surface *barBg = _warpLoaded ? _omni3dMan.getSurface() : nullptr;
+			if (barBg) {
+				barFrame.copyFrom(*barBg);
+				drawGuests(barFrame);
+				g_system->copyRectToScreen(barFrame.getPixels(), barFrame.pitch, 0, 0, barFrame.w, barFrame.h);
+				barBg = &barFrame.rawSurface();
+			}
+			displayToolbar(barBg);
 			rebaseConClocks();
+			if (_toolbar.guestClicked() != 0 && !shouldAbort()) {
+				talkToGuest(_toolbar.guestClicked());
+				if (_arrivalScanPending) {
+					actionId = 66666;
+					exit = true;
+				}
+			}
 			if (shouldAbort()) {
 				actionId = 66666;
 				exit = true;

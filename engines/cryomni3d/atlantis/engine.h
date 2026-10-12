@@ -557,6 +557,8 @@ private:
 	void drawGuests(Graphics::ManagedSurface &dst, int movingSprite = -1, int movingX = 0);
 	void slideGuest(byte sprite, int fromX, int toX, int step);
 	void addGuest(int32 guestId);
+	int32 guestAt(int x, int y) const { return _guestsShown ? _guests.at(x, y) : 0; }
+	void talkToGuest(int32 guestId);
 	void subGuest(int32 guestId);
 	Common::Array<SubjSprite> _objSprites;
 	int _dialogGivenObjSprite;
