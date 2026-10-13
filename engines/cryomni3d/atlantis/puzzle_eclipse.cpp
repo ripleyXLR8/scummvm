@@ -65,6 +65,15 @@ static const int kWinAnimFrames = 0x50;     // 80
 
 static const bool kRecordUsesPz1l[7] = { false, false, false, false, true, true, true };
 
+// The record table is static data (0x0049745e): records 0 and 1, which
+// cycle on their own, keep their frame from one entry of the puzzle to the
+// next (FUN_0044154c resets only records 2..6).
+struct EclipseMemory {
+	bool valid;
+	int curr0, curr1;
+};
+static EclipseMemory g_eclipseMemory = { false, 0, 0 };
+
 // ===========================================================================
 EclipsePuzzle::EclipsePuzzle(CryOmni3DEngine_Atlantis *engine)
     : _engine(engine), _frameCounter(0), _bgLoaded(false) {
@@ -194,6 +203,10 @@ int EclipsePuzzle::run() {
 	// test.  It reads no key.  0x007bebf0, the highlight counter, is 0
 	// (FUN_0043a1e0 clears it) and moves only in the win animation.
 	_frameCounter = 0;
+	if (g_eclipseMemory.valid) {
+		_rules.r[0].curr = g_eclipseMemory.curr0;
+		_rules.r[1].curr = g_eclipseMemory.curr1;
+	}
 	int  result = kFinPuzzleAbort;
 	bool prevButton = (_engine->getCurrentMouseButton() != 0);
 	auto present = [&]() {
@@ -250,6 +263,9 @@ int EclipsePuzzle::run() {
 	debugC(1, kDebugScript, "EclipsePuzzle::run: levers L1=(r2=%d,r5=%d,r6=%d) L2=(r3=%d,r4=%d) result=%d",
 	      _rules.r[2].curr, _rules.r[5].curr, _rules.r[6].curr,
 	      _rules.r[3].curr, _rules.r[4].curr, result);
+	g_eclipseMemory.valid = true;
+	g_eclipseMemory.curr0 = _rules.r[0].curr;
+	g_eclipseMemory.curr1 = _rules.r[1].curr;
 	return result;
 }
 
