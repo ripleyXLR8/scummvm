@@ -25,6 +25,8 @@
 #include "common/array.h"
 #include "common/scummsys.h"
 
+#include "audio/mixer.h"
+
 #include "cryomni3d/atlantis/eclipse_rules.h"
 #include "cryomni3d/atlantis/puzzle_assets.h"
 
@@ -55,8 +57,8 @@ private:
 
 	EclipseRules _rules;
 
-	// Frame counter -- _DAT_007bebf0 in the exe; drives the alternate-
-	// frame test on the win highlight (`(_frameCounter & 2) != 0`).
+	// 0x007bebf0: 0 while playing, counted only by the win animation
+	// FUN_00441724; drives the win highlight (`(_frameCounter & 2) != 0`).
 	uint32 _frameCounter;
 
 	Common::Array<PuzzleSpr> _pz1lFrames;  // _DAT_007beae0
@@ -70,6 +72,8 @@ private:
 	// asynchronous playback).  `name` is "LION1" / "LION2" / "LION3".
 	// `wait` blocks until the sound finishes (used for the win sound).
 	void playSound(const char *name, bool wait);
+	void stopSounds();                        // FUN_0043d0e0: the puzzle's samples
+	Common::Array<Audio::SoundHandle> _handles;
 };
 
 } // namespace Atlantis

@@ -138,7 +138,6 @@ void EclipsePuzzle::renderFrame(Graphics::ManagedSurface &out) {
 		blitPz1l(5, kHighlightFrameMoon);
 	}
 
-	_frameCounter++;
 }
 
 // Open WAV/<name>.APC, queue and play.  When `wait`, blocks until the
@@ -166,6 +165,7 @@ void EclipsePuzzle::playSound(const char *name, bool wait) {
 
 	Audio::SoundHandle handle;
 	_engine->_mixer->playStream(Audio::Mixer::kSFXSoundType, &handle, apc);
+	_handles.push_back(handle);
 	if (wait) {
 		while (!_engine->shouldAbort() &&
 		       _engine->_mixer->isSoundHandleActive(handle)) {
@@ -173,6 +173,12 @@ void EclipsePuzzle::playSound(const char *name, bool wait) {
 			g_system->delayMillis(15);
 		}
 	}
+}
+
+void EclipsePuzzle::stopSounds() {
+	for (uint i = 0; i < _handles.size(); i++)
+		_engine->_mixer->stopHandle(_handles[i]);
+	_handles.clear();
 }
 
 int EclipsePuzzle::run() {
@@ -184,58 +190,61 @@ int EclipsePuzzle::run() {
 	_engine->setArrowCursor();
 	_engine->showMouse(true);
 
-	bool exitLoop = false;
+	// FUN_0044154c's loop: the click, the exit test, a frame, then the win
+	// test.  It reads no key.  0x007bebf0, the highlight counter, is 0
+	// (FUN_0043a1e0 clears it) and moves only in the win animation.
+	_frameCounter = 0;
 	int  result = kFinPuzzleAbort;
 	bool prevButton = (_engine->getCurrentMouseButton() != 0);
+	auto present = [&]() {
+		g_system->copyRectToScreen(working.getPixels(), working.pitch, 0, 0, kScreenW, kScreenH);
+		g_system->updateScreen();
+	};
 
-	while (!exitLoop && !_engine->shouldAbort()) {
+	while (!_engine->shouldAbort()) {
 		_engine->pollEvents();
-
+		_engine->getNextKey();
 		bool nowButton = (_engine->getCurrentMouseButton() == 1);
+		bool leave = false;
 		if (nowButton && !prevButton) {
 			Common::Point m = _engine->getMousePos();
-
 			const EclipseRules::Click c = _rules.click(m.x, m.y);
 			if (c == EclipseRules::kClickExit) {
-				result = kFinPuzzleAbort;
-				exitLoop = true;
+				leave = true;
 			} else if (c == EclipseRules::kClickLever) {
-				// Click sound -- mirrors FUN_00441cd8 lines 441e43-441e58
-				// (lever 1) and 441edd-441eee (lever 2): both branches
-				// of both levers play LION1.APC unconditionally.
+				// Both branches of both levers play LION1 (FUN_00441cd8).
 				playSound("LION1", false);
-			}
-
-			if (!exitLoop && _rules.isWin()) {
-				// Win path -- mirrors FUN_0044154c lines 38097-38108:
-				// run FUN_00441724 (which plays LION3.APC and renders
-				// 80 more frames) then return DAT_00496d14 = 255.
-				playSound("LION3", false);
-				for (int f = 0; f < kWinAnimFrames && !_engine->shouldAbort(); f++) {
-					_engine->pollEvents();
-					renderFrame(working);
-					g_system->copyRectToScreen(working.getPixels(), working.pitch,
-					                           0, 0, kScreenW, kScreenH);
-					g_system->updateScreen();
-					g_system->delayMillis(40);
-				}
-				result = kFinPuzzleWin;
-				exitLoop = true;
 			}
 		}
 		prevButton = nowButton;
-
-		Common::KeyCode kc = _engine->getNextKey().keycode;
-		if (kc == Common::KEYCODE_ESCAPE) {
+		if (leave) {
+			stopSounds();                 // FUN_0043d0e0
 			result = kFinPuzzleAbort;
-			exitLoop = true;
+			break;
 		}
 
 		renderFrame(working);
-		g_system->copyRectToScreen(working.getPixels(), working.pitch,
-		                           0, 0, kScreenW, kScreenH);
-		g_system->updateScreen();
+		present();
 		g_system->delayMillis(15);
+
+		if (_rules.isWin()) {
+			// FUN_00441724: LION3, then 80 frames with the counter counting
+			// from 0 (the highlight pulses on bit 1); then FUN_0043d0e0
+			// stops every playing sample, LION3 included.
+			playSound("LION3", false);
+			_frameCounter = 0;
+			for (int f = 0; f < kWinAnimFrames && !_engine->shouldAbort(); f++) {
+				_engine->pollEvents();
+				renderFrame(working);
+				present();
+				_frameCounter++;
+				// [UNKNOWN] the animation has no timer of its own.
+				g_system->delayMillis(40);
+			}
+			stopSounds();
+			result = kFinPuzzleWin;
+			break;
+		}
 	}
 
 	debugC(1, kDebugScript, "EclipsePuzzle::run: levers L1=(r2=%d,r5=%d,r6=%d) L2=(r3=%d,r4=%d) result=%d",
