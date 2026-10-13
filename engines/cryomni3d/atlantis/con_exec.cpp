@@ -808,13 +808,21 @@ void CryOmni3DEngine_Atlantis::addGuest(int32 guestId) {
 }
 
 void CryOmni3DEngine_Atlantis::talkToGuest(int32 guestId) {
-	// FUN_00425828 with 0x00496144 = 1: the other guests are hidden for the
-	// conversation, then restored.
+	// FUN_00425828 with 0x00496144 = 1: the other guests are hidden only
+	// when the guest has enabled subjects (the loop at 0x0042594d runs on
+	// the subject path, after the JBE at 0x0042592a), then restored.
 	byte saved[AtlantisGuests::kSlots];
 	memcpy(saved, _guests.sprite, sizeof(saved));
-	for (uint i = 0; i < _guests.count; i++)
-		if (_guests.id[i] != guestId)
-			_guests.sprite[i] = AtlantisGuests::kHidden;
+	bool hasSubjects = false;
+	for (const SujState &ss : _sujEnabled)
+		if (ss.persoId == guestId) {
+			hasSubjects = !ss.sujs.empty();
+			break;
+		}
+	if (hasSubjects)
+		for (uint i = 0; i < _guests.count; i++)
+			if (_guests.id[i] != guestId)
+				_guests.sprite[i] = AtlantisGuests::kHidden;
 	interactNPC(guestId);
 	if (_guests.count <= AtlantisGuests::kSlots)
 		memcpy(_guests.sprite, saved, sizeof(saved));
