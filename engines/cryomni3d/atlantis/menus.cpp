@@ -563,8 +563,7 @@ int CryOmni3DEngine_Atlantis::displayPlayerScreen() {
 				// labels all vanish behind "ARE YOU SURE ?" — matching the
 				// original.  SUREMENU.TXT carries its own ornament sprites.
 				if (selected >= 0 && confirmQuit(bg)) {
-					_players[selected].clear();
-					deletePlayerSaves((uint)selected);
+					deletePlayer((uint)selected);
 					savePlayers();
 					selected = -1;
 				}

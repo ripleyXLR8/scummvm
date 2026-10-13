@@ -209,6 +209,8 @@ private:
 	void loadPlayers();
 	void savePlayers();
 	void deletePlayerSaves(uint player);
+	// FUN_0041e8a8: delete a player and move the later ones up one slot.
+	void deletePlayer(uint player);
 	bool saveSlotExists(int absSlot) const;
 	bool playerHasSave(uint player) const;
 	uint playerResumeSave(uint player) const;   // 1-based slot, 0 = none

@@ -401,6 +401,26 @@ void CryOmni3DEngine_Atlantis::deletePlayerSaves(uint player) {
 		_playerChapter[player] = 0;
 }
 
+void CryOmni3DEngine_Atlantis::deletePlayer(uint player) {
+	// FUN_0041e8a8: the deleted player's saves go, the later players move up
+	// one slot (names, chapters and, here, their save files) and the last
+	// slot is freed, so a player created afterwards comes last.
+	if (player >= kMaxPlayers)
+		return;
+	deletePlayerSaves(player);
+	for (uint q = player + 1; q < kMaxPlayers; q++) {
+		for (uint i = 0; i < kPlayerSlotStride; i++) {
+			const int from = episodeSaveSlot(q, i), to = episodeSaveSlot(q - 1, i);
+			if (saveSlotExists(from))
+				_saveFileMan->renameSavefile(getSaveStateName(from), getSaveStateName(to));
+		}
+		_players[q - 1] = _players[q];
+		_playerChapter[q - 1] = _playerChapter[q];
+	}
+	_players[kMaxPlayers - 1].clear();
+	_playerChapter[kMaxPlayers - 1] = 0;
+}
+
 bool CryOmni3DEngine_Atlantis::saveSlotExists(int absSlot) const {
 	Common::InSaveFile *in = _saveFileMan->openForLoading(getSaveStateName(absSlot));
 	if (!in)
