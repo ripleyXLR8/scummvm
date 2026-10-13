@@ -147,11 +147,14 @@ public:
 					y = resetY;
 					name = "reset";
 				}
+				// The harness clears the cursor animation before each click.
 				Rules r = cur;
-				r.click(map, x, y);
+				r.cursorMode = r.cursorFrame = r.cursorStep = 0;
+				const Rules::Click c = r.click(map, x, y);
+				const int snd = (c == Rules::kClickMove || c == Rules::kClickReset || c == Rules::kClickBoard) ? 1 : 0;
 				const int win = r.solved() ? 1 : 0;
 				lines.push_back(stateRepr(cur) + " " + name + " -> " + stateRepr(r) +
-				                Common::String::format(" r=0 win=%d", win));
+				                Common::String::format(" r=0 win=%d snd=%d", win, snd));
 				const Common::String key = stateRepr(r);
 				if (!seen.contains(key)) {
 					seen[key] = true;

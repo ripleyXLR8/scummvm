@@ -66,20 +66,15 @@ public:
 	}
 
 	// FUN_004460c8.  kClickMove and kClickReset play a sound (serp_2_1,
-	// serp_2_2), kClickBoard serp_2_3; kClickLeave ends the puzzle (2).
+	// serp_2_2), kClickBoard serp_2_3 (a click on the board off the pieces,
+	// or on a piece that has already moved); kClickLeave ends the puzzle (2).
 	// Values above 13 index past the exe's arrays; the shipped map has none.
 	Click click(const Common::Array<byte> &map, int x, int y) {
 		const byte v = mapValue(map, x, y, 0x4b438);
 		if (v == 0) {
 			if (!onBoard(x, y))
 				return kClickLeave;
-			// FUN_004462b0: start the cursor animation unless at its first frame.
-			if (cursorFrame == 2)
-				return kClickNone;
-			cursorFrame = 2;
-			cursorMode = 2;
-			cursorStep = 1;
-			return kClickBoard;
+			return startCursorAnim();
 		}
 		if (v == 13) {
 			reset();
@@ -89,14 +84,27 @@ public:
 		if (code >= 2 * kNumPieces)
 			return kClickNone;
 		const int i = code >> 1;
+		// A piece that has already moved: the cursor animation and its
+		// sound (0x0044619c -> 0x00446239).
 		if (counters[pieces[i]] != 0)
-			return kClickNone;
+			return startCursorAnim();
 		counters[pieces[i]]++;
 		const int j = (code % 2 == 0) ? (i + 5) % kNumPieces : (i + 1) % kNumPieces;
 		const int16 t = pieces[i];
 		pieces[i] = pieces[j];
 		pieces[j] = t;
 		return kClickMove;
+	}
+
+	// FUN_004462b0: start the cursor animation (and play serp_2_3) unless
+	// it is at its first frame.
+	Click startCursorAnim() {
+		if (cursorFrame == 2)
+			return kClickNone;
+		cursorFrame = 2;
+		cursorMode = 2;
+		cursorStep = 1;
+		return kClickBoard;
 	}
 
 	// The win test of FUN_00445c00.
