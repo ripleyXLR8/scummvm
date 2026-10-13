@@ -299,7 +299,7 @@ private:
 	void drawSubjectSprite(Graphics::Surface &dst, uint sprIdx, int cx, int cy) const;
 	// Show the subject (topic) grid for an NPC's enabled subjects and return
 	// the chosen option index, or -1 on cancel (right-click).
-	int showSubjectMenu(const Common::Array<ConSection *> &options);
+	int showSubjectMenu(const Common::Array<int> &sujIds);
 
 	// --- 2D sprites (sprite_renderer.cpp) ---------------------------------
 	// 2D sprite (SPR) decoded into screen-format pixels plus a parallel

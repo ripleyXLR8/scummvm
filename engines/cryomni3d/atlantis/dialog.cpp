@@ -239,9 +239,9 @@ void CryOmni3DEngine_Atlantis::drawSubjectSprite(Graphics::Surface &dst,
 //  - For <=4 subjects the single column is bottom-anchored (startY=330-50*N);
 //    for >=5 the grid starts at Y=180.  No hover highlight; right-click cancels.
 // Returns the chosen option index, or -1 on cancel.
-int CryOmni3DEngine_Atlantis::showSubjectMenu(const Common::Array<ConSection *> &options) {
+int CryOmni3DEngine_Atlantis::showSubjectMenu(const Common::Array<int> &sujIds) {
 	const int kScreenW = 640, kScreenH = 480;
-	const uint nOpts = options.size();
+	const uint nOpts = sujIds.size();
 	if (nOpts == 0)
 		return -1;
 
@@ -290,7 +290,7 @@ int CryOmni3DEngine_Atlantis::showSubjectMenu(const Common::Array<ConSection *> 
 		Graphics::Surface *rawPtr = frame.surfacePtr();
 		for (const IconLayout &il : layout) {
 			drawSubjectSprite(*rawPtr, 0, il.bx, il.by);
-			int sujId = options[il.optIdx]->sujId;
+			int sujId = sujIds[il.optIdx];
 			uint sprIdx = (sujId > 0 && (uint)sujId < _subjSprites.size())
 			              ? (uint)sujId : 0;
 			drawSubjectSprite(*rawPtr, sprIdx, il.bx + kIconDX, il.by + kIconDY);
