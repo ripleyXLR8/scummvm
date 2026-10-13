@@ -90,14 +90,13 @@ namespace Atlantis {
 // parser bailed at the first stub and missed the proper copy, leaving
 // CON-script transitions like vue 218 → 217 with no destination.
 
+// A 13-byte NUL-terminated name, as FUN_00421ebc copies it: a name whose
+// first byte is NUL is empty (92 records of 18 WAMs, all with id 0).
 static void readFixedName13(Common::SeekableReadStream &s, Common::String &out) {
 	char buf[14];
 	s.read(buf, 13);
 	buf[13] = 0;
-	const char *start = buf;
-	while (*start == 0 && start - buf < 13)
-		start++;
-	out = Common::String(start);
+	out = Common::String(buf);
 }
 
 void AtlantisWAMParser::clear() {

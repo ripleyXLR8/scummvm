@@ -54,47 +54,60 @@ bool BigFileArchive::open(const Common::Path &path) {
 	}
 	file->seek(4, SEEK_CUR); // skip remaining 4 magic bytes
 
-	uint32 numFiles    = file->readUint32LE();
-	/* totalDataSize = */ file->readUint32LE();
-	uint32 dataBase    = file->readUint32LE();
-	/* reserved = */      file->readUint32LE();
+	// The file count, data length and header length fields are only printed
+	// by cryo.dll's _GL_OpenBigFile (cryo-dll-543d8db2 @ 0x00416052).
+	file->skip(16);
 
 	const uint disc = _files.size();
 
-	// Read directory entries; files are stored sequentially in directory order
-	// starting at dataBase.  Each entry is eight uint32 fields followed by the
-	// name.  A name already present from an earlier-mounted disc is skipped —
-	// cross-disc duplicates are byte-identical.
-	uint32 seqOffset = 0;
-	for (uint32 i = 0; i < numFiles; i++) {
-		uint32 nameLen   =   file->readUint32LE();
-		/* unk_a     = */    file->readUint32LE();
-		uint32 size      =   file->readUint32LE(); // size_comp == size_raw (no compression)
-		/* size_unk  = */    file->readUint32LE();
-		/* size_raw  = */    file->readUint32LE();
-		/* unk_b     = */    file->readUint32LE();
-		/* unk_c     = */    file->readUint32LE();
-		/* virt_off  = */    file->readUint32LE();
+	// Directory entries, eight uint32 fields then the name, until an entry
+	// whose "next" field is 0.  The data starts after the directory, whose
+	// length is recomputed as 0x20 + sum(nameLen + 0x20) (FUN_00415dac).  A
+	// name already present (an earlier entry, or an earlier-mounted disc) is
+	// skipped: _GL_OpenFileBigFile takes the first match.
+	uint32 headerLen = 0x20;
+	uint32 next;
+	do {
+		uint32 nameLen = file->readUint32LE();
+		/* name pointer at pack time = */ file->readUint32LE();
+		uint32 size    = file->readUint32LE();
+		/* unused = */  file->readUint32LE();
+		/* packed size = */ file->readUint32LE();
+		uint32 flags   = file->readUint32LE();
+		uint32 adr     = file->readUint32LE();
+		next           = file->readUint32LE();
+		if (file->eos() || file->err()) {
+			warning("BigFileArchive: truncated directory in '%s'", path.toString().c_str());
+			break;
+		}
 
+		// The name ends at its first NUL; names are compared upper-case
+		// (FUN_0041d0d9 upper-cases a-z of both sides).
 		Common::String name;
+		bool ended = false;
 		for (uint32 j = 0; j < nameLen; j++) {
 			char c = (char)file->readByte();
-			if (c != '\0')
+			if (c == '\0')
+				ended = true;
+			else if (!ended)
 				name += c;
 		}
+		name.toUppercase();
+		headerLen += nameLen + 0x20;
 
+		if (flags & 0x1000)
+			warning("BigFileArchive: '%s' is LZW-packed, which is not supported", name.c_str());
 		if (!_entries.contains(name)) {
 			Entry e;
-			e.seqOffset = seqOffset;
-			e.size      = size;
-			e.disc      = disc;
+			e.adr  = adr;
+			e.size = size;
+			e.disc = disc;
 			_entries[name] = e;
 		}
-		seqOffset += size;
-	}
+	} while (next != 0);
 
 	_files.push_back(file);
-	_dataBases.push_back(dataBase);
+	_dataBases.push_back(headerLen);
 	return true;
 }
 
@@ -154,7 +167,7 @@ Common::SeekableReadStream *BigFileArchive::createReadStreamForMember(const Comm
 		return nullptr;
 
 	Common::File *file = _files[e.disc];
-	file->seek(_dataBases[e.disc] + e.seqOffset);
+	file->seek(_dataBases[e.disc] + e.adr);
 
 	byte *buf = (byte *)malloc(e.size);
 	if (!buf)

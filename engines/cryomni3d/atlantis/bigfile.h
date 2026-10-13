@@ -70,7 +70,7 @@ public:
 
 private:
 	struct Entry {
-		uint32 seqOffset; // byte offset from the owning disc's data base
+		uint32 adr;        // data offset from the end of the directory
 		uint32 size;
 		uint   disc;      // index into _files / _dataBases
 	};
