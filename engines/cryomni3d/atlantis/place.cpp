@@ -102,6 +102,8 @@ void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 		// is not established; the port starts clean.
 		_guests.clear();
 		_guestsShown = true;
+		// FUN_00423760 @ 0x004237a0: the IncPerso count starts at 0.
+		_incPersoCount = 0;
 	}
 
 	if ((uint)chapter != _currentCONChapter) {

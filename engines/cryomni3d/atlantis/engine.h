@@ -553,6 +553,9 @@ private:
 	// Chapter 34 bow mode (atlantis.exe 0x00496164): ARCWARP.SPR at
 	// (0x2e, 0x79), frame _arrowFrame (0x0049619d) while an arrow flies.
 	bool _bowMode = false;
+	// IncPerso count (atlantis.exe 0x0077290d, saved in the .gam at 0x11e):
+	// lines starting with "Seth" take their INITDIAL row from 512 + it.
+	uint8 _incPersoCount = 0;
 	Common::Array<SubjSprite> _bowSprites;
 	uint _arrowFrame = 0;
 	void drawSprite(Graphics::ManagedSurface &dst, const SubjSprite &spr, int x, int y);

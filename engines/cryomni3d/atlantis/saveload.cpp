@@ -45,7 +45,7 @@ static const int32  kSaveSize        = 1792;
 static const uint   kSaveDescriptionLen = 20;
 static const uint   kWAMNameLen      = 32;
 static const uint32 kExtMagic        = 0x41544C53u;  // 'ATLS'
-static const uint32 kExtVersion      = 6;
+static const uint32 kExtVersion      = 7;
 
 // Player-profile file (cannot collide with the "atlantis.NNNN" save files).
 static const char  *kPlayersFile    = "atlantis-players.dat";
@@ -143,6 +143,8 @@ void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &save
 		out->writeByte(_guests.sprite[i]);
 	}
 	out->writeByte(_guestsShown ? 1 : 0);
+	// ext v7: the IncPerso count (the original's .gam keeps it at 0x11e).
+	out->writeByte(_incPersoCount);
 
 	out->finalize();
 	delete out;
@@ -198,6 +200,7 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	AtlantisGuests savedGuests;            // ext v6
 	bool savedGuestsShown = true;
 	bool hasGuests = false;
+	uint8 savedIncPerso = 0;
 	int savedMusicTrack = 0;
 	bool hasExt = (in->size() > kSaveSize);
 	if (hasExt) {
@@ -251,6 +254,8 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 				}
 				savedGuestsShown = in->readByte() != 0;
 			}
+			if (ver >= 7 && !in->eos())
+				savedIncPerso = in->readByte();
 		}
 	}
 	delete in;
@@ -298,6 +303,7 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	// Guests: from the save, or none for saves written before they were kept.
 	_guests = hasGuests ? savedGuests : AtlantisGuests();
 	_guestsShown = hasGuests ? savedGuestsShown : true;
+	_incPersoCount = savedIncPerso;
 
 	if (hasExt) {
 		_hiddenPersos = savedHiddenPersos;

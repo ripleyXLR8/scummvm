@@ -418,9 +418,13 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 
 		Common::String vid;
 		Common::String spfBase;
+		// The INITDIAL row of the video (0x0077290c): the perso for other
+		// lines, 512 + the IncPerso count for lines starting with "Seth"
+		// (FUN_0042844c @ 0x004284d2 / 0x00428924; FUN_0042ee88).
+		const int dialRow = sethLine ? 0x200 + _incPersoCount : persoId;
 		if (persoId > 0 && !isOffCam) {
 			Common::HashMap<int, DialInitEntry>::const_iterator it =
-			    _dialInitData.find(persoId);
+			    _dialInitData.find(dialRow);
 			if (it != _dialInitData.end()) {
 				Common::String fn = it->_value.camUBB[camNum - 2];
 				if (!fn.empty() && !fn.equalsIgnoreCase("none")) {
@@ -444,7 +448,10 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		bool effHasAngle = item.line.hasAngle;
 		int  effAngleX   = item.line.angleX;
 		int  effAngleY   = item.line.angleY;
-		const bool isHero = (persoId == _heroPersoId && _heroPersoId > 0);
+		// The original's Seth flag (0x00428670): the line starts with "Seth".
+		// The angle rule below predates the reverse engineering of
+		// 0x00428949..0x00428b13 and is not checked against it.
+		const bool isHero = sethLine;
 		if (!effHasAngle && _warpLoaded && !isOffCam) {
 			// _dialBaseAlpha is the click-time facing during an NPC interaction
 			// (set by the NPC layer that lands later); /sel-triggered dialog

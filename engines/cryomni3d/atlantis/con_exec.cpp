@@ -447,6 +447,18 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 		return;
 	}
 
+	// IncPerso=N (N != 0): the Seth row count steps, and returns to 0 when N
+	// is 99; the variable returns to 0 (FUN_0042a100 @ 0x0042b07a).
+	if (key == "incperso") {
+		if (value != 0) {
+			_incPersoCount++;
+			if (value == 99)
+				_incPersoCount = 0;
+		}
+		_gameVars[key] = 0;
+		return;
+	}
+
 	// TirFleche=N restarts the arrow frame (0x0042a98e), then the store.
 	if (key == "tirfleche")
 		_arrowFrame = 0;
