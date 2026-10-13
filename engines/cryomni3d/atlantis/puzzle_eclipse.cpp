@@ -79,19 +79,7 @@ static const int kHighlightFrameMoon = 0xd6;  // 214
 // Win-animation length -- FUN_00441724 lines 441813-441818 (`< 0x50` iterations).
 static const int kWinAnimFrames = 0x50;     // 80
 
-// Initial record table -- baked into .rdata at 0x49745E (16-bit shorts).
-struct RecordInit {
-	int dir, x, y, min, max;
-};
-static const RecordInit kRecordInit[7] = {
-	{ 0, 215, 308,   0,   7 },   // 0  PZ2L 0..7   -- idle decoration
-	{ 1, 298, 308,   8,  15 },   // 1  PZ2L 8..15  -- auto-cycling (DIR=1)
-	{ 0, 227, 384,  16,  86 },   // 2  PZ2L 16..86 -- lever 1 mechanism
-	{ 0, 443, 373,  87, 157 },   // 3  PZ2L 87..157 -- lever 2 mechanism
-	{ 0, 319, 204,   0,  70 },   // 4  PZ1L 0..70  -- SUN sphere    (lever 2)
-	{ 0, 236, 222,  71, 141 },   // 5  PZ1L 71..141 -- MOON sphere   (lever 1)
-	{ 0, 271, 198, 142, 212 },   // 6  PZ1L 142..212 -- EARTH sphere (lever 1)
-};
+static const EclipseRecordInit *const kRecordInit = kEclipseRecordInit;
 static const bool kRecordUsesPz1l[7] = { false, false, false, false, true, true, true };
 static const int kLever1Records[] = { 2, 5, 6 };
 static const int kLever2Records[] = { 3, 4 };

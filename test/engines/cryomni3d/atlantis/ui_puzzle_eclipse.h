@@ -1,5 +1,7 @@
 #include "atlantis_test_helper.h"
 
+#include "cryomni3d/atlantis/puzzle_eclipse.h"
+
 // ui audit — eclipse puzzle (StartPuzzle=0) rules vs the original.
 //
 // Expected values were produced by running the ORIGINAL click handler of
@@ -11,7 +13,7 @@
 // EclipsePuzzle::run() (engines/cryomni3d/atlantis/puzzle_eclipse.cpp), which
 // need a running engine (sprite/TGA loading, event loop) and cannot be called
 // from a test.  The namespace PortCopy below is a line-for-line copy of the
-// port's constants (kRecordInit, hit-zone constants), EclipsePuzzle::tick(),
+// port's hit-zone constants, EclipsePuzzle::tick(),
 // EclipsePuzzle::isWin() and the click branch of EclipsePuzzle::run(), taken
 // from scummvm branch atlantis-v2 as audited on 2026-10-12.  Extraction that
 // would make the real code testable: move tick/isWin/the click classifier
@@ -20,16 +22,8 @@
 namespace UiEclipse {
 namespace PortCopy {
 
-struct RecordInit { int dir, x, y, min, max; };
-static const RecordInit kRecordInit[7] = {
-	{ 0, 215, 308,   0,   7 },
-	{ 1, 298, 308,   8,  15 },
-	{ 0, 227, 384,  16,  86 },
-	{ 0, 443, 373,  87, 157 },
-	{ 0, 319, 204,   0,  70 },
-	{ 0, 236, 222,  71, 141 },
-	{ 0, 271, 198, 142, 212 },
-};
+// The record table is the port's own (puzzle_eclipse.h, header-only).
+static const CryOmni3D::Atlantis::EclipseRecordInit *const kRecordInit = CryOmni3D::Atlantis::kEclipseRecordInit;
 static const int kLever1X0 = 0x78 + 1, kLever1X1 = 0xf0;
 static const int kLever2X0 = 0x1ae + 1, kLever2X1 = 0x226;
 static const int kLeverY0 = 0x172 + 1, kLeverY1 = 0x1e0, kLeverYUp = 0x1a9 + 1;
@@ -112,9 +106,8 @@ public:
 		}
 	}
 
-	// KNOWN DIFFERENCE (expected to fail): record 0 (PZ2L frames 0..7) has
-	// dir = 1 in the original table, i.e. it auto-animates like record 1;
-	// the port initialises it to 0 (static).
+	// Record 0 (PZ2L frames 0..7) has dir = 1 in the original table, so it
+	// cycles on its own like record 1.
 	void test_record_dirs() {
 		UiEclipse::PortCopy::Puzzle p;
 		for (int i = 0; i < 7; i++)

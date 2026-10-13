@@ -80,9 +80,6 @@ static const int kFrameQueen = 1;
 static const int kFrameOgre  = 2;
 static const int kFrameTiles = 3;   // 49 cell tiles, row-major
 
-// Click-to-abort strip bounds (FUN_00443c3c tail: x < 0x32 or x > 0x24e).
-static const int kAbortX0 = 0x32;
-static const int kAbortX1 = 0x24e;
 
 // Result codes.
 static const int kFinWin   = 255;
@@ -98,21 +95,14 @@ OgreGamePuzzle::OgreGamePuzzle(CryOmni3DEngine_Atlantis *engine)
 	// Records as FUN_0044203c initializes them: hero (0,0), queen placed
 	// by placeQueen() with flag 0 (never a mover, never drawn outside the
 	// blink/win reveals), ogres at (6,6) and (0,6).
-	_pieces[0].flag = 1; _pieces[0].x = 0; _pieces[0].y = 0;
-	_pieces[1].flag = 0;
-	_pieces[2].flag = 1; _pieces[2].x = 6; _pieces[2].y = 6;
-	_pieces[3].flag = 1; _pieces[3].x = 0; _pieces[3].y = 6;
+	_rules.p[0].flag = 1; _rules.p[0].x = 0; _rules.p[0].y = 0;
+	_rules.p[1].flag = 0;
+	_rules.p[2].flag = 1; _rules.p[2].x = 6; _rules.p[2].y = 6;
+	_rules.p[3].flag = 1; _rules.p[3].x = 0; _rules.p[3].y = 6;
 	placeQueen();
 
-	memset(_occupied, 0, sizeof(_occupied));
-	_occupied[_pieces[2].y * 7 + _pieces[2].x] = 1;
-	_occupied[_pieces[3].y * 7 + _pieces[3].x] = 1;
-
-	memset(_moveMask, 0, sizeof(_moveMask));
-	for (int i = 0; i < 3; i++) {
-		_pathX[i] = -1;
-		_pathY[i] = -1;
-	}
+	_rules.occ[_rules.p[2].y * 7 + _rules.p[2].x] = 1;
+	_rules.occ[_rules.p[3].y * 7 + _rules.p[3].x] = 1;
 }
 
 OgreGamePuzzle::~OgreGamePuzzle() {
@@ -122,94 +112,22 @@ OgreGamePuzzle::~OgreGamePuzzle() {
 // the corner region opposite the hero.
 void OgreGamePuzzle::placeQueen() {
 	do {
-		_pieces[1].x = (int)_rng.getRandomNumber(6);
-		_pieces[1].y = (int)_rng.getRandomNumber(6);
-	} while (_pieces[1].x + _pieces[1].y != 10);
-}
-
-// FUN_00443f94, run per frame while the hero is on the cursor: mark the
-// legal path for the cell under the mouse.  A destination is legal iff
-// its Manhattan distance from the hero is 1 or 2; the path the move
-// sweeps is origin + elbow + destination, and crossing the queen with
-// any of the three is the catch.
-void OgreGamePuzzle::buildMoveMask(int mouseX, int mouseY) {
-	memset(_moveMask, 0, sizeof(_moveMask));
-	for (int i = 0; i < 3; i++) {
-		_pathX[i] = -1;
-		_pathY[i] = -1;
-	}
-
-	const int cx = (mouseX - kBoardX) / kCellSize;
-	const int cy = (mouseY - kBoardY) / kCellSize;
-	if (mouseX < kBoardX || mouseY < kBoardY || cx > 6 || cy > 6)
-		return;
-
-	const int hx = _pieces[0].x, hy = _pieces[0].y;
-	const int dx = cx - hx, dy = cy - hy;
-	const int dist = ABS(dx) + ABS(dy);
-	if (dist >= 1 && dist <= 2) {
-		int midX, midY;
-		if (dx == 0 || dy == 0) {
-			// Straight move: the midpoint (== origin for 1-square moves).
-			midX = hx + dx / 2;
-			midY = hy + dy / 2;
-		} else {
-			// Diagonal move: the elbow cell, picked per FUN_00443f94.
-			if (ABS(dx) < ABS(dy)) {
-				midX = cx;
-				midY = hy;
-			} else {
-				midX = hx;
-				midY = cy;
-			}
-		}
-		_moveMask[midY * 7 + midX] = 1;
-		_moveMask[cy * 7 + cx]     = 1;
-		_pathX[1] = midX; _pathY[1] = midY;
-		_pathX[2] = cx;   _pathY[2] = cy;
-	}
-	_moveMask[hy * 7 + hx] = 1;
-	_pathX[0] = hx; _pathY[0] = hy;
+		_rules.p[1].x = (int)_rng.getRandomNumber(6);
+		_rules.p[1].y = (int)_rng.getRandomNumber(6);
+	} while (_rules.p[1].x + _rules.p[1].y != 10);
 }
 
 // FUN_00442360: each ogre steps sign(hero - ogre) per axis, diverting to
 // a free 3x3 neighbour when its target cell is occupied, sliding 60 px
 // on screen.  Landing on the hero's cell sets the loss.
 void OgreGamePuzzle::moveOgres(Graphics::ManagedSurface &working, int &result) {
-	for (int o = 2; o < kNumPieces && result == 0; o++) {
-		Piece &ogre = _pieces[o];
-		if (ogre.flag != 1)
-			continue;
-
-		int sx = 0, sy = 0;
-		if (ogre.x < _pieces[0].x) sx = 1;
-		else if (ogre.x > _pieces[0].x) sx = -1;
-		if (ogre.y < _pieces[0].y) sy = 1;
-		else if (ogre.y > _pieces[0].y) sy = -1;
-		if (ogre.x + sx < 0 || ogre.x + sx > 6) sx = 0;
-		if (ogre.y + sy < 0 || ogre.y + sy > 6) sy = 0;
-
-		if (_occupied[(ogre.y + sy) * 7 + ogre.x + sx]) {
-			// Target taken (the other ogre): take a free cell from the
-			// clamped 3x3 neighbourhood instead (the exe keeps the last
-			// free cell its row-major scan finds), or stay.
-			int nx = ogre.x, ny = ogre.y;
-			const int x0 = MAX(ogre.x - 1, 0), x1 = MIN(ogre.x + 1, 6);
-			const int y0 = MAX(ogre.y - 1, 0), y1 = MIN(ogre.y + 1, 6);
-			for (int yy = y0; yy <= y1; yy++)
-				for (int xx = x0; xx <= x1; xx++)
-					if (!_occupied[yy * 7 + xx]) {
-						nx = xx;
-						ny = yy;
-					}
-			sx = nx - ogre.x;
-			sy = ny - ogre.y;
-		}
-
-		if (sx != 0 || sy != 0) {
-			_occupied[ogre.y * 7 + ogre.x] = 0;
-			// 60-px slide, mirroring the exe's per-pixel redraw loop
-			// (5-px steps keep it equally smooth at our frame pacing).
+	for (int o = OgreRules::kOgreA; o < OgreRules::kNumPieces; o++) {
+		OgreRules::Piece &ogre = _rules.p[o];
+		if (ogre.flag == 1) {
+			int sx, sy;
+			_rules.ogreStep(o, sx, sy);
+			// The exe slides the ogre 60 frames, one pixel per frame, even
+			// for a zero step, then takes the new cell.
 			const int fromX = ogre.x * kCellSize + kBoardX;
 			const int fromY = ogre.y * kCellSize + kBoardY;
 			ogre.flag = 2;   // exe marks the slider with flag 2
@@ -224,13 +142,12 @@ void OgreGamePuzzle::moveOgres(Graphics::ManagedSurface &working, int &result) {
 				g_system->delayMillis(10);
 			}
 			ogre.flag = 1;
-			ogre.x += sx;
-			ogre.y += sy;
-			_occupied[ogre.y * 7 + ogre.x] = 1;
+			_rules.moveOgre(o, sx, sy);
 		}
-
-		if (ogre.x == _pieces[0].x && ogre.y == _pieces[0].y)
+		if (ogre.x == _rules.p[0].x && ogre.y == _rules.p[0].y) {
 			result = kFinLose;
+			return;
+		}
 	}
 }
 
@@ -239,41 +156,23 @@ void OgreGamePuzzle::moveOgres(Graphics::ManagedSurface &working, int &result) {
 // for a target that avoids all three cells of the hero's move path; she
 // stays put when that fails.
 void OgreGamePuzzle::walkQueen() {
-	int sx = 1, sy = 1;
-	for (int tries = 0; ; tries++) {
-		if (_rng.getRandomNumber(32767) > 16000) sx = -sx;
-		if (_rng.getRandomNumber(32767) > 16000) sy = -sy;
-		if (_pieces[1].x + sx > 6 || _pieces[1].x + sx < 0) sx = -sx;
-		if (_pieces[1].y + sy > 6 || _pieces[1].y + sy < 0) sy = -sy;
-		if (tries >= 200) {
-			sx = 0;
-			sy = 0;
-			break;
-		}
-		const int qx = _pieces[1].x + sx, qy = _pieces[1].y + sy;
-		bool onPath = false;
-		for (int i = 0; i < 3; i++)
-			if (qx == _pathX[i] && qy == _pathY[i])
-				onPath = true;
-		if (!onPath)
-			break;
-	}
-	_pieces[1].x += sx;
-	_pieces[1].y += sy;
+	Common::RandomSource &rng = _rng;
+	auto rand32767 = [&rng]() { return (int)rng.getRandomNumber(32767); };
+	_rules.walkQueen(rand32767);
 }
 
 // FUN_004436f4: three visibility flashes -- skipped when the queen shares
 // a cell with an ogre (she would read as a phantom ogre).
 void OgreGamePuzzle::blinkQueen(Graphics::ManagedSurface &working) {
-	for (int o = 2; o < kNumPieces; o++)
-		if (_pieces[1].x == _pieces[o].x && _pieces[1].y == _pieces[o].y)
+	for (int o = 2; o < OgreRules::kNumPieces; o++)
+		if (_rules.p[1].x == _rules.p[o].x && _rules.p[1].y == _rules.p[o].y)
 			return;
 	for (int flash = 0; flash < 3 && !_engine->shouldAbort(); flash++) {
-		_pieces[1].flag = 1;
+		_rules.p[1].flag = 1;
 		renderFrame(working, -1, -1);
 		presentFrame(working);
 		g_system->delayMillis(200);
-		_pieces[1].flag = 0;
+		_rules.p[1].flag = 0;
 		renderFrame(working, -1, -1);
 		presentFrame(working);
 		g_system->delayMillis(200);
@@ -299,12 +198,12 @@ void OgreGamePuzzle::renderFrame(Graphics::ManagedSurface &out,
 	}
 
 	if (_holding && mouseX >= 0) {
-		buildMoveMask(mouseX, mouseY);
+		_rules.buildMoveMask(mouseX, mouseY);
 		// Path markers: the cell's own map tile re-blitted with a small
 		// lift so the legal cells read as raised.
 		for (int cy = 0; cy < 7; cy++)
 			for (int cx = 0; cx < 7; cx++) {
-				if (!_moveMask[cy * 7 + cx])
+				if (!_rules.mask[cy * 7 + cx])
 					continue;
 				const int tile = kFrameTiles + cy * 7 + cx;
 				if (tile < (int)_pieceFrames.size())
@@ -315,23 +214,23 @@ void OgreGamePuzzle::renderFrame(Graphics::ManagedSurface &out,
 	}
 
 	// Hero (hidden while on the cursor -- his record flag is 0 then).
-	if (_pieces[0].flag == 1 && kFrameHero < (int)_pieceFrames.size())
+	if (_rules.p[0].flag == 1 && kFrameHero < (int)_pieceFrames.size())
 		blitFrame(out, _pieceFrames[kFrameHero],
-		          _pieces[0].x * kCellSize + kBoardX,
-		          _pieces[0].y * kCellSize + kBoardY);
+		          _rules.p[0].x * kCellSize + kBoardX,
+		          _rules.p[0].y * kCellSize + kBoardY);
 
 	// Queen, only during a reveal.
-	if (_pieces[1].flag == 1 && kFrameQueen < (int)_pieceFrames.size())
+	if (_rules.p[1].flag == 1 && kFrameQueen < (int)_pieceFrames.size())
 		blitFrame(out, _pieceFrames[kFrameQueen],
-		          _pieces[1].x * kCellSize + kBoardX,
-		          _pieces[1].y * kCellSize + kBoardY);
+		          _rules.p[1].x * kCellSize + kBoardX,
+		          _rules.p[1].y * kCellSize + kBoardY);
 
 	// Ogres (flag 2 = mid-slide, drawn by the animation instead).
-	for (int o = 2; o < kNumPieces; o++)
-		if (_pieces[o].flag == 1 && kFrameOgre < (int)_pieceFrames.size())
+	for (int o = 2; o < OgreRules::kNumPieces; o++)
+		if (_rules.p[o].flag == 1 && kFrameOgre < (int)_pieceFrames.size())
 			blitFrame(out, _pieceFrames[kFrameOgre],
-			          _pieces[o].x * kCellSize + kBoardX,
-			          _pieces[o].y * kCellSize + kBoardY);
+			          _rules.p[o].x * kCellSize + kBoardX,
+			          _rules.p[o].y * kCellSize + kBoardY);
 
 	// The held hero rides the cursor, clamped to the board strip the way
 	// FUN_004439c4 clamps the real Windows cursor.
@@ -367,26 +266,16 @@ int OgreGamePuzzle::run() {
 		bool nowButton = (_engine->getCurrentMouseButton() == 1);
 		if (nowButton && !prevButton) {
 			if (!_holding) {
-				// Pick-up: the hero piece's inner rect, exactly as
-				// FUN_00443c3c tests it.
-				const int px = _pieces[0].x * kCellSize;
-				const int py = _pieces[0].y * kCellSize;
-				if (m.x > px + 0x78 && m.x < px + 0x9f &&
-				    m.y > py + 0x1d && m.y < py + 0x54) {
+				// Pick-up: the hero piece's inner rect (FUN_00443c3c).
+				if (_rules.pickUp(m.x, m.y)) {
 					_holding = true;
-					_pieces[0].flag = 0;
+					_rules.p[0].flag = 0;
 				}
 			} else {
-				const int cx = (m.x - kBoardX) / kCellSize;
-				const int cy = (m.y - kBoardY) / kCellSize;
-				if (m.x >= kBoardX && m.y >= kBoardY && cx < 7 && cy < 7 &&
-				    !_occupied[cy * 7 + cx] && _moveMask[cy * 7 + cx] == 1) {
-					// Drop accepted: the path arrays already describe this
-					// move (buildMoveMask ran on this frame's mouse pos).
+				if (_rules.drop(m.x, m.y)) {
+					// Drop accepted: the path arrays describe the last
+					// legal hover (FUN_00443f94 ran on this frame's mouse).
 					_moveCounter++;
-					_pieces[0].x = cx;
-					_pieces[0].y = cy;
-					_pieces[0].flag = 1;
 					_holding = false;
 
 					if (_moveCounter == 4) {
@@ -396,15 +285,11 @@ int OgreGamePuzzle::run() {
 
 					// The catch: the queen stands on a cell of the move's
 					// path (FUN_00443c3c's three-record comparison).
-					bool caught = false;
-					for (int i = 0; i < 3; i++)
-						if (_pieces[1].x == _pathX[i] && _pieces[1].y == _pathY[i])
-							caught = true;
-					if (caught) {
+					if (_rules.queenCaught()) {
 						// Win reveal in place of the unreversed
 						// FUN_00443378 celebration: show her and pause.
 						result = kFinWin;
-						_pieces[1].flag = 1;
+						_rules.p[1].flag = 1;
 						renderFrame(working, -1, -1);
 						presentFrame(working);
 						g_system->delayMillis(1200);
@@ -416,7 +301,7 @@ int OgreGamePuzzle::run() {
 			}
 
 			// Any click outside the board strip aborts (FUN_00443c3c tail).
-			if (result == 0 && (m.x < kAbortX0 || m.x > kAbortX1))
+			if (result == 0 && OgreRules::abortClick(m.x))
 				result = kFinAbort;
 		}
 		prevButton = nowButton;
@@ -440,8 +325,8 @@ int OgreGamePuzzle::run() {
 
 	debugC(1, kDebugScript, "OgreGamePuzzle::run: hero=(%d,%d) queen=(%d,%d) "
 	         "ogres=(%d,%d)/(%d,%d) moves=%d result=%d",
-	      _pieces[0].x, _pieces[0].y, _pieces[1].x, _pieces[1].y,
-	      _pieces[2].x, _pieces[2].y, _pieces[3].x, _pieces[3].y,
+	      _rules.p[0].x, _rules.p[0].y, _rules.p[1].x, _rules.p[1].y,
+	      _rules.p[2].x, _rules.p[2].y, _rules.p[3].x, _rules.p[3].y,
 	      _moveCounter, result);
 	return result;
 }

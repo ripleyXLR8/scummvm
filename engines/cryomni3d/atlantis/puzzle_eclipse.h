@@ -35,6 +35,21 @@ class ManagedSurface;
 namespace CryOmni3D {
 namespace Atlantis {
 
+// Initial record table: .data 0x0049745e, 7 records of 14 bytes (dir, x, y,
+// min, max, curr, pad).  Records 0 and 1 have dir 1 and cycle on their own.
+struct EclipseRecordInit {
+	int dir, x, y, min, max;
+};
+static const EclipseRecordInit kEclipseRecordInit[7] = {
+	{ 1, 215, 308,   0,   7 },   // 0  PZ2L 0..7    -- auto-cycling
+	{ 1, 298, 308,   8,  15 },   // 1  PZ2L 8..15   -- auto-cycling
+	{ 0, 227, 384,  16,  86 },   // 2  PZ2L 16..86  -- lever 1 mechanism
+	{ 0, 443, 373,  87, 157 },   // 3  PZ2L 87..157 -- lever 2 mechanism
+	{ 0, 319, 204,   0,  70 },   // 4  PZ1L 0..70   -- SUN sphere    (lever 2)
+	{ 0, 236, 222,  71, 141 },   // 5  PZ1L 71..141 -- MOON sphere   (lever 1)
+	{ 0, 271, 198, 142, 212 },   // 6  PZ1L 142..212 -- EARTH sphere (lever 1)
+};
+
 class CryOmni3DEngine_Atlantis;
 
 // StartPuzzle=0: celestial-alignment minigame at CHAPI012 vue 221.

@@ -26,6 +26,7 @@
 #include "common/random.h"
 #include "common/scummsys.h"
 
+#include "cryomni3d/atlantis/ogre_rules.h"
 #include "cryomni3d/atlantis/puzzle_assets.h"
 
 namespace Graphics {
@@ -60,25 +61,8 @@ public:
 private:
 	CryOmni3DEngine_Atlantis *_engine;
 
-	// Entity records, mirroring the 3-short [activeFlag, x, y] table at
-	// DAT_00495e4c: 0 = hero, 1 = queen, 2..3 = ogres.
-	struct Piece {
-		int flag;
-		int x, y;
-	};
-	enum { kNumPieces = 4 };
-	Piece _pieces[kNumPieces];
-
-	// Per-cell occupancy (0x7738b8): the ogres mark/clear their cells so
-	// neither steps onto the other.  The hero and the (intangible) queen
-	// are not in it -- an ogre stepping onto the hero IS the loss.
-	byte _occupied[7 * 7];
-
-	// Legal-destination mask (0x773938) and the three path cells
-	// (0x773870/78/80: origin, elbow, destination) of the hovered or
-	// last-executed move.
-	byte _moveMask[7 * 7];
-	int  _pathX[3], _pathY[3];
+	// Pieces, occupancy, path mask and path cells (the exe's globals).
+	OgreRules _rules;
 
 	int  _moveCounter;          // _DAT_007beaa8: starts at 2, blink at 4
 	bool _holding;              // _DAT_007bebf8: hero piece on the cursor
@@ -90,7 +74,6 @@ private:
 	Common::RandomSource _rng;
 
 	void placeQueen();
-	void buildMoveMask(int mouseX, int mouseY);
 	void moveOgres(Graphics::ManagedSurface &working, int &result);
 	void walkQueen();
 	void blinkQueen(Graphics::ManagedSurface &working);

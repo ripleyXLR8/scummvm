@@ -6,6 +6,8 @@
 #include "common/hash-str.h"
 #include "common/util.h"
 
+#include "cryomni3d/atlantis/ogre_rules.h"
+
 // ui audit — ogre & hero game (StartPuzzle=2) rules vs the original.
 //
 // Expected values come from the ORIGINAL rule functions of
@@ -16,134 +18,36 @@
 //   FUN_00443c3c click handler (pick-up, drop, catch test, abort)
 //   FUN_00442360 ogre turn          FUN_00442a0c queen walk
 //
-// FAITHFUL COPY WARNING: the port's rules are private members of
-// OgreGamePuzzle (engines/cryomni3d/atlantis/puzzle_ogregame.cpp) whose
-// constructor loads sprites through the engine, and moveOgres() animates
-// through the engine; they cannot be called from a test.  PortCopy below is a
-// line-for-line copy of OgreGamePuzzle::buildMoveMask(), the rule part of
-// moveOgres() (animation removed), walkQueen(), and the pick-up / drop /
-// catch / abort branches of run(), from scummvm branch atlantis-v2 as audited
-// on 2026-10-12.  Extraction that would make the real code testable: an
-// engine-independent OgreRules class (pieces, occupancy, mask, path, RNG
-// callback) used by OgreGamePuzzle.
+// Port code exercised directly: OgreRules (ogre_rules.cpp), the rules
+// OgreGamePuzzle runs; PortCopy::Game adds a scripted random source and the
+// drop / catch / ogre-turn sequence of OgreGamePuzzle::run().
 
 namespace UiOgre {
 namespace PortCopy {
 
-static const int kCellSize = 60, kBoardX = 113, kBoardY = 29;
-static const int kAbortX0 = 0x32, kAbortX1 = 0x24e;
-
-struct Piece { int flag, x, y; };
-
-struct Game {
-	Piece p[4];
-	byte occ[49];
-	byte mask[49];
-	int pathX[3], pathY[3];
+// The port's rules (OgreRules, ogre_rules.cpp) with a scripted random source
+// for walkQueen and the drop branch of OgreGamePuzzle::run().
+struct Game : public CryOmni3D::Atlantis::OgreRules {
 	// scripted RNG for walkQueen (stands for _rng.getRandomNumber(32767))
 	Common::Array<int> rnd;
 	uint rndPos;
 	int rndDefault;
 	int rand32767() { return rndPos < rnd.size() ? rnd[rndPos++] : rndDefault; }
 
-	Game() : rndPos(0), rndDefault(0) {
-		memset(p, 0, sizeof(p)); memset(occ, 0, sizeof(occ)); memset(mask, 0, sizeof(mask));
-		for (int i = 0; i < 3; i++) { pathX[i] = -1; pathY[i] = -1; }
-	}
+	Game() : rndPos(0), rndDefault(0) {}
 
-	// OgreGamePuzzle::buildMoveMask
-	void buildMoveMask(int mouseX, int mouseY) {
-		memset(mask, 0, sizeof(mask));
-		for (int i = 0; i < 3; i++) { pathX[i] = -1; pathY[i] = -1; }
-		const int cx = (mouseX - kBoardX) / kCellSize;
-		const int cy = (mouseY - kBoardY) / kCellSize;
-		if (mouseX < kBoardX || mouseY < kBoardY || cx > 6 || cy > 6)
-			return;
-		const int hx = p[0].x, hy = p[0].y;
-		const int dx = cx - hx, dy = cy - hy;
-		const int dist = ABS(dx) + ABS(dy);
-		if (dist >= 1 && dist <= 2) {
-			int midX, midY;
-			if (dx == 0 || dy == 0) { midX = hx + dx / 2; midY = hy + dy / 2; }
-			else if (ABS(dx) < ABS(dy)) { midX = cx; midY = hy; }
-			else { midX = hx; midY = cy; }
-			mask[midY * 7 + midX] = 1;
-			mask[cy * 7 + cx] = 1;
-			pathX[1] = midX; pathY[1] = midY;
-			pathX[2] = cx; pathY[2] = cy;
-		}
-		mask[hy * 7 + hx] = 1;
-		pathX[0] = hx; pathY[0] = hy;
-	}
-
-	// OgreGamePuzzle::moveOgres without the slide animation; returns 2 on loss.
-	int moveOgres() {
-		int result = 0;
-		for (int o = 2; o < 4 && result == 0; o++) {
-			Piece &ogre = p[o];
-			if (ogre.flag != 1) continue;
-			int sx = 0, sy = 0;
-			if (ogre.x < p[0].x) sx = 1; else if (ogre.x > p[0].x) sx = -1;
-			if (ogre.y < p[0].y) sy = 1; else if (ogre.y > p[0].y) sy = -1;
-			if (ogre.x + sx < 0 || ogre.x + sx > 6) sx = 0;
-			if (ogre.y + sy < 0 || ogre.y + sy > 6) sy = 0;
-			if (occ[(ogre.y + sy) * 7 + ogre.x + sx]) {
-				int nx = ogre.x, ny = ogre.y;
-				const int x0 = MAX(ogre.x - 1, 0), x1 = MIN(ogre.x + 1, 6);
-				const int y0 = MAX(ogre.y - 1, 0), y1 = MIN(ogre.y + 1, 6);
-				for (int yy = y0; yy <= y1; yy++)
-					for (int xx = x0; xx <= x1; xx++)
-						if (!occ[yy * 7 + xx]) { nx = xx; ny = yy; }
-				sx = nx - ogre.x; sy = ny - ogre.y;
-			}
-			if (sx != 0 || sy != 0) {
-				occ[ogre.y * 7 + ogre.x] = 0;
-				ogre.x += sx; ogre.y += sy;
-				occ[ogre.y * 7 + ogre.x] = 1;
-			}
-			if (ogre.x == p[0].x && ogre.y == p[0].y)
-				result = 2;
-		}
-		return result;
-	}
-
-	// OgreGamePuzzle::walkQueen
 	void walkQueen() {
-		int sx = 1, sy = 1;
-		for (int tries = 0; ; tries++) {
-			if (rand32767() > 16000) sx = -sx;
-			if (rand32767() > 16000) sy = -sy;
-			if (p[1].x + sx > 6 || p[1].x + sx < 0) sx = -sx;
-			if (p[1].y + sy > 6 || p[1].y + sy < 0) sy = -sy;
-			if (tries >= 200) { sx = 0; sy = 0; break; }
-			const int qx = p[1].x + sx, qy = p[1].y + sy;
-			bool onPath = false;
-			for (int i = 0; i < 3; i++)
-				if (qx == pathX[i] && qy == pathY[i]) onPath = true;
-			if (!onPath) break;
-		}
-		p[1].x += sx; p[1].y += sy;
+		auto r = [this]() { return rand32767(); };
+		OgreRules::walkQueen(r);
 	}
-
-	// run(): pick-up test (not holding)
-	bool pickUp(int mx, int my) const {
-		const int px = p[0].x * kCellSize, py = p[0].y * kCellSize;
-		return mx > px + 0x78 && mx < px + 0x9f && my > py + 0x1d && my < py + 0x54;
-	}
-	static bool abortClick(int mx) { return mx < kAbortX0 || mx > kAbortX1; }
 
 	// run(): drop branch.  Returns -1 if the drop is refused, else the result
 	// (0 continue, 255 win, 2 lose).  Queen walk / blink not run here.
 	int drop(int mx, int my, bool runOgres) {
-		const int cx = (mx - kBoardX) / kCellSize;
-		const int cy = (my - kBoardY) / kCellSize;
-		if (!(mx >= kBoardX && my >= kBoardY && cx < 7 && cy < 7 &&
-		      !occ[cy * 7 + cx] && mask[cy * 7 + cx] == 1))
+		if (!OgreRules::drop(mx, my))
 			return -1;
-		p[0].x = cx; p[0].y = cy; p[0].flag = 1;
-		for (int i = 0; i < 3; i++)
-			if (p[1].x == pathX[i] && p[1].y == pathY[i])
-				return 255;
+		if (queenCaught())
+			return 255;
 		return runOgres ? moveOgres() : 0;
 	}
 };
@@ -240,26 +144,23 @@ public:
 		}
 	}
 
-	// KNOWN DIFFERENCE (expected to fail): the legal-move highlight uses the
-	// exe's column/row edge table (112,173,233,294,354,415,476 | 536 and
-	// 27,88,148,209,269,330,390 | row 6 down to 479); the port uses a uniform
-	// 60-px grid from (113,29).  Columns 0..6 / rows 0..6 differ at their
-	// edges by up to 3 px and the port has no row 6 for y >= 449.
+	// The legal-move highlight's cell lookup (FUN_00443ea0 / FUN_00443f18
+	// over the edge table at 0x0049743c) versus OgreRules::cellColumn/Row.
 	void test_path_cell_lookup_every_pixel() {
 		int badX = 0, badY = 0;
 		for (int x = 0; x < 640; x++) {
-			int c = (x >= 113 && (x - 113) / 60 <= 6) ? (x - 113) / 60 : 99;
+			int c = CryOmni3D::Atlantis::OgreRules::cellColumn(x);
 			if (c != UiOgre::origPathCol(x)) badX++;
 		}
 		for (int y = 0; y < 480; y++) {
-			int r = (y >= 29 && (y - 29) / 60 <= 6) ? (y - 29) / 60 : 99;
+			int r = CryOmni3D::Atlantis::OgreRules::cellRow(y);
 			if (r != UiOgre::origPathRow(y)) badY++;
 		}
 		TS_ASSERT_EQUALS(badX, 0);
 		TS_ASSERT_EQUALS(badY, 0);
 	}
 
-	// KNOWN DIFFERENCE (expected to fail): legal-move mask and path for every
+	// legal-move mask and path for every
 	// hero cell x every target cell (mouse at the cell centre).  Straight
 	// moves agree (test_path_builder_nondiagonal); for diagonal moves the
 	// original picks the elbow from the cursor offset to the hero cell centre
@@ -308,8 +209,7 @@ public:
 	}
 
 	// Catch test: every hero cell x every target at distance 0..2 x every
-	// queen cell.  KNOWN DIFFERENCE (expected to fail) for the full set,
-	// because of the diagonal elbow; the straight-move subset must match.
+	// queen cell; the full set exercises the cursor-dependent diagonal elbow.
 	void test_catch_all() { checkCatch(false, 1237, "7c0ca28cd41282f4a84646b3e2225d18"); }
 	void test_catch_nondiagonal() { checkCatch(true, 805, "b5e8bf4fd682b23fff8aa18a0f4cacd0"); }
 	void checkCatch(bool nondiagOnly, uint expCount, const char *expMd5) {
@@ -336,10 +236,8 @@ public:
 	}
 
 	// Queen walk with scripted rand(): every hero move x queen cell x the
-	// four first-pair outcomes x two continuation policies.  KNOWN
-	// DIFFERENCE (expected to fail) for the full set, only because the
-	// path it avoids has a different diagonal elbow; the straight-move
-	// subset (same path) must match exactly.
+	// four first-pair outcomes x two continuation policies, with and without
+	// diagonal moves (whose elbow the queen avoids).
 	void test_queen_walk_all() { checkWalk(false, 196392, 6197, "e1c4aa8cc5c4accc29b41dedb1b3ee5f"); }
 	void test_queen_walk_nondiagonal() { checkWalk(true, 139944, -1, "7d26f13ed7d0d15bb7e35084f958e176"); }
 	void checkWalk(bool nondiagOnly, uint expCount, int expStay, const char *expMd5) {
@@ -374,7 +272,7 @@ public:
 		TS_ASSERT_EQUALS(UiOgre::md5Of(UiOgre::join(lines)), Common::String(expMd5));
 	}
 
-	// KNOWN DIFFERENCE (expected to fail): the original ogre diversion
+	// the original ogre diversion
 	// (FUN_00442360, scan loop @ 0x442586) tests occupancy at (x0 + xx, yy) and moves
 	// to (x0, yy) -- x0 = max(ogre.x-1, 0) -- instead of (xx, yy).
 	// Concrete case: hero drops on (3,0) from (2,0), ogres at (4,4) and
@@ -394,7 +292,7 @@ public:
 		TS_ASSERT_EQUALS(g.p[3].x, 1); TS_ASSERT_EQUALS(g.p[3].y, 5);
 	}
 
-	// KNOWN DIFFERENCE (expected to fail): breadth-first search of every
+	// breadth-first search of every
 	// state reachable from the start by legal hero drops (queen parked off
 	// the board).  Original: 2552 states, 21734 transitions (11952 losing),
 	// listing md5 d5407e20e0b9e1f39da6ac6470cef3c3; 77 reachable states have
