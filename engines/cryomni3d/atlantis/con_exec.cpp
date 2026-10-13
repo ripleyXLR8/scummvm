@@ -41,6 +41,7 @@
 #include "cryomni3d/atlantis/inventory.h"
 #include "cryomni3d/atlantis/puzzle_eclipse.h"
 #include "cryomni3d/atlantis/puzzle_ogregame.h"
+#include "cryomni3d/atlantis/puzzle_hens.h"
 #include "cryomni3d/atlantis/puzzle_pieces.h"
 
 namespace CryOmni3D {
@@ -208,6 +209,12 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 	case 0: {
 		// Celestial alignment ("eclipse on Atlantis") at CHAPI012 vue 221.
 		EclipsePuzzle puz(this);
+		finPuzzle = puz.run();
+		break;
+	}
+	case 1: {
+		// The hens on the levers at CHAPI034 (FUN_004441e8).
+		HensPuzzle puz(this);
 		finPuzzle = puz.run();
 		break;
 	}
