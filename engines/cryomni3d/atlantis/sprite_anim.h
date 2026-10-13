@@ -44,7 +44,7 @@ static const uint kSpriteAnimSlots = 256;
 // equals its frame count it returns to 0, wsprFrame becomes 0 and a type 2
 // entry turns inactive.  True when a frame or an active flag changed.
 bool animatePlaceSprites(Common::Array<SpritePlaceEntry> &entries, uint16 vue, uint current,
-                         uint32 ticks, uint32 *lastTick, int &wsprFrame);
+                         uint32 ticks, uint32 *lastTick, int &wsprFrame, bool hideNpcs = false);
 
 // FUN_00428da8: NEWWSPRANIM=n (1-based) activates the view's entry n - 1,
 // makes it the current animation entry and resets its frame; STOPWSPRANIM=n

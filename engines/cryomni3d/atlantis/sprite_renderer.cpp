@@ -881,6 +881,8 @@ void CryOmni3DEngine_Atlantis::recompositeSpriteLayer() {
 			continue;
 		if (!entry.active)
 			continue;
+		if (_spritesHideNpcs && entry.persoId >= 0x200)
+			continue;
 		Common::SeekableReadStream *spw =
 		    openBigFileStream(kFileTypeSpriteCyclo, entry.spwFile);
 		if (!spw) {
@@ -906,7 +908,7 @@ void CryOmni3DEngine_Atlantis::animateSprites() {
 		return;
 	int wspr = _gameVars.getValOrDefault("wsprframe", 0);
 	if (animatePlaceSprites(_spritePlaceList, (uint16)_currentPlaceId, _spriteAnimCurrent[_currentPlaceId],
-	                        g_system->getMillis() / kSpriteTickMs, _spriteAnimLast, wspr))
+	                        g_system->getMillis() / kSpriteTickMs, _spriteAnimLast, wspr, _spritesHideNpcs))
 		recompositeSpriteLayer();
 	_gameVars["wsprframe"] = wspr;
 }

@@ -32,13 +32,16 @@ static void viewEntries(const Common::Array<SpritePlaceEntry> &entries, uint16 v
 }
 
 bool animatePlaceSprites(Common::Array<SpritePlaceEntry> &entries, uint16 vue, uint current,
-                         uint32 ticks, uint32 *lastTick, int &wsprFrame) {
+                         uint32 ticks, uint32 *lastTick, int &wsprFrame, bool hideNpcs) {
 	Common::Array<uint> idx;
 	viewEntries(entries, vue, idx);
 	bool changed = false;
 	for (uint k = 0; k < idx.size() && k < kSpriteAnimSlots; k++) {
 		SpritePlaceEntry &e = entries[idx[k]];
 		if (!e.active || e.frameCount == 0)
+			continue;
+		// 0x00496188 == 1 (a talking-head line): persos are skipped.
+		if (hideNpcs && e.persoId >= 0x200)
 			continue;
 		if (e.type == 0 || e.type == 3 || e.type == 4)
 			continue;

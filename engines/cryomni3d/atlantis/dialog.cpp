@@ -711,6 +711,15 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 
 	bool emptyBackbufferCleared = false;
 
+	// A talking-head line (FUN_0042ee88) runs with 0x00496188 = 1 and calls
+	// FUN_00425304 every frame: the place sprites animate, the persos are not
+	// drawn.  The voice-only and off0 players do neither.
+	const bool talkingHead = (camNum != 0) && !_dialKeepScreen;
+	if (talkingHead) {
+		_spritesHideNpcs = true;
+		recompositeSpriteLayer();
+	}
+
 	// off0: keep a copy of the screen as it stands for the subtitle's
 	// background.
 	Graphics::ManagedSurface keptScreen;
@@ -725,6 +734,8 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 	}
 
 	auto drawFrame = [&]() {
+		if (talkingHead)
+			animateSprites();
 		const Graphics::Surface *warpView = _dialKeepScreen
 		    ? &keptScreen.rawSurface()
 		    : (_warpLoaded ? _omni3dMan.getSurface() : nullptr);
@@ -1001,6 +1012,10 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 	delete spfStream;
 	ubbConvFrame.free();
 #endif
+	if (talkingHead) {
+		_spritesHideNpcs = false;
+		recompositeSpriteLayer();
+	}
 	if (fovChanged)
 		_omni3dMan.setHFov(savedHFov);
 }
