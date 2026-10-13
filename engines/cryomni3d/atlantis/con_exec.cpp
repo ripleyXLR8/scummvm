@@ -41,6 +41,7 @@
 #include "cryomni3d/atlantis/inventory.h"
 #include "cryomni3d/atlantis/puzzle_eclipse.h"
 #include "cryomni3d/atlantis/puzzle_ogregame.h"
+#include "cryomni3d/atlantis/puzzle_dispatch.h"
 #include "cryomni3d/atlantis/puzzle_hens.h"
 #include "cryomni3d/atlantis/puzzle_pieces.h"
 #include "cryomni3d/atlantis/puzzle_snakes.h"
@@ -199,11 +200,17 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 	// progressing (most of them gate further story content behind
 	// FinPuzzle=255, e.g. CHAPI012's /sel(FinPuzzle=255)&(Vue=N)&...).
 	int finPuzzle = 255;
-	// FUN_0043a1e0: puzzles below 6, 8, 9 and above 14 do not start while an
-	// object is held; they return DAT_00496d0c (1).
-	if ((puzzleId < 6 || puzzleId == 8 || puzzleId == 9 || puzzleId > 14) &&
-	        _inventory.selectedObject() != nullptr) {
-		_gameVars["finpuzzle"] = 1;
+	// FUN_0043a1e0's checks (puzzle_dispatch.h): StartPuzzle 15 empties the
+	// hand; puzzles 0..5, 8, 9 and above 14 refuse an object in hand (1);
+	// numbers above 16 have no puzzle (0).
+	int held = _inventory.selectedObject() ? (int)_inventory.selectedObject()->idOBJ() : 0;
+	const int check = PuzzleDispatch::check(puzzleId, held);
+	if (held == 0 && _inventory.selectedObject() != nullptr) {
+		_inventory.setSelectedObject(nullptr);
+		_gameVars["objetenmain"] = 0;
+	}
+	if (check != PuzzleDispatch::kRun) {
+		_gameVars["finpuzzle"] = check;
 		return;
 	}
 	switch (puzzleId) {
