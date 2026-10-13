@@ -247,5 +247,70 @@ int menuGridHit(int x0, int y0, int cellW, int cellH, int cols, int rows, bool c
 	return colMajor ? col * rows + row : row * cols + col;
 }
 
+// FONTMAX *measuring* width table (atlantis.exe @ 0x4965ee, glyph idx = char).
+// The original uses it only to centre "<>,Y>" labels and size their hit rects
+// (FUN_004206c8); the same table advances the pen while drawing (0x004202cc).
+const uint8 kFontMaxMeasureWidths[137] = {
+	22,10,15,15,16,24,20, 8,16,24,13, 8, 8,24, 7,14,20, 9,19,19,
+	17,16,18,17,20,18, 7, 8, 8, 8, 8,18, 8,21,23,21,23,19,20,22,
+	22,14,15,20,19,28,24,28,20,27,21,19,24,23,21,28,26,22,21, 8,
+	19, 8,11, 8, 8,18,19,17,19,18,14,19,19,10,11,18,10,23,20,20,
+	19,19,15,15,12,20,18,23,20,19,17,18, 7,20,13,18,21,20,18,18,
+	18,18,18,19,18,18,18,13,11,13,21,21,19,26,32,20,20,20,20,20,
+	19,28,23,17,24, 0,25,20,18,13,20,20,20,24, 2,12,16
+};
+
+int fontMaxMeasureWidth(const Common::String &text) {
+	int w = 0;
+	for (uint i = 0; i < text.size(); ++i) {
+		int idx = (int)(unsigned char)text[i] - 0x20;
+		if (idx >= 0 && idx < (int)ARRAYSIZE(kFontMaxMeasureWidths))
+			w += kFontMaxMeasureWidths[idx];
+	}
+	return w;
+}
+
+// Exe-exact menu text hit rect (FUN_0041fb6c).  A text record's clickable box
+// is X-11 / Y-28, height 28; width is the measured string for centred items
+// but 22 px per raw spec character for positioned ones.  The original tests
+// strict inside (left < x < left+W), which a Common::Rect reproduces with its
+// bounds shrunk by one on the left/top.
+Common::Rect menuTextHitRect(const MenuItem &it, int drawX) {
+	int w;
+	if (it.centerX)
+		w = fontMaxMeasureWidth(it.text);
+	else
+		w = it.rawLen * 22;
+	int left = drawX - 11;
+	int top  = it.anchorY - 28;
+	return Common::Rect(left + 1, top + 1, left + w, top + 28);
+}
+
+int menuTextDrawX(const MenuItem &it, const Common::String &label) {
+	return it.centerX ? (640 - fontMaxMeasureWidth(label)) / 2 : it.anchorX;
+}
+
+void sprFontPen(const Common::String &text, int anchorX, int spaceAdvance,
+                const Common::Array<int> &glyphWidths, const uint8 *advanceTable,
+                uint advanceCount, Common::Array<SprFontGlyph> &out) {
+	out.clear();
+	int cx = anchorX;
+	for (uint i = 0; i < text.size(); ++i) {
+		const unsigned char c = (unsigned char)text[i];
+		if (c == ' ') {
+			cx += spaceAdvance;
+			continue;
+		}
+		const int idx = (int)c - 0x20;
+		if (idx < 0 || idx >= (int)glyphWidths.size())
+			continue;
+		SprFontGlyph g;
+		g.x = cx;
+		g.idx = idx;
+		out.push_back(g);
+		cx += (advanceTable && (uint)idx < advanceCount) ? advanceTable[idx] : glyphWidths[idx];
+	}
+}
+
 } // namespace Atlantis
 } // namespace CryOmni3D

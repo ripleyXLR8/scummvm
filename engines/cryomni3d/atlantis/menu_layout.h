@@ -23,6 +23,7 @@
 #define CRYOMNI3D_ATLANTIS_MENU_LAYOUT_H
 
 #include "common/array.h"
+#include "common/rect.h"
 #include "common/str.h"
 #include "common/stream.h"
 
@@ -126,6 +127,32 @@ int menuVolumeFromKnob(int x);
 // the counter is 2, on = 0; when it is 3, it returns to 0 (the byte counter
 // DAT_00496098).  Subtitles are drawn when on is set (FUN_00430178).
 void subtitleToggleClick(bool &on, uint8 &counter);
+
+// FONTMAX measuring widths (atlantis.exe @ 0x004965ee, index char - 0x20):
+// FUN_004206c8 centres labels and sizes hit rects with it, and the pen
+// advances by it while drawing (0x004202cc).
+extern const uint8 kFontMaxMeasureWidths[137];
+int fontMaxMeasureWidth(const Common::String &text);
+
+// Draw x of a text item's label: (640 - measured width) / 2 when centred
+// (FUN_004206c8), else its anchor.
+int menuTextDrawX(const MenuItem &it, const Common::String &label);
+
+// Hit box of a text record (FUN_0041fb6c): x - 11, y - 28, height 28; width
+// is the measured string when centred, 22 per raw spec character otherwise.
+// The original tests strict inside, hence the left/top + 1.
+Common::Rect menuTextHitRect(const MenuItem &it, int drawX);
+
+// Pen of a glyph-sprite font (FONTMAX, FONTMIN): a space advances
+// spaceAdvance and draws nothing; glyph c - 0x20 (below glyphWidths.size())
+// is drawn at the pen, which then advances by advanceTable when given, else
+// by the glyph's width.
+struct SprFontGlyph {
+	int x, idx;
+};
+void sprFontPen(const Common::String &text, int anchorX, int spaceAdvance,
+                const Common::Array<int> &glyphWidths, const uint8 *advanceTable,
+                uint advanceCount, Common::Array<SprFontGlyph> &out);
 
 } // namespace Atlantis
 } // namespace CryOmni3D

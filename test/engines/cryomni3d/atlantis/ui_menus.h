@@ -9,13 +9,11 @@
 //   FUN_0041d5f4  options menu (toggle clicks, volume conversion)
 // See atlantis-re/audit/ui/REPORT.md, section "Menus".
 //
-// Port code exercised directly: MenuLayout::loadFromStream (menu_layout.cpp)
-// and BigFileArchive (data tests).  The rest of the menu code lives in static
-// helpers and private methods of CryOmni3DEngine_Atlantis in menus.cpp, which
-// cannot be linked into the test runner (it drags in the whole engine).  Where
-// a test needs that logic it uses a FAITHFUL COPY, marked "PORT COPY" with the
-// source location; the port's constant tables are read from menus.cpp itself
-// (path given by "src=" in atlantis_test.cfg) so they cannot drift.
+// Port code exercised directly (menu_layout.cpp): MenuLayout::loadFromStream,
+// kFontMaxMeasureWidths, menuTextDrawX, menuTextHitRect, sprFontPen,
+// fontMinBlits, menuGridHit, menuVolumeFromKnob, subtitleToggleClick; and
+// BigFileArchive (data tests).  portToggleSel maps the original's option flags
+// to the port's toggle index.
 
 #include "atlantis_test_helper.h"
 #include "../../../system/null_osystem.h"
@@ -861,48 +859,12 @@ static const int kUiOrigLoadList[][3] = {
 
 // ---- helpers ---------------------------------------------------------------
 
-// Integer array initialiser "<name>[...] = { ... };" read from port source.
-inline bool readSourceArray(const char *file, const char *name, Common::Array<int> &out) {
-	Common::String src = AtlantisTest::configValue("src");
-	if (src.empty())
-		return false;
-	Common::FSNode node(Common::Path(src + "/engines/cryomni3d/atlantis/" + file, '/'));
-	Common::File f;
-	if (!f.open(node))
-		return false;
-	Common::String text;
-	while (!f.eos())
-		text += f.readLine() + "\n";
-	const char *p = strstr(text.c_str(), name);
-	if (!p)
-		return false;
-	p = strchr(p, '{');
-	if (!p)
-		return false;
-	++p;
-	while (*p && *p != '}') {
-		if (*p >= '0' && *p <= '9') {
-			int v = 0;
-			while (*p >= '0' && *p <= '9')
-				v = v * 10 + (*p++ - '0');
-			out.push_back(v);
-		} else {
-			++p;
-		}
-	}
-	return true;
-}
-
-// Port measuring width (PORT COPY of menus.cpp fontMaxMeasureWidth) using
-// the port's own table read from menus.cpp.
-inline int portMeasure(const Common::Array<int> &tbl, const Common::String &s) {
-	int w = 0;
-	for (uint i = 0; i < s.size(); ++i) {
-		int idx = (int)(unsigned char)s[i] - 0x20;
-		if (idx >= 0 && idx < (int)tbl.size())
-			w += tbl[idx];
-	}
-	return w;
+// The port's FONTMAX table as an array (kFontMaxMeasureWidths, menu_layout.cpp).
+inline Common::Array<int> portFontMaxTable() {
+	Common::Array<int> t;
+	for (uint i = 0; i < ARRAYSIZE(CryOmni3D::Atlantis::kFontMaxMeasureWidths); i++)
+		t.push_back(CryOmni3D::Atlantis::kFontMaxMeasureWidths[i]);
+	return t;
 }
 
 struct PortRec {
@@ -912,19 +874,17 @@ struct PortRec {
 };
 
 // The label the port draws for a toggle in the options screen
-// (PORT COPY of displayOptionsMenu: SUBTITLES selected = ON ? 0 : 1, with
+// (as displayOptionsMenu sets them: SUBTITLES selected = ON ? 0 : 1, with
 // ON <=> DAT_004960a8 == 1; OMNI 3D selected = invert ? 1 : 0 where the
 // "MODE 2" label (selected 0) is the original DAT_004960ac == 1).
 inline int portToggleSel(int ordinal, int a, int b) {
 	return ordinal == 0 ? (a ? 0 : 1) : (b ? 0 : 1);
 }
 
-// Records as the port computes them: one per MenuItem, in file order.
-// Rect: PORT COPY of menus.cpp menuTextHitRect (x-11, y-28, w = measured
-// width when centred else 22 * rawLen, h 28) expressed in the original's
-// {x, y, w, h} form; sprite records use /spr hotspot and size hint.
-// Draw x: PORT COPY of renderMenuLayout (centred: (640 - measure(label))/2).
-inline void portRecords(const Common::Array<int> &tbl, const char *text, int menu,
+// Records as the port computes them: one per MenuItem, in file order, with
+// menuTextDrawX and menuTextHitRect (menu_layout.cpp) expressed in the
+// original's {x, y, w, h} form; sprite records use /spr hotspot and size hint.
+inline void portRecords(const Common::Array<int> &, const char *text, int menu,
                         int a, int b, Common::Array<PortRec> &out) {
 	CryOmni3D::Atlantis::MenuLayout layout;
 	Common::MemoryReadStream s((const byte *)text, strlen(text));
@@ -945,11 +905,12 @@ inline void portRecords(const Common::Array<int> &tbl, const char *text, int men
 			toggleOrd++;
 			label = it.options[sel];
 		}
-		int drawX = it.centerX ? (640 - portMeasure(tbl, label)) / 2 : it.anchorX;
-		r.x = drawX - 11;
-		r.y = it.anchorY - 28;
-		r.w = it.centerX ? portMeasure(tbl, it.text) : it.rawLen * 22;
-		r.h = 28;
+		int drawX = CryOmni3D::Atlantis::menuTextDrawX(it, label);
+		Common::Rect hit = CryOmni3D::Atlantis::menuTextHitRect(it, drawX);
+		r.x = hit.left - 1;
+		r.y = hit.top - 1;
+		r.w = hit.right - r.x;
+		r.h = hit.bottom - r.y;
 		r.x0 = drawX;
 		r.y0 = it.anchorY;
 		r.spr = -1;
@@ -978,7 +939,8 @@ public:
 		Common::install_null_g_system();
 		_portMax.clear();
 		_portMin.clear();
-		_haveSrc = readSourceArray("menus.cpp", "kFontMaxMeasureWidths", _portMax);
+		_portMax = portFontMaxTable();
+		_haveSrc = true;
 		// The FONTMIN table lives in menu_layout.cpp (fontMinAdvance).
 		for (uint i = 0; i < 137; i++)
 			_portMin.push_back(CryOmni3D::Atlantis::fontMinAdvance(i));
@@ -1008,7 +970,7 @@ public:
 		}
 	}
 
-	// Synthetic layouts: port MenuLayout + PORT COPY rect/centring vs the
+	// Synthetic layouts: port MenuLayout + menuTextHitRect / menuTextDrawX vs the
 	// emulated original hit table and blits.  One sub-check per case.
 	void checkCase(const UiOrigCase &c) {
 		Common::Array<PortRec> port;
@@ -1077,9 +1039,8 @@ public:
 		checkCase(*findCase("toggle_outside_options"));
 	}
 
-	// Sound menu OK: PORT COPY of displaySoundMenu's conversion
-	// (int)((X-305)/213*127 + 0.5) vs the original FPU code, which uses
-	// __CHP (FUN_00451d6e, round toward zero) before FISTP.
+	// Sound menu OK: the port's menuVolumeFromKnob vs the original FPU code,
+	// which uses __CHP (FUN_00451d6e, round toward zero) before FISTP.
 	void test_volume_conversion() {
 		int mismatches = 0;
 		for (int x = 306; x <= 517; x++) {
@@ -1099,9 +1060,8 @@ public:
 	}
 
 	// SUBTITLES toggle: the original forces OFF on every second click of a
-	// three-click cycle (byte counter DAT_00496098).  PORT COPY of
-	// displayOptionsMenu: selected = (selected + 1) % 2, ON <=> selected 0,
-	// starting from the same state (subtitles off).
+	// three-click cycle (byte counter DAT_00496098), against the port's
+	// subtitleToggleClick from the same state (subtitles off).
 	void test_subtitle_toggle_sequence() {
 		// From the original's initial state (flag 0, counter 0), with the
 		// port's subtitleToggleClick.
@@ -1122,11 +1082,6 @@ public:
 		}
 	}
 
-	// Blits of a list row as the port draws it: PORT COPY of drawPlayerText
-	// (pen starts at x, every char c >= 0x20 is blitted, then the pen advances
-	// by kPlayerCharWidths[c-0x20], read from menus.cpp).  Spaces are skipped
-	// in the comparison because the original never blits them in the player
-	// list and name field.
 	// The port's glyph blits (fontMinBlits, the renderer drawPlayerText uses).
 	void portPlayerText(const char *s, int x, int y, CryOmni3D::Atlantis::FontMinRenderer r,
 	                    Common::Array<Common::String> &out) {
@@ -1259,10 +1214,9 @@ private:
 		return true;
 	}
 
-	// PORT COPY of drawSprFontText's pen: space +22 and no blit; glyph index
-	// c-0x20 within the FONTMAX glyph count is blitted at the pen, then the pen
-	// advances by that glyph sprite's width.  Labels per renderMenuLayout.
-	static Common::String canonGlyphs(const Common::Array<int> &tbl, const Common::Array<int> &glyphW,
+	// Glyph blits as drawSprFontText places them (sprFontPen with FONTMAX's
+	// space advance 22 and kFontMaxMeasureWidths); labels per renderMenuLayout.
+	static Common::String canonGlyphs(const Common::Array<int> &, const Common::Array<int> &glyphW,
 	                                  const char *text, int menu, int a, int b) {
 		CryOmni3D::Atlantis::MenuLayout layout;
 		Common::MemoryReadStream st((const byte *)text, strlen(text));
@@ -1279,18 +1233,13 @@ private:
 				toggleOrd++;
 				label = it.options[sel];
 			}
-			int cx = it.centerX ? (640 - portMeasure(tbl, label)) / 2 : it.anchorX;
-			for (uint k = 0; k < label.size(); k++) {
-				unsigned char c = (unsigned char)label[k];
-				if (c == ' ') { cx += 22; continue; }
-				int idx = (int)c - 0x20;
-				if (idx < 0 || idx >= (int)glyphW.size())
-					continue;
+			Common::Array<CryOmni3D::Atlantis::SprFontGlyph> pen;
+			CryOmni3D::Atlantis::sprFontPen(label, CryOmni3D::Atlantis::menuTextDrawX(it, label), 22, glyphW,
+			                                CryOmni3D::Atlantis::kFontMaxMeasureWidths,
+			                                ARRAYSIZE(CryOmni3D::Atlantis::kFontMaxMeasureWidths), pen);
+			for (const CryOmni3D::Atlantis::SprFontGlyph &g : pen) {
 				if (!out.empty()) out += ";";
-				out += Common::String::format("%d,%d,%d", cx, it.anchorY, idx);
-				// The port advances FONTMAX text by kFontMaxMeasureWidths
-				// (drawSprFontText's advance table), read here as tbl.
-				cx += (idx < (int)tbl.size()) ? tbl[idx] : glyphW[idx];
+				out += Common::String::format("%d,%d,%d", g.x, it.anchorY, g.idx);
 			}
 		}
 		return out;
@@ -1320,11 +1269,7 @@ private:
 			TS_WARN("Atlantis data not configured; ui_menus data tests skipped");
 			return;
 		}
-		Common::Array<int> tbl;
-		if (!readSourceArray("menus.cpp", "kFontMaxMeasureWidths", tbl)) {
-			TS_WARN("menus.cpp not found (src=); skipped");
-			return;
-		}
+		Common::Array<int> tbl = portFontMaxTable();
 		AtlantisTest::Golden golden;
 		TS_ASSERT(AtlantisTest::loadGolden("ui_menus.txt", golden));
 		// BigFileArchive::open goes through SearchMan.
@@ -1377,7 +1322,7 @@ private:
 	}
 
 public:
-	// Hit tables of every shipped menu (port parse + PORT COPY rect formula).
+	// Hit tables of every shipped menu (port parse + menuTextHitRect).
 	void test_shipped_menu_hit_tables() { run("rects"); }
 	// SPRMENU sprite blits (index and hotspot) of every shipped menu.
 	void test_shipped_menu_sprites() { run("sprites"); }
