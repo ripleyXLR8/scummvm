@@ -29,8 +29,8 @@
 
 #include "common/debug.h"
 
-// This define enables code which generate bit accurate images in RGB565 mode
-//#define BITEXACT
+// HNM6Decoder::setBitExact() enables code which generates bit accurate
+// images in RGB565 mode
 
 namespace Image {
 
@@ -217,7 +217,7 @@ byte JPEGBuffer::loadReg() {
 	return fullword & 0xf;
 }
 
-static void YUVtoRGB(Graphics::Surface &current, uint x, uint y, int32 *coeffs) {
+static void YUVtoRGB(Graphics::Surface &current, uint x, uint y, int32 *coeffs, bool bitExact) {
 #define CR(x) ((16 * (x - 256) + 8) / 10)
 #define CB(x) ((x - 256) / 3)
 	Graphics::PixelFormat &format = current.format;
@@ -234,20 +234,16 @@ static void YUVtoRGB(Graphics::Surface &current, uint x, uint y, int32 *coeffs) 
 			int32 cb = CB((cu >> 4) + 256);
 
 			byte r = CLIP<int32>(cy + 128 + cr, 0, 255);
-#ifdef BITEXACT
 			// In original code G is clipped a little more
-			byte g = CLIP<int32>(cy + 128 - (cr >> 1) - cb, 0, 251);
-#else
-			byte g = CLIP<int32>(cy + 128 - (cr >> 1) - cb, 0, 255);
-#endif
+			byte g = CLIP<int32>(cy + 128 - (cr >> 1) - cb, 0, bitExact ? 251 : 255);
 			byte b = CLIP<int32>(cy + 128 + (cu >> 3), 0, 255);
 
-#ifdef BITEXACT
-			// Original shifts R and B by 3 and G by 2
-			r &= 0xf8;
-			g &= 0xfc;
-			b &= 0xf8;
-#endif
+			if (bitExact) {
+				// Original shifts R and B by 3 and G by 2
+				r &= 0xf8;
+				g &= 0xfc;
+				b &= 0xf8;
+			}
 
 			if (format.bytesPerPixel == 2) {
 				((uint16 *)linePtr)[rx] = format.RGBToColor(r, g, b);
@@ -299,7 +295,7 @@ static void YUVtoRGB(Graphics::Surface &current, uint x, uint y, int32 *coeffs) 
     }                                                   \
 } while(0)
 
-static void aanidct(int32 *inout, uint16 mask) {
+static void aanidct(int32 *inout, uint16 mask, bool bitExact) {
 	if (mask == 0x0101) {
 		// Simple case: 1 coefficient in the top left corner: it means constant
 		for (uint i = 1; i < 64; i++) {
@@ -308,18 +304,15 @@ static void aanidct(int32 *inout, uint16 mask) {
 		return;
 	}
 
-#ifdef BITEXACT
-	// Original decoder has a bug where the masks are compared
-	// with a sign compare. This means that 0x80 < 0x1.
-	// The AAN order is then not optimal.
-	int8 rowmask, colmask;
-#else
 	uint8 rowmask, colmask;
-#endif
 	rowmask = mask >> 8;
 	colmask = mask & 0xff;
 
-	if (rowmask < colmask) {
+	// Original decoder has a bug where the masks are compared
+	// with a sign compare. This means that 0x80 < 0x1.
+	// The AAN order is then not optimal.
+	const bool rowFirst = bitExact ? (int8)rowmask < (int8)colmask : rowmask < colmask;
+	if (rowFirst) {
 		// Inside row
 		AAN_STRIDE(inout, 1, 8, rowmask);
 		if (rowmask == 0x01) {
@@ -1018,7 +1011,7 @@ void DecoderImpl::renderKeyblock(Graphics::Surface &current, uint x, uint y) {
 	renderPlane(coeffs, luma_quant_table);
 	renderPlane(coeffs + 64, chroma_quant_table);
 	renderPlane(coeffs + 128, chroma_quant_table);
-	HNM6::YUVtoRGB(current, x, y, coeffs);
+	HNM6::YUVtoRGB(current, x, y, coeffs, _bitExact);
 }
 
 void DecoderImpl::renderPlane(int32 *dst, int32 *quant_table) {
@@ -1138,7 +1131,7 @@ void DecoderImpl::renderPlane(int32 *dst, int32 *quant_table) {
 #undef WRITE_COEFF_0
 #undef WRITE_COEFF
 
-	HNM6::aanidct(dst, colrow_mask);
+	HNM6::aanidct(dst, colrow_mask, _bitExact);
 }
 
 // These macros are used in motion rendering

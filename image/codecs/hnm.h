@@ -38,14 +38,17 @@ public:
 	Graphics::PixelFormat getPixelFormat() const override { return _format; }
 
 	void setWarpMode(bool warpMode) { assert(!warpMode || !_videoMode); _warpMode = warpMode; }
+	// Reproduce the original decoder's RGB565 output bit for bit (its green
+	// clip and channel truncation, and its signed IDCT mask compare).
+	void setBitExact(bool bitExact) { _bitExact = bitExact; }
 protected:
 	HNM6Decoder(uint16 width, uint16 height, const Graphics::PixelFormat &format,
 	            bool videoMode = false) : Codec(),
-		_width(width), _height(height), _format(format), _videoMode(videoMode), _warpMode(false) { }
+		_width(width), _height(height), _format(format), _videoMode(videoMode), _warpMode(false), _bitExact(false) { }
 
 	uint16 _width, _height;
 	Graphics::PixelFormat _format;
-	bool _warpMode, _videoMode;
+	bool _warpMode, _videoMode, _bitExact;
 };
 
 HNM6Decoder *createHNM6Decoder(uint16 width, uint16 height, const Graphics::PixelFormat &format,
