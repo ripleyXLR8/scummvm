@@ -415,6 +415,10 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		// Off-camera variants (off / off0 / off1) play as voiceover: no head
 		// shot, no FOV change, view left where the player was facing.
 		const bool isOffCam = tailIs("off", 3) || tailIs("off0", 4) || tailIs("off1", 4);
+		// off0 (FUN_004305e8): the subtitle is drawn over the screen as it
+		// stands, with no view redraw and no FOV reset.  off1 (FUN_00430884)
+		// is not used by any shipped CON file.
+		_dialKeepScreen = tailIs("off0", 4);
 
 		Common::String vid;
 		Common::String spfBase;
@@ -707,9 +711,23 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 
 	bool emptyBackbufferCleared = false;
 
+	// off0: keep a copy of the screen as it stands for the subtitle's
+	// background.
+	Graphics::ManagedSurface keptScreen;
+	if (_dialKeepScreen) {
+		Graphics::Surface *scr = g_system->lockScreen();
+		if (scr) {
+			keptScreen.copyFrom(*scr);
+			g_system->unlockScreen();
+		} else {
+			_dialKeepScreen = false;
+		}
+	}
+
 	auto drawFrame = [&]() {
-		const Graphics::Surface *warpView =
-		    _warpLoaded ? _omni3dMan.getSurface() : nullptr;
+		const Graphics::Surface *warpView = _dialKeepScreen
+		    ? &keptScreen.rawSurface()
+		    : (_warpLoaded ? _omni3dMan.getSurface() : nullptr);
 
 #ifdef USE_HNM
 		if (bgDecoder && ubbConvFrame.getPixels()) {

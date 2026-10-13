@@ -556,6 +556,9 @@ private:
 	// IncPerso count (atlantis.exe 0x0077290d, saved in the .gam at 0x11e):
 	// lines starting with "Seth" take their INITDIAL row from 512 + it.
 	uint8 _incPersoCount = 0;
+	// The next dialog line is an "off0" one: its subtitle goes over the
+	// screen as it is, the view is not redrawn (FUN_004305e8).
+	bool _dialKeepScreen = false;
 	Common::Array<SubjSprite> _bowSprites;
 	uint _arrowFrame = 0;
 	void drawSprite(Graphics::ManagedSurface &dst, const SubjSprite &spr, int x, int y);
