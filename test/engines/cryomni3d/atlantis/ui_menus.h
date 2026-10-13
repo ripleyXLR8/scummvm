@@ -1297,7 +1297,9 @@ private:
 					continue;
 				if (!out.empty()) out += ";";
 				out += Common::String::format("%d,%d,%d", cx, it.anchorY, idx);
-				cx += glyphW[idx];
+				// The port advances FONTMAX text by kFontMaxMeasureWidths
+				// (drawSprFontText's advance table), read here as tbl.
+				cx += (idx < (int)tbl.size()) ? tbl[idx] : glyphW[idx];
 			}
 		}
 		return out;
@@ -1389,8 +1391,7 @@ public:
 	// SPRMENU sprite blits (index and hotspot) of every shipped menu.
 	void test_shipped_menu_sprites() { run("sprites"); }
 	// FONTMAX glyph blits: the original advances the pen by the exe width
-	// table (0x49660e); the port by the FONTMAX.SPR sprite width, which
-	// differs for 'I' (10 vs 14) and '-' (19 vs 24).  Fails for every menu
-	// containing an 'I'.
+	// table (0x49660e); so does the port (drawSprFontText with
+	// kFontMaxMeasureWidths), no longer by the FONTMAX.SPR sprite width.
 	void test_shipped_menu_glyph_positions() { run("glyphs"); }
 };

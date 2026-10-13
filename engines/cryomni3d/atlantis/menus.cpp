@@ -52,7 +52,7 @@ static const int kFontMinSpaceAdvance = 18;
 
 // FONTMAX *measuring* width table (atlantis.exe @ 0x4965ee, glyph idx = char).
 // The original uses it only to centre "<>,Y>" labels and size their hit rects
-// (FUN_004206c8); pen advance while drawing comes from the glyph sprites.
+// (FUN_004206c8); the same table advances the pen while drawing (0x004202cc).
 static const uint8 kFontMaxMeasureWidths[137] = {
 	22,10,15,15,16,24,20, 8,16,24,13, 8, 8,24, 7,14,20, 9,19,19,
 	17,16,18,17,20,18, 7, 8, 8, 8, 8,18, 8,21,23,21,23,19,20,22,
@@ -96,7 +96,8 @@ static Common::Rect menuTextHitRect(const MenuItem &it, int drawX) {
 void CryOmni3DEngine_Atlantis::drawSprFontText(Graphics::ManagedSurface &dst,
         const Common::String &text, int anchorX, int anchorY,
         const Common::Array<SubjSprite> &drawGlyphs,
-        const Common::Array<SubjSprite> &layoutGlyphs, int spaceAdvance) const {
+        const Common::Array<SubjSprite> &layoutGlyphs, int spaceAdvance,
+        const uint8 *advanceTable, uint advanceCount) const {
 	int cx = anchorX;
 	for (uint i = 0; i < text.size(); ++i) {
 		unsigned char c = (unsigned char)text[i];
@@ -131,7 +132,10 @@ void CryOmni3DEngine_Atlantis::drawSprFontText(Graphics::ManagedSurface &dst,
 				}
 			}
 		}
-		cx += lay.w;
+		// The pen advances by the font's exe table when it has one (FONTMAX:
+		// 0x0041fb6c @ 0x004202cc, [0x0049660e + c - 0x20]), else by the
+		// glyph sprite's width.
+		cx += (advanceTable && (uint)idx < advanceCount) ? advanceTable[idx] : lay.w;
 	}
 }
 
@@ -142,7 +146,8 @@ void CryOmni3DEngine_Atlantis::drawFontMaxText(Graphics::ManagedSurface &dst,
 	drawSprFontText(dst, text, anchorX, anchorY,
 	    (hover && !_fontMaxHoverSprites.empty()) ? _fontMaxHoverSprites
 	                                             : _fontMaxSprites,
-	    _fontMaxSprites, kFontMaxSpaceAdvance);
+	    _fontMaxSprites, kFontMaxSpaceAdvance,
+	    kFontMaxMeasureWidths, ARRAYSIZE(kFontMaxMeasureWidths));
 }
 
 // FONTMIN.SPR player-name font; FONTMIN2 is its hover variant.  Layout always

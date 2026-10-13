@@ -340,7 +340,8 @@ private:
 	                     int anchorX, int anchorY,
 	                     const Common::Array<SubjSprite> &drawGlyphs,
 	                     const Common::Array<SubjSprite> &layoutGlyphs,
-	                     int spaceAdvance) const;
+	                     int spaceAdvance, const uint8 *advanceTable = nullptr,
+	                     uint advanceCount = 0) const;
 	void drawFontMaxText(Graphics::ManagedSurface &dst, const Common::String &text,
 	                     int anchorX, int anchorY, bool hover = false) const;
 	// FONTMIN.SPR — the smaller red player-name font (FONTMIN2 = hover).
