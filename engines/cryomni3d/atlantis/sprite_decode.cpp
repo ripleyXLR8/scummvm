@@ -190,6 +190,86 @@ void decodeSPWPixels(Common::SeekableReadStream *spw,
 	}
 }
 
+bool readSprFile(Common::SeekableReadStream &stream, Common::Array<SprSprite> &out,
+                 uint16 maxW, uint16 maxH) {
+	out.clear();
+	const uint16 flags = stream.readUint16LE();
+	uint16 colorTable[256];
+	memset(colorTable, 0, sizeof(colorTable));
+	if (flags & 0x4) {
+		// RGB555 to RGB565 as FUN_00410782 does: r << 11 | g << 6 | b.
+		for (int i = 0; i < 256; i++) {
+			const uint16 rgb555 = stream.readUint16LE();
+			const uint16 r = (rgb555 >> 10) & 0x1f;
+			const uint16 g = (rgb555 >> 5) & 0x1f;
+			const uint16 b = rgb555 & 0x1f;
+			colorTable[i] = (uint16)((r << 11) | (g << 6) | b);
+		}
+	}
+	if (flags & 0x8)
+		stream.skip(256 * 2);
+
+	const uint16 count = stream.readUint16LE();
+	if (count == 0 || count > 256)
+		return false;
+
+	// Offsets in the sprite table are relative to this position.
+	const int64 base = stream.pos();
+	Common::Array<uint32> offsets(count);
+	for (uint16 i = 0; i < count; i++)
+		offsets[i] = stream.readUint32LE();
+
+	out.resize(count);
+	for (uint16 si = 0; si < count; si++) {
+		if (!stream.seek(base + offsets[si]))
+			continue;
+		SprSprite &spr = out[si];
+		spr.w    = stream.readUint16LE();
+		spr.h    = stream.readUint16LE();
+		spr.xoff = stream.readSint16LE();
+		spr.yoff = stream.readSint16LE();
+		if (spr.w == 0 || spr.h == 0 || spr.w > maxW || spr.h > maxH)
+			continue;
+		decodeSprRows(stream, spr, colorTable);
+	}
+	return true;
+}
+
+Graphics::Surface *readTga15(Common::SeekableReadStream &stream, const Graphics::PixelFormat &fmt) {
+	// TGA header (18 bytes): all game TGAs are type 2 (uncompressed
+	// true-colour), 640x480, 15-bit depth.
+	const byte idLen = stream.readByte();
+	/* cmType = */ stream.readByte();
+	const byte imgType = stream.readByte();
+	stream.skip(9);                     // colour-map spec (5) + x/y origin (4)
+	const uint16 w = stream.readUint16LE();
+	const uint16 h = stream.readUint16LE();
+	const byte depth = stream.readByte();
+	stream.readByte();                  // image descriptor
+	stream.skip(idLen);                 // optional ID field
+	if (imgType != 2 || depth != 15 || w == 0 || h == 0)
+		return nullptr;
+
+	Graphics::Surface *surf = new Graphics::Surface();
+	surf->create(w, h, fmt);
+	for (uint16 y = 0; y < h; y++) {
+		// TGA origin is bottom-left (image descriptor bit 5 = 0).
+		byte *row = (byte *)surf->getBasePtr(0, h - 1 - y);
+		for (uint16 x = 0; x < w; x++) {
+			const uint16 px = stream.readUint16LE();
+			const uint8 r = ((px >> 10) & 0x1f) << 3;
+			const uint8 g = ((px >> 5) & 0x1f) << 3;
+			const uint8 b = (px & 0x1f) << 3;
+			const uint32 c = fmt.RGBToColor(r, g, b);
+			if (fmt.bytesPerPixel == 2)
+				((uint16 *)row)[x] = (uint16)c;
+			else if (fmt.bytesPerPixel == 4)
+				((uint32 *)row)[x] = c;
+		}
+	}
+	return surf;
+}
+
 void drawSprSprite(Graphics::Surface &dst, const SprSprite &spr, int x, int y) {
 	if (spr.pixels.empty())
 		return;

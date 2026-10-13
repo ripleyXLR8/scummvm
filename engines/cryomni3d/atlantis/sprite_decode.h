@@ -30,6 +30,7 @@ class SeekableReadStream;
 }
 
 namespace Graphics {
+struct PixelFormat;
 struct Surface;
 }
 
@@ -52,6 +53,19 @@ struct SprSprite {
 // and spr.blend.  spr.w/h must already be set and the stream positioned at
 // the per-row offset table.  colorTable maps the 8-bit indices to RGB565.
 void decodeSprRows(Common::SeekableReadStream &stream, SprSprite &spr, const uint16 *colorTable);
+
+// Read a whole SPR file: flags (bit 2: a 256-entry RGB555 colour table,
+// bit 3: 256 more entries, skipped), sprite count, offsets, then per sprite
+// w, h, xoff, yoff and its rows.  A sprite of 0 or more than maxW x maxH
+// keeps its header and no pixels.  Returns false for a count of 0 or more
+// than 256.
+bool readSprFile(Common::SeekableReadStream &stream, Common::Array<SprSprite> &out,
+                 uint16 maxW = 640, uint16 maxH = 480);
+
+// Read a game TGA: type 2, 15-bit, rows bottom-up, converted to fmt (as
+// FUN_0041b654 / FUN_00449600 / FUN_004174a0 load it).  Returns nullptr for
+// another format.  The caller frees the surface.
+Graphics::Surface *readTga15(Common::SeekableReadStream &stream, const Graphics::PixelFormat &fmt);
 
 // Draw spr with its hotspot at (x, y) onto an RGB565 surface, clipped to the
 // surface, as FUN_00410430 / FUN_0041047f draw it.

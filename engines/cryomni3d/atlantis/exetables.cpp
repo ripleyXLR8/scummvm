@@ -29,6 +29,7 @@
 #include "common/textconsole.h"
 
 #include "cryomni3d/atlantis/engine.h"
+#include "cryomni3d/atlantis/exe_newsound.h"
 #include "cryomni3d/atlantis/inventory.h"
 
 namespace CryOmni3D {
@@ -43,7 +44,6 @@ void CryOmni3DEngine_Atlantis::loadAtlantisExeTables() {
 	const uint32 kDgroupRawPtr  = 0x71200;
 
 	_inventoryObjectIds.clear();
-	_newSoundApcNames.clear();
 
 	Common::File exe;
 	if (!exe.open("atlantis.exe")) {
@@ -51,34 +51,10 @@ void CryOmni3DEngine_Atlantis::loadAtlantisExeTables() {
 		return;
 	}
 
-	// Named-resource pointer table at VA 0x004961e0 (file offset 0x773e0):
-	// 17 WAM filenames followed by ~137 APC filenames, terminated by a "FIN"
-	// sentinel.  The APC portion is what CON `/set(newsound=N)` indexes into
-	// (0-based: newsound=14 plays the 15th APC, Toctoc.apc).
-	{
-		const uint32 kTableFileOff = 0x773e0;
-		const int kSkipWams = 17;
-
-		exe.seek(kTableFileOff + kSkipWams * 4);
-		for (int i = 0; i < 200 && !exe.eos(); i++) {
-			uint32 va = exe.readUint32LE();
-			if (va < 0x4b0000 || va > 0x4d0000) break;  // off the end of the data
-			uint32 fileOff = (va - kImageBase - kDgroupVaddr) + kDgroupRawPtr;
-			int64 saved = exe.pos();
-			exe.seek(fileOff);
-			Common::String s;
-			while (!exe.eos()) {
-				byte b = exe.readByte();
-				if (b == 0) break;
-				s += (char)b;
-			}
-			if (s.equalsIgnoreCase("FIN")) break;
-			_newSoundApcNames.push_back(s);
-			exe.seek(saved);
-		}
-		debugC(1, kDebugScript, "loadAtlantisExeTables: %u newsound APC names from atlantis.exe",
-		      _newSoundApcNames.size());
-	}
+	// The newsound APC names (exe_newsound.h).
+	readNewSoundNames(exe, _newSoundApcNames);
+	debugC(1, kDebugScript, "loadAtlantisExeTables: %u newsound APC names from atlantis.exe",
+	      _newSoundApcNames.size());
 
 	// Inventory-icon table at VA 0x004967b0: index i is the sprite slot in
 	// SPRITE\2D\OBJETS1.SPR, the value the object id that uses that sprite.

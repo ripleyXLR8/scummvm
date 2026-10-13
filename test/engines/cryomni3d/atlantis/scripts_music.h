@@ -11,10 +11,12 @@
 //    FUN_00428da8 after every script line) plays "wav\" + ptrtable[N],
 //    ptrtable = 0x00496224 (N used as is, 0 = no sound).
 // Port: music.cpp kMusicTrackNames (static, read from the source file because
-// it cannot be linked) and exetables.cpp loadAtlantisExeTables (engine
-// method; FAITHFUL COPY of its newsound loop below, guarded by a span md5).
+// it cannot be linked) and readNewSoundNames (exe_newsound.h), which
+// loadAtlantisExeTables calls.
 
 #include "scripts_con_common.h"
+
+#include "cryomni3d/atlantis/exe_newsound.h"
 
 #include "common/system.h"
 
@@ -31,10 +33,6 @@ static const char *const kOrigMusic[] = {
 	"cine194.apc"
 };
 
-// md5 of the loadAtlantisExeTables span of exetables.cpp.  Updated when the
-// inventory-table read moved to inventory.cpp, and again for the guest
-// sprite table; the newsound loop is unchanged.
-static const char *const kExeTablesMd5 = "2ea95464a45e90c1c1171223fff6b61e";
 
 inline bool readSource(const char *rel, Common::String &out) {
 	Common::String src = AtlantisTest::configValue("src");
@@ -51,43 +49,9 @@ inline bool readSource(const char *rel, Common::String &out) {
 	return true;
 }
 
-inline Common::String spanMd5(const Common::String &text, const char *start) {
-	const char *st = strstr(text.c_str(), start);
-	if (!st)
-		return Common::String();
-	st++;
-	const char *en = strstr(st, "\n}\n");
-	if (!en)
-		return Common::String();
-	en += 3;
-	return AtlantisTest::md5Hex((const byte *)st, en - st);
-}
-
-// FAITHFUL COPY of the newsound loop of loadAtlantisExeTables (exetables.cpp).
+// The port's newsound table reader (exe_newsound.h).
 inline void portNewSoundNames(Common::File &exe, Common::Array<Common::String> &names) {
-	const uint32 kImageBase    = 0x400000;
-	const uint32 kDgroupVaddr   = 0x90000;
-	const uint32 kDgroupRawPtr  = 0x71200;
-	const uint32 kTableFileOff = 0x773e0;
-	const int kSkipWams = 17;
-
-	exe.seek(kTableFileOff + kSkipWams * 4);
-	for (int i = 0; i < 200 && !exe.eos(); i++) {
-		uint32 va = exe.readUint32LE();
-		if (va < 0x4b0000 || va > 0x4d0000) break;
-		uint32 fileOff = (va - kImageBase - kDgroupVaddr) + kDgroupRawPtr;
-		int64 saved = exe.pos();
-		exe.seek(fileOff);
-		Common::String s;
-		while (!exe.eos()) {
-			byte b = exe.readByte();
-			if (b == 0) break;
-			s += (char)b;
-		}
-		if (s.equalsIgnoreCase("FIN")) break;
-		names.push_back(s);
-		exe.seek(saved);
-	}
+	CryOmni3D::Atlantis::readNewSoundNames(exe, names);
 }
 
 } // End of namespace ScriptsMusicTest
@@ -131,17 +95,7 @@ public:
 			TS_ASSERT(port[n].equalsIgnoreCase(ScriptsMusicTest::kOrigMusic[n - 1]));
 	}
 
-	void test_exetables_copy_is_current() {
-		Common::String text;
-		if (!ScriptsMusicTest::readSource("engines/cryomni3d/atlantis/exetables.cpp", text)) {
-			TS_WARN("scripts_music: no src= in atlantis_test.cfg, skipped");
-			return;
-		}
-		TS_ASSERT_EQUALS(ScriptsMusicTest::spanMd5(text, "\nvoid CryOmni3DEngine_Atlantis::loadAtlantisExeTables("),
-		                 Common::String(ScriptsMusicTest::kExeTablesMd5));
-	}
-
-	// Data test: the port's newsound name list (copied loop, reading the
+	// Data test: the port's newsound name list (readNewSoundNames, reading the
 	// reference atlantis.exe) equals the original pointer table 0x00496224.
 	void test_newsound_table_matches_original() {
 		if (!AtlantisTest::haveData()) {

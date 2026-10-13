@@ -8,14 +8,8 @@
 // (SPR blit), FUN_00452bde (SPW/SPF frame draw).
 //
 // Port code exercised directly: blendSprPixel565, blendSpwPixel565
-// (sprite_blend.h), decodeSprRows, drawSprSprite, compositeSpfFrame /
+// (sprite_blend.h), readSprFile, decodeSprRows, drawSprSprite, compositeSpfFrame /
 // decodeSPWPixels (sprite_decode.cpp) and BigFileArchive (bigfile.cpp).
-//
-// FAITHFUL COPY written by hand (stated explicitly, as the brief requires):
-//  - portLoadSpr(): copy of the header parsing shared by loadFontSpriteSet /
-//    loadObjectSprites / loadSubjectSprites (flags, RGB555->RGB565 table,
-//    count, offsets, per-sprite header, w/h <= 640x480 guard), which are
-//    engine methods bound to openBigFileStream().
 
 #include "atlantis_test_helper.h"
 
@@ -57,43 +51,9 @@ inline Common::String md5Of(const uint16 *p, uint32 n) {
 	return AtlantisTest::md5Hex(b.begin(), n * 2);
 }
 
-// FAITHFUL COPY of the port's SPR loader header parsing (see file comment).
+// The port's SPR file reader (readSprFile, used by every SPR loader).
 inline void portLoadSpr(Common::SeekableReadStream &s, Common::Array<SubjSprite> &out) {
-	out.clear();
-	uint16 flags = s.readUint16LE();
-	uint16 colorTable[256];
-	memset(colorTable, 0, sizeof(colorTable));
-	if (flags & 0x4) {
-		for (int i = 0; i < 256; i++) {
-			uint16 rgb555 = s.readUint16LE();
-			uint16 r = (rgb555 >> 10) & 0x1f;
-			uint16 g = (rgb555 >> 5) & 0x1f;
-			uint16 b = rgb555 & 0x1f;
-			colorTable[i] = (r << 11) | (g << 6) | b;
-		}
-	}
-	if (flags & 0x8)
-		s.skip(256 * 2);
-	uint16 count = s.readUint16LE();
-	if (count == 0 || count > 256)
-		return;
-	const int64 base = s.pos();
-	Common::Array<uint32> offsets(count);
-	for (uint16 i = 0; i < count; i++)
-		offsets[i] = s.readUint32LE();
-	out.resize(count);
-	for (uint16 si = 0; si < count; si++) {
-		if (!s.seek(base + offsets[si]))
-			continue;
-		SubjSprite &spr = out[si];
-		spr.w = s.readUint16LE();
-		spr.h = s.readUint16LE();
-		spr.xoff = s.readSint16LE();
-		spr.yoff = s.readSint16LE();
-		if (spr.w == 0 || spr.h == 0 || spr.w > 640 || spr.h > 480)
-			continue;
-		CryOmni3D::Atlantis::decodeSprRows(s, spr, colorTable);
-	}
+	CryOmni3D::Atlantis::readSprFile(s, out);
 }
 
 // The port's blit (drawSprSprite, used by blitMenuSprite / drawSprite) on a
@@ -450,10 +410,9 @@ public:
 	}
 
 	// TGA: original FUN_00449600 (RGB555 -> RGB565: ((v & 0x7fe0) << 1) | (v & 0x1f))
-	// then FUN_004174a0 bottom-up copy; golden graphics_tga.txt.  Port side is
-	// a FAITHFUL COPY of the pixel loop of CryOmni3DEngine_Atlantis::loadTGA
-	// (engine method using openBigFileStream and g_system->getScreenFormat();
-	// screen format taken as RGB565, the format the port initialises).
+	// then FUN_004174a0 bottom-up copy; golden graphics_tga.txt.  Port side:
+	// readTga15 (sprite_decode.cpp), which loadTGA calls with the screen
+	// format; RGB565 here, the format the port initialises.
 	void test_tga_all_files() {
 		using namespace GraphicsSpritesTest;
 		if (!AtlantisTest::haveData()) {
@@ -470,27 +429,14 @@ public:
 			TS_ASSERT(stream);
 			if (!stream)
 				continue;
-			byte  idLen   = stream->readByte();
-			/* cmType  = */ stream->readByte();
-			byte  imgType = stream->readByte();
-			stream->skip(9);
-			uint16 w      = stream->readUint16LE();
-			uint16 h      = stream->readUint16LE();
-			byte   depth  = stream->readByte();
-			stream->readByte();
-			stream->skip(idLen);
-			TS_ASSERT(imgType == 2 && depth == 15 && w == kFbW && h == kFbH);
-			Common::Array<uint16> img(w * h);
-			for (uint16 y = 0; y < h; y++) {
-				uint16 *row = img.begin() + (h - 1 - y) * w;
-				for (uint16 x = 0; x < w; x++) {
-					uint16 px = stream->readUint16LE();
-					uint8 r = ((px >> 10) & 0x1f) << 3;
-					uint8 g = ((px >>  5) & 0x1f) << 3;
-					uint8 b = ( px        & 0x1f) << 3;
-					row[x] = (uint16)fmt.RGBToColor(r, g, b);
-				}
-			}
+			Common::ScopedPtr<Graphics::Surface> surf(CryOmni3D::Atlantis::readTga15(*stream, fmt));
+			TS_ASSERT(surf && surf->w == kFbW && surf->h == kFbH);
+			if (!surf)
+				continue;
+			Common::Array<uint16> img(surf->w * surf->h);
+			for (int y = 0; y < surf->h; y++)
+				memcpy(img.begin() + y * surf->w, surf->getBasePtr(0, y), surf->w * 2);
+			surf->free();
 			total++;
 			if (md5Of(img.begin(), img.size()) != it->_value) {
 				bad++;

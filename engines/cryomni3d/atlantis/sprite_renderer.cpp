@@ -81,56 +81,9 @@ void CryOmni3DEngine_Atlantis::loadSubjectSprites() {
 		warning("Cannot open SPRITE\\2D\\SUJETS.SPR");
 		return;
 	}
-
-	// flags word: bit 2 = has 256-entry colour table stored as RGB555.
-	uint16 flags = stream->readUint16LE();
-
-	uint16 colorTable[256];
-	if (flags & 0x4) {
-		// Convert the RGB555 table to RGB565.  (Can't use the screen format
-		// here — green is 5 bits in RGB555, 6 in RGB565, so shift g left 6.)
-		for (int i = 0; i < 256; i++) {
-			uint16 rgb555 = stream->readUint16LE();
-			uint16 r = (rgb555 >> 10) & 0x1f;
-			uint16 g = (rgb555 >> 5)  & 0x1f;
-			uint16 b =  rgb555        & 0x1f;
-			colorTable[i] = (r << 11) | (g << 6) | b;
-		}
-	} else {
-		memset(colorTable, 0, sizeof(colorTable));
-	}
-	if (flags & 0x8)
-		stream->skip(256 * 2);   // 512-entry table: skip the extra 256 entries
-
-	uint16 count = stream->readUint16LE();
-	if (count == 0 || count > 256) {
-		warning("loadSubjectSprites: unexpected count %u", count);
-		return;
-	}
-
-	// Offsets in the sprite table are relative to this position.
-	const int64 sprDataBase = stream->pos();
-	Common::Array<uint32> offsets(count);
-	for (uint16 i = 0; i < count; i++)
-		offsets[i] = stream->readUint32LE();
-
-	_subjSprites.resize(count);
-	for (uint16 si = 0; si < count; si++) {
-		if (!stream->seek(sprDataBase + offsets[si])) {
-			warning("loadSubjectSprites: seek failed for sprite %u", si);
-			continue;
-		}
-		SubjSprite &spr = _subjSprites[si];
-		spr.w    = stream->readUint16LE();
-		spr.h    = stream->readUint16LE();
-		spr.xoff = stream->readSint16LE();
-		spr.yoff = stream->readSint16LE();
-		if (spr.w == 0 || spr.h == 0 || spr.w > 640 || spr.h > 480)
-			continue;
-		decodeSprRows(*stream, spr, colorTable);
-	}
-
-	debugC(1, kDebugScript, "loadSubjectSprites: loaded %u sprites from SUJETS.SPR", count);
+	if (!readSprFile(*stream, _subjSprites))
+		warning("loadSubjectSprites: unexpected sprite count");
+	debugC(1, kDebugScript, "loadSubjectSprites: loaded %u sprites from SUJETS.SPR", _subjSprites.size());
 }
 
 void CryOmni3DEngine_Atlantis::loadFontSpriteSet(const char *sprName,
@@ -142,48 +95,8 @@ void CryOmni3DEngine_Atlantis::loadFontSpriteSet(const char *sprName,
 		warning("loadFontSpriteSet: cannot open SPRITE\\2D\\%s", sprName);
 		return;
 	}
-
-	uint16 flags = stream->readUint16LE();
-	uint16 colorTable[256];
-	memset(colorTable, 0, sizeof(colorTable));
-	if (flags & 0x4) {
-		for (int i = 0; i < 256; i++) {
-			uint16 rgb555 = stream->readUint16LE();
-			uint16 r = (rgb555 >> 10) & 0x1f;
-			uint16 g = (rgb555 >> 5)  & 0x1f;
-			uint16 b =  rgb555        & 0x1f;
-			colorTable[i] = (r << 11) | (g << 6) | b;
-		}
-	}
-	if (flags & 0x8)
-		stream->skip(256 * 2);
-
-	uint16 count = stream->readUint16LE();
-	if (count == 0 || count > 256) {
-		warning("loadFontSpriteSet(%s): unexpected count %u", sprName, count);
-		return;
-	}
-
-	const int64 sprDataBase = stream->pos();
-	Common::Array<uint32> offsets(count);
-	for (uint16 i = 0; i < count; i++)
-		offsets[i] = stream->readUint32LE();
-
-	out.resize(count);
-	for (uint16 si = 0; si < count; si++) {
-		if (!stream->seek(sprDataBase + offsets[si])) {
-			warning("loadFontSpriteSet(%s): seek failed for sprite %u", sprName, si);
-			continue;
-		}
-		SubjSprite &spr = out[si];
-		spr.w    = stream->readUint16LE();
-		spr.h    = stream->readUint16LE();
-		spr.xoff = stream->readSint16LE();
-		spr.yoff = stream->readSint16LE();
-		if (spr.w == 0 || spr.h == 0 || spr.w > 640 || spr.h > 480)
-			continue;
-		decodeSprRows(*stream, spr, colorTable);
-	}
+	if (!readSprFile(*stream, out))
+		warning("loadFontSpriteSet: unexpected sprite count in %s", sprName);
 }
 
 void CryOmni3DEngine_Atlantis::loadFontMaxSprites() {
@@ -228,49 +141,15 @@ void CryOmni3DEngine_Atlantis::loadInventoryBarSprite() {
 		warning("loadInventoryBarSprite: cannot open SPRITE\\2D\\OBJETS0.SPR");
 		return;
 	}
-
-	uint16 flags = stream->readUint16LE();
-	uint16 colorTable[256];
-	memset(colorTable, 0, sizeof(colorTable));
-	if (flags & 0x4) {
-		for (int i = 0; i < 256; i++) {
-			uint16 rgb555 = stream->readUint16LE();
-			uint16 r = (rgb555 >> 10) & 0x1f;
-			uint16 g = (rgb555 >> 5)  & 0x1f;
-			uint16 b =  rgb555        & 0x1f;
-			colorTable[i] = (r << 11) | (g << 6) | b;
-		}
-	}
-	if (flags & 0x8)
-		stream->skip(256 * 2);
-
-	uint16 count = stream->readUint16LE();
-	if (count != 1) {
-		warning("loadInventoryBarSprite: expected 1 sprite, got %u", count);
+	Common::Array<SubjSprite> sprites;
+	if (!readSprFile(*stream, sprites, 1024, 256) || sprites.size() != 1 ||
+	        sprites[0].pixels.empty()) {
+		warning("loadInventoryBarSprite: expected one sprite");
 		return;
 	}
-
-	const int64 sprDataBase = stream->pos();
-	uint32 spr0Off = stream->readUint32LE();
-	if (!stream->seek(sprDataBase + spr0Off)) {
-		warning("loadInventoryBarSprite: seek failed");
-		return;
-	}
-
-	SubjSprite &spr = _inventoryBarSprite;
-	spr.w    = stream->readUint16LE();
-	spr.h    = stream->readUint16LE();
-	spr.xoff = stream->readSint16LE();
-	spr.yoff = stream->readSint16LE();
-	if (spr.w == 0 || spr.h == 0 || spr.w > 1024 || spr.h > 256) {
-		warning("loadInventoryBarSprite: bad dims %ux%u", spr.w, spr.h);
-		spr = SubjSprite();
-		return;
-	}
-	decodeSprRows(*stream, spr, colorTable);
-
+	_inventoryBarSprite = sprites[0];
 	debugC(1, kDebugScript, "loadInventoryBarSprite: loaded %ux%u from OBJETS0.SPR (hotspot %d,%d)",
-	      spr.w, spr.h, spr.xoff, spr.yoff);
+	      _inventoryBarSprite.w, _inventoryBarSprite.h, _inventoryBarSprite.xoff, _inventoryBarSprite.yoff);
 }
 
 void CryOmni3DEngine_Atlantis::drawInventoryIcon(Graphics::ManagedSurface &dst,
@@ -304,40 +183,9 @@ Graphics::Surface *CryOmni3DEngine_Atlantis::loadTGA(FileType ft, const char *na
 		return nullptr;
 	}
 
-	// TGA header (18 bytes): all game TGAs are type 2 (uncompressed true-colour),
-	// 640x480, 15-bit depth.
-	byte  idLen   = stream->readByte();
-	/* cmType  = */ stream->readByte();
-	byte  imgType = stream->readByte();
-	stream->skip(9);                    // colour-map spec (5) + x/y origin (4)
-	uint16 w      = stream->readUint16LE();
-	uint16 h      = stream->readUint16LE();
-	byte   depth  = stream->readByte();
-	stream->readByte();                 // image descriptor
-	stream->skip(idLen);                // optional ID field
-
-	if (imgType != 2 || depth != 15 || w == 0 || h == 0) {
-		warning("loadTGA: unexpected format in %s (type=%u depth=%u %ux%u)",
-		        name, imgType, depth, w, h);
-		return nullptr;
-	}
-
-	Graphics::PixelFormat fmt = g_system->getScreenFormat();
-	Graphics::Surface *surf = new Graphics::Surface();
-	surf->create(w, h, fmt);
-
-	for (uint16 y = 0; y < h; y++) {
-		// TGA origin is bottom-left by default (image_descriptor bit 5 = 0).
-		uint16 *row = (uint16 *)surf->getBasePtr(0, h - 1 - y);
-		for (uint16 x = 0; x < w; x++) {
-			uint16 px = stream->readUint16LE();
-			uint8 r = ((px >> 10) & 0x1f) << 3;
-			uint8 g = ((px >>  5) & 0x1f) << 3;
-			uint8 b = ( px        & 0x1f) << 3;
-			row[x] = (uint16)fmt.RGBToColor(r, g, b);
-		}
-	}
-
+	Graphics::Surface *surf = readTga15(*stream, g_system->getScreenFormat());
+	if (!surf)
+		warning("loadTGA: unexpected format in %s", name);
 	return surf;
 }
 
@@ -348,50 +196,9 @@ void CryOmni3DEngine_Atlantis::loadObjectSprites() {
 		warning("loadObjectSprites: cannot open SPRITE\\2D\\OBJETS1.SPR");
 		return;
 	}
-
-	uint16 flags = stream->readUint16LE();
-	uint16 colorTable[256];
-	memset(colorTable, 0, sizeof(colorTable));
-	if (flags & 0x4) {
-		for (int i = 0; i < 256; i++) {
-			uint16 rgb555 = stream->readUint16LE();
-			uint16 r = (rgb555 >> 10) & 0x1f;
-			uint16 g = (rgb555 >> 5)  & 0x1f;
-			uint16 b =  rgb555        & 0x1f;
-			colorTable[i] = (r << 11) | (g << 6) | b;
-		}
-	}
-	if (flags & 0x8)
-		stream->skip(256 * 2);
-
-	uint16 count = stream->readUint16LE();
-	if (count == 0 || count > 256) {
-		warning("loadObjectSprites: unexpected count %u", count);
-		return;
-	}
-
-	const int64 sprDataBase = stream->pos();
-	Common::Array<uint32> offsets(count);
-	for (uint16 i = 0; i < count; i++)
-		offsets[i] = stream->readUint32LE();
-
-	_objSprites.resize(count);
-	for (uint16 si = 0; si < count; si++) {
-		if (!stream->seek(sprDataBase + offsets[si])) {
-			warning("loadObjectSprites: seek failed for sprite %u", si);
-			continue;
-		}
-		SubjSprite &spr = _objSprites[si];
-		spr.w    = stream->readUint16LE();
-		spr.h    = stream->readUint16LE();
-		spr.xoff = stream->readSint16LE();
-		spr.yoff = stream->readSint16LE();
-		if (spr.w == 0 || spr.h == 0 || spr.w > 640 || spr.h > 480)
-			continue;
-		decodeSprRows(*stream, spr, colorTable);
-	}
-
-	debugC(1, kDebugScript, "loadObjectSprites: loaded %u sprites from OBJETS1.SPR", count);
+	if (!readSprFile(*stream, _objSprites))
+		warning("loadObjectSprites: unexpected sprite count");
+	debugC(1, kDebugScript, "loadObjectSprites: loaded %u sprites from OBJETS1.SPR", _objSprites.size());
 }
 
 void CryOmni3DEngine_Atlantis::loadCursorSprites() {
@@ -401,51 +208,9 @@ void CryOmni3DEngine_Atlantis::loadCursorSprites() {
 		warning("loadCursorSprites: cannot open SPRITE\\2D\\CURSEURS.SPR");
 		return;
 	}
-
-	uint16 flags = stream->readUint16LE();
-	uint16 colorTable[256];
-	memset(colorTable, 0, sizeof(colorTable));
-	if (flags & 0x4) {
-		for (int i = 0; i < 256; i++) {
-			uint16 rgb555 = stream->readUint16LE();
-			uint16 r = (rgb555 >> 10) & 0x1f;
-			uint16 g = (rgb555 >> 5)  & 0x1f;
-			uint16 b =  rgb555        & 0x1f;
-			colorTable[i] = (uint16)((r << 11) | (g << 6) | b);
-		}
-	}
-	if (flags & 0x8)
-		stream->skip(512);
-
-	uint16 count = stream->readUint16LE();
-	if (count == 0 || count > 256) {
-		warning("loadCursorSprites: unexpected sprite count %u", count);
-		return;
-	}
-
-	const int64 sprDataBase = stream->pos();
-	Common::Array<uint32> offsets(count);
-	for (uint16 i = 0; i < count; i++)
-		offsets[i] = stream->readUint32LE();
-
-	_cursorSprites.resize(count);
-	for (uint16 si = 0; si < count; si++) {
-		if (!stream->seek(sprDataBase + offsets[si])) {
-			warning("loadCursorSprites: seek failed for sprite %u", si);
-			continue;
-		}
-		CursorSpr &spr = _cursorSprites[si];
-		spr.w    = stream->readUint16LE();
-		spr.h    = stream->readUint16LE();
-		spr.xoff = stream->readSint16LE();
-		spr.yoff = stream->readSint16LE();
-		if (spr.w == 0 || spr.h == 0 || spr.w > 64 || spr.h > 64)
-			continue;
-
-		decodeSprRows(*stream, spr, colorTable);
-	}
-
-	debugC(1, kDebugScript, "loadCursorSprites: loaded %u sprites from CURSEURS.SPR", count);
+	if (!readSprFile(*stream, _cursorSprites, 64, 64))
+		warning("loadCursorSprites: unexpected sprite count");
+	debugC(1, kDebugScript, "loadCursorSprites: loaded %u sprites from CURSEURS.SPR", _cursorSprites.size());
 }
 
 void CryOmni3DEngine_Atlantis::loadSpritePlaceList() {
