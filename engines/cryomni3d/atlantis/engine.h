@@ -169,6 +169,7 @@ private:
 	// Transition to the given place (currently a direct change; the UBB_VUE
 	// transition video is added with the dialog/video layer).
 	void executeTransition(uint nextPlaceId);
+	void turnToTransition(float srcAlpha, float srcBeta);
 	// Load a named WAM over the current one (a CON /set(changewam=…) sub-WAM or
 	// a save's stored WAM), without touching the inventory or CON script.
 	void setupWAMByName(const Common::String &wamName);

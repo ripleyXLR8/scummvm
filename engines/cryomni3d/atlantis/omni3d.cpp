@@ -27,6 +27,11 @@ namespace CryOmni3D {
 namespace Atlantis {
 
 // FUN_0045179a(hfov, 50).  Every caller passes 50 deg as the second argument.
+float Omni3DManagerAtlantis::exePi() {
+	const double q = sqrt(2.) * 0.5;
+	return (float)((M_PI_2 - atan2(q, sqrt(1. - q * q))) * 4.);
+}
+
 void Omni3DManagerAtlantis::setHFov(double hfov) {
 	_hfov = hfov;
 

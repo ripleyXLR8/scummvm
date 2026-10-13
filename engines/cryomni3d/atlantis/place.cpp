@@ -43,6 +43,8 @@
 
 #include "cryomni3d/omni3d.h"
 
+#include "cryomni3d/atlantis/omni3d.h"
+#include "cryomni3d/atlantis/transition_turn.h"
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/inventory.h"
 
@@ -196,6 +198,9 @@ void CryOmni3DEngine_Atlantis::executeTransition(uint nextPlaceId) {
 
 	const AtlantisTransition *trans = _currentPlace->findTransition((uint16)nextPlaceId);
 	if (trans) {
+		// FUN_00423ad8 @ 0x00423ec0: FUN_004212cc turns the view to the
+		// transition's source angles before the video.
+		turnToTransition(trans->srcAlpha, trans->srcBeta);
 		playTransitionVideo(trans->videoName, _currentPlaceId, nextPlaceId);
 		_omni3dMan.setAlpha(trans->dstAlpha);
 		_omni3dMan.setBeta(trans->dstBeta);
@@ -227,6 +232,50 @@ void CryOmni3DEngine_Atlantis::executeTransition(uint nextPlaceId) {
 	}
 
 	_nextPlaceId = nextPlaceId;
+}
+
+// atlantis.exe FUN_004212cc (transition_turn.h): the turn's frames, each
+// drawn as the warp loop draws one (place sprites, the view, the guest
+// portraits) without input or cursor.  With the CON variable ZOOM set, the
+// field of view narrows by 3 degrees a frame from 75.187; the turn ends with
+// FUN_0045179a(75.187), which lasts through the video until FUN_0044a424
+// sets the warp's 75.137 again, and ZOOM = 0.
+void CryOmni3DEngine_Atlantis::turnToTransition(float srcAlpha, float srcBeta) {
+	if (!_warpLoaded)
+		return;
+	const bool zoom = _gameVars.getValOrDefault("zoom", 0) != 0;
+	Common::Array<TransitionTurn::Frame> frames;
+	float endAlpha, endBeta;
+	TransitionTurn::run(Omni3DManagerAtlantis::exePi(), (float)_omni3dMan.getAlpha(),
+	                    (float)_omni3dMan.getBeta(), srcAlpha, srcBeta, zoom, frames, endAlpha, endBeta);
+	const double savedHFov = _omni3dMan.getHFov();
+	showMouse(false);
+	for (uint i = 0; i < frames.size() && !shouldAbort(); i++) {
+		pollEvents();
+		if (frames[i].fovSet)
+			_omni3dMan.setHFov((double)frames[i].fov * M_PI / 180.0);
+		_omni3dMan.setAlpha((double)frames[i].alpha);
+		_omni3dMan.setBeta((double)frames[i].beta);
+		animateSprites();
+		const Graphics::Surface *view = _omni3dMan.getSurface();
+		if (!view)
+			continue;
+		if (_guestsShown && _guests.count) {
+			Graphics::ManagedSurface frame;
+			frame.copyFrom(*view);
+			drawGuests(frame);
+			g_system->copyRectToScreen(frame.getPixels(), frame.pitch, 0, 0, frame.w, frame.h);
+		} else {
+			g_system->copyRectToScreen(view->getPixels(), view->pitch, 0, 0, view->w, view->h);
+		}
+		g_system->updateScreen();
+		// [UNKNOWN] the exe's turn has no timer of its own; the port's warp
+		// loop pace (10 ms) is used.
+		g_system->delayMillis(10);
+	}
+	_omni3dMan.setHFov(savedHFov);
+	showMouse(true);
+	_gameVars["zoom"] = 0;
 }
 
 void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoName,

@@ -49,6 +49,9 @@ public:
 
 	void setHFov(double hfov) override;
 
+	// pi as FUN_0045179a stores it at 0x00bcb594 (a float).
+	static float exePi();
+
 protected:
 	void updateImageCoords() override;
 

@@ -50,11 +50,12 @@ namespace CryOmni3D {
 namespace Atlantis {
 
 bool CryOmni3DEngine_Atlantis::isPersistentGameVar(const Common::String &key) {
-	// Only these 7 CON variables survive a chapter change; the original
-	// engine's FUN_00427634 zeroes every other slot on `chapter=`.
+	// FUN_00427634 zeroes the CON variables from slot 7 on (0x0042767f..)
+	// on `chapter=`: the first 7 of VARIAS.CON survive, and ZOOM, which it
+	// reads before the clear and writes back (0x00427664..0x004276ca).
 	static const char *const kPersistent[] = {
 		"chapter", "gardecel", "newsound", "flagchp8",
-		"bouclecreon", "codetronevu", "nbstatues"
+		"bouclecreon", "codetronevu", "nbstatues", "zoom"
 	};
 	for (const char *p : kPersistent)
 		if (key.equalsIgnoreCase(p))
