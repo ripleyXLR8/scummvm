@@ -144,7 +144,8 @@ public:
 		return (idx < _cursorSprites.size() && !_cursorSprites[idx].pixels.empty()) ? &_cursorSprites[idx] : nullptr;
 	}
 	// Play WAV\<name>.APC once (puzzle sound effects).
-	void playPuzzleSound(const char *name);
+	// Plays WAV\<name>.APC once; the handle answers "still playing".
+	Audio::SoundHandle playPuzzleSound(const char *name);
 	// The held object (the OBJETENMAIN variable), and emptying the hand.
 	const Object *heldObject() const { return _inventory.selectedObject(); }
 	uint currentPlaceId() const { return _currentPlaceId; }

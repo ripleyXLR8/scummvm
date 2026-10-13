@@ -44,6 +44,7 @@
 #include "cryomni3d/atlantis/puzzle_dispatch.h"
 #include "cryomni3d/atlantis/puzzle_hens.h"
 #include "cryomni3d/atlantis/puzzle_pieces.h"
+#include "cryomni3d/atlantis/puzzle_crab.h"
 #include "cryomni3d/atlantis/puzzle_hexa.h"
 #include "cryomni3d/atlantis/puzzle_meta.h"
 #include "cryomni3d/atlantis/puzzle_rat.h"
@@ -176,17 +177,18 @@ int CryOmni3DEngine_Atlantis::resolveSpeakerPersoId(const Common::String &speake
 	return persoId;
 }
 
-void CryOmni3DEngine_Atlantis::playPuzzleSound(const char *name) {
+Audio::SoundHandle CryOmni3DEngine_Atlantis::playPuzzleSound(const char *name) {
+	Audio::SoundHandle handle;
 	Common::String fname = Common::String::format("%s.APC", name);
 	Common::SeekableReadStream *apcFile = openBigFileStream(kFileTypeSound, fname);
 	if (!apcFile) {
 		warning("playPuzzleSound: cannot open WAV\\%s", fname.c_str());
-		return;
+		return handle;
 	}
 	Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*apcFile);
 	if (!apc) {
 		delete apcFile;
-		return;
+		return handle;
 	}
 	int64 remaining = apcFile->size() - apcFile->pos();
 	if (remaining > 0) {
@@ -196,8 +198,8 @@ void CryOmni3DEngine_Atlantis::playPuzzleSound(const char *name) {
 	}
 	apc->finish();
 	delete apcFile;
-	Audio::SoundHandle handle;
 	_mixer->playStream(Audio::Mixer::kSFXSoundType, &handle, apc);
+	return handle;
 }
 
 void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
@@ -284,6 +286,12 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 		// Four snakes in a maze at CHAPI034 (FUN_0043b0f4).
 		SnakesPuzzle puz(this);
 		finPuzzle = puz.run();
+		break;
+	}
+	case 15: {
+		// The crab race at CHAPI066 (FUN_0043d28c).
+		CrabPuzzle puz(this);
+		finPuzzle = puz.play();
 		break;
 	}
 	default:

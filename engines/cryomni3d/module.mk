@@ -46,6 +46,7 @@ MODULE_OBJS += \
 	atlantis/music.o \
 	atlantis/navigation.o \
 	atlantis/npc_click.o \
+	atlantis/crab_game.o \
 	atlantis/hexa_game.o \
 	atlantis/meta_game.o \
 	atlantis/ogre_rules.o \
@@ -60,6 +61,7 @@ MODULE_OBJS += \
 	atlantis/puzzle_ogregame.o \
 	atlantis/puzzle_hens.o \
 	atlantis/puzzle_pieces.o \
+	atlantis/puzzle_crab.o \
 	atlantis/puzzle_hexa.o \
 	atlantis/puzzle_meta.o \
 	atlantis/puzzle_rat.o \
