@@ -19,7 +19,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install libraries
-        run: brew install sdl2 freetype libpng jpeg-turbo dylibbundler
+        run: brew install freetype libpng jpeg-turbo dylibbundler
+      # Homebrew's sdl2 is sdl2-compat, which dlopen()s SDL3 at run time:
+      # dylibbundler cannot see SDL3, and the app fails to start on a Mac
+      # without Homebrew.  Build the real SDL2 instead.
+      - name: Build SDL2
+        run: |
+          git clone --depth 1 --branch SDL2 https://github.com/libsdl-org/SDL.git sdl2-src
+          cmake -S sdl2-src -B sdl2-build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$HOME/sdl2" -DSDL_TEST=OFF
+          cmake --build sdl2-build -j$(sysctl -n hw.ncpu)
+          cmake --install sdl2-build
+          echo "$HOME/sdl2/bin" >> "$GITHUB_PATH"
       - name: Configure
         run: ./configure --disable-all-engines --enable-engine=cryomni3d,versailles,atlantis --enable-release
       - name: Build
@@ -32,6 +43,13 @@ jobs:
           dylibbundler -od -b -x ScummVM.app/Contents/MacOS/scummvm \
             -d ScummVM.app/Contents/libs/ -p @executable_path/../libs/
           codesign --force --deep --sign - ScummVM.app
+      - name: Check the bundled libraries
+        run: |
+          # Nothing may point outside the app or the system, nor load SDL3.
+          if otool -L ScummVM.app/Contents/MacOS/scummvm ScummVM.app/Contents/libs/*.dylib \
+              | grep -E '/opt/homebrew|/usr/local|sdl2-compat|SDL3'; then exit 1; fi
+          if strings ScummVM.app/Contents/libs/*.dylib | grep -q 'libSDL3'; then exit 1; fi
+          otool -L ScummVM.app/Contents/MacOS/scummvm
       - name: Check the minimum macOS of every binary
         run: |
           bad=0
