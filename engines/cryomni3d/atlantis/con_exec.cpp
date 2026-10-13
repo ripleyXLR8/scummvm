@@ -1096,22 +1096,9 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 	for (ConSection &sec : _conScript.sections()) {
 		if (!sec.isCon)
 			continue;
-		// A /con section is for this NPC if a clicperso condition names it;
-		// sections whose only click constraint is a cliczone belong to the
-		// zone scan, not the per-NPC one.
-		bool hasClicPerso = false, forThisPerso = false, hasClicZone = false;
-		for (const ConCondition &cc : sec.conditions) {
-			if (cc.key == "clicperso") {
-				hasClicPerso = true;
-				if (cc.value == persoId) forThisPerso = true;
-			} else if (cc.key == "cliczone") {
-				hasClicZone = true;
-			}
-		}
-		if (hasClicPerso && !forThisPerso)
-			continue;
-		if (!hasClicPerso && hasClicZone)
-			continue;
+		// No filter by click variables: FUN_004281f8 hands every /con entry
+		// to the evaluator, with ClicPerso = the NPC and ClicZone = the zone
+		// under the pointer (set by the warp loop's caller).
 		if (!conEntryAllowed(sec, _conPlayCounters))
 			continue;
 		if (!evalSelSection(sec, 0, (int)_currentPlaceId))

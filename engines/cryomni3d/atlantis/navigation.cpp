@@ -346,10 +346,15 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			showMouse(true);   // the warp cursor may be hidden
 			// FUN_004278a0 starts the click animation (0x004278b5).
 			_warpCursor.clickAnim = true;
+			// ClicZone = the zone under the pointer: the warp loop returns it
+			// with the NPC (0x0041c71e) and the place loop stores it before
+			// FUN_004278a0 (0x00423c1c); it returns to 0 on the next pass.
+			_gameVars["cliczone"] = (int)actionId;
 			if (centrePerso < 0x200)
 				clickObject(centrePerso);
 			else
 				interactNPC(centrePerso);
+			_gameVars["cliczone"] = 0;
 			if (shouldAbort()) {
 				actionId = 66666;
 				exit = true;
