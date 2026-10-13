@@ -4,6 +4,7 @@
 #include "common/memstream.h"
 #include "common/stream.h"
 
+#include "cryomni3d/atlantis/saveload_format.h"
 
 #include "../../../system/null_osystem.h"
 
@@ -16,11 +17,9 @@
 //   0x0041d16a.. (load-picker sort), 0x0041d3a1..0x0041d431 (EPI.TXT name of
 //   a save), FUN_0041e8a8 (delete player).
 //
-// The port's save code (saveload.cpp) is made of private methods of
-// CryOmni3DEngine_Atlantis and cannot be called from a test.  Tests marked
-// FAITHFUL COPY run a verbatim copy of the port logic (atlantis-v2 branch);
-// see atlantis-re/audit/ui/saves.md for the extraction that would remove the
-// copies.  Failing tests are audit RESULTS (port differs from the original).
+// Port code exercised directly: epiEpisodeName, readPlayersFile and
+// checkpointWritten (saveload_format.cpp), which the engine's saveload.cpp
+// and menus.cpp call.
 
 namespace UiSaves {
 
@@ -75,71 +74,25 @@ static OrigProfiles origDecodePlayersAtl(const byte *b) {
 	return p;
 }
 
-// ---- FAITHFUL COPY of saveload.cpp CryOmni3DEngine_Atlantis::loadPlayers()
-// (stream part; kMaxPlayers = 5, kPlayersMagic 'APLR').
+// ---- Adapters over the port's save formats (saveload_format.cpp).
 static void portLoadPlayers(Common::SeekableReadStream *in, Common::String players[5], int playerChapter[5]) {
-	const uint kMaxPlayers = 5;
-	const uint32 kPlayersMagic = 0x41504c52u;
-	for (uint i = 0; i < kMaxPlayers; i++) {
-		players[i].clear();
-		playerChapter[i] = 0;
-	}
-	if (!in)
-		return;
-	uint32 magic   = in->readUint32BE();
-	uint32 version = in->readUint32BE();
-	if (magic == kPlayersMagic && version >= 1) {
-		uint32 count = in->readUint32BE();
-		for (uint32 i = 0; i < count && i < kMaxPlayers && !in->eos(); i++) {
-			uint16 len = in->readUint16BE();
-			Common::String name;
-			for (uint16 j = 0; j < len && !in->eos(); j++)
-				name += (char)in->readByte();
-			players[i] = name;
-		}
-		if (version >= 2) {
-			for (uint32 i = 0; i < count && i < kMaxPlayers && !in->eos(); i++)
-				playerChapter[i] = in->readSint32BE();
-		}
-	}
+	CryOmni3D::Atlantis::readPlayersFile(*in, players, playerChapter);
 }
 
-// ---- FAITHFUL COPY of saveload.cpp loadEpisodeNames() (parsing part) and
-// menus.cpp episodeName().
-static Common::Array<Common::String> portEpisodeNames(const byte *data, uint32 sz) {
-	Common::Array<Common::String> names;
-	Common::Array<char> buf;
-	buf.resize(sz + 1);
+typedef Common::Array<byte> EpiText;
+static EpiText portEpisodeNames(const byte *data, uint32 sz) {
+	EpiText t;
+	t.resize(sz);
 	if (sz)
-		memcpy(buf.data(), data, sz);
-	buf[sz] = '\0';
-	Common::String cur;
-	for (uint32 i = 0; i <= sz; i++) {
-		char c = buf[i];
-		if (c == '\n' || c == '\0') {
-			if (cur.equalsIgnoreCase("/FIN"))
-				break;
-			names.push_back(cur);
-			cur.clear();
-		} else if (c != '\r') {
-			cur += c;
-		}
-	}
-	return names;
+		memcpy(t.data(), data, sz);
+	return t;
 }
-static Common::String portEpisodeName(const Common::Array<Common::String> &names, uint chapter) {
-	if (chapter < 1 || chapter > names.size())
-		return Common::String();
-	return names[chapter - 1];
+static Common::String portEpisodeName(const EpiText &text, uint chapter) {
+	return CryOmni3D::Atlantis::epiEpisodeName(text.data(), text.size(), chapter);
 }
 
-// ---- FAITHFUL COPY of the gating in saveload.cpp autosave(): a chapter
-// checkpoint is written only when 1 <= chapter < 100 and its EPI name is
-// non-empty.
-static bool portAutosaveWrites(const Common::Array<Common::String> &names, uint chapter) {
-	if (chapter < 1 || chapter >= 100)
-		return false;
-	return !portEpisodeName(names, chapter).empty();
+static bool portAutosaveWrites(const EpiText &, uint chapter) {
+	return CryOmni3D::Atlantis::checkpointWritten(chapter);
 }
 
 // Port-independent read of one member of BIGCD1.BIG (same layout as
@@ -231,8 +184,8 @@ public:
 		                 "ccc24a09a35582201e2818ff5f9f0c57");
 	}
 
-	// RESULT: the port cannot read an original players.atl (it expects its
-	// own 'APLR' big-endian file "atlantis-players.dat").  FAITHFUL COPY.
+	// An original players.atl: the port reads its names and chapters (when
+	// its own "atlantis-players.dat" is absent).
 	void test_port_reads_original_players_atl() {
 		using namespace UiSaves;
 		Common::MemoryReadStream s(kOrigPlayersAtl, sizeof(kOrigPlayersAtl));
@@ -246,46 +199,44 @@ public:
 	}
 
 	// EPI.TXT: chapter N's save is shown with line N-1 (0-based).  Synthetic
-	// CR/LF file; expected names from the emulated original.  FAITHFUL COPY.
+	// CR/LF file; expected names from the emulated original.
 	void test_port_episode_names_crlf() {
 		using namespace UiSaves;
 		const char epi[] = "\r\nTwo\r\n\r\nFour \r\nFive\r\n/FIN\r\n";
-		Common::Array<Common::String> n = portEpisodeNames((const byte *)epi, sizeof(epi) - 1);
+		EpiText n = portEpisodeNames((const byte *)epi, sizeof(epi) - 1);
 		TS_ASSERT_EQUALS(portEpisodeName(n, 2), "Two");
 		TS_ASSERT_EQUALS(portEpisodeName(n, 3), "");
 		TS_ASSERT_EQUALS(portEpisodeName(n, 4), "Four ");   // trailing space kept by both
 		TS_ASSERT_EQUALS(portEpisodeName(n, 5), "Five");
 	}
 
-	// RESULT (edge cases, no effect on the shipped EPI.TXT): the original
-	// returns the "/FIN" line itself for the chapter after the last name,
-	// and splits lines only at CR (a bare LF stays inside the name).
+	// Edge cases (no effect on the shipped EPI.TXT): the original returns the
+	// "/FIN" line itself for the chapter after the last name, and splits
+	// lines only at CR (a bare LF stays inside the name).
 	void test_port_episode_names_edge_cases() {
 		using namespace UiSaves;
 		const char epi[] = "\r\nTwo\r\n\r\nFour \r\nFive\r\n/FIN\r\n";
-		Common::Array<Common::String> n = portEpisodeNames((const byte *)epi, sizeof(epi) - 1);
+		EpiText n = portEpisodeNames((const byte *)epi, sizeof(epi) - 1);
 		TS_ASSERT_EQUALS(portEpisodeName(n, 6), "/FIN");
 		const char lf[] = "\r\nTwo\nX\r\nThree\r\n/fin\r\n";
-		Common::Array<Common::String> m = portEpisodeNames((const byte *)lf, sizeof(lf) - 1);
+		EpiText m = portEpisodeNames((const byte *)lf, sizeof(lf) - 1);
 		TS_ASSERT_EQUALS(portEpisodeName(m, 2), "Two\nX");
 		TS_ASSERT_EQUALS(portEpisodeName(m, 3), "Three");
 	}
 
-	// RESULT (rule difference; no effect on shipped data, whose /set(chapter=N)
-	// targets all have a non-empty EPI name): the original writes a checkpoint
-	// on every CON chapter change (FUN_0042a100 -> FUN_00427634 @ 0x42765f ->
-	// FUN_0042d6b8) unless a load is in progress; the port skips chapters with
-	// an empty EPI name.  FAITHFUL COPY.
+	// The original writes a checkpoint on every CON chapter change
+	// (FUN_0042a100 -> FUN_00427634 @ 0x42765f -> FUN_0042d6b8) unless a load
+	// is in progress, even for a chapter with an empty EPI name.
 	void test_port_checkpoint_rule() {
 		using namespace UiSaves;
 		const char epi[] = "\r\nTwo\r\n\r\nFour \r\n/FIN\r\n";
-		Common::Array<Common::String> n = portEpisodeNames((const byte *)epi, sizeof(epi) - 1);
+		EpiText n = portEpisodeNames((const byte *)epi, sizeof(epi) - 1);
 		TS_ASSERT(portAutosaveWrites(n, 2));
 		TS_ASSERT(portAutosaveWrites(n, 3));   // original: p<L>3.gam written
 	}
 
 	// Data test: every episode name of the shipped EPI.TXT, as the original
-	// load picker extracts it, versus the port's parser (FAITHFUL COPY).
+	// load picker extracts it, versus the port's epiEpisodeName.
 	// Chapters 2..85 (all chapters the CON scripts set).
 	void test_data_episode_names_vs_original() {
 		if (!AtlantisTest::haveData()) {
@@ -299,7 +250,7 @@ public:
 		if (data.empty())
 			return;
 		TS_ASSERT_EQUALS(AtlantisTest::md5Hex(data.data(), data.size()), golden["epi.txt"]);
-		Common::Array<Common::String> n = UiSaves::portEpisodeNames(data.data(), data.size());
+		UiSaves::EpiText n = UiSaves::portEpisodeNames(data.data(), data.size());
 		for (uint ch = 2; ch <= 85; ch++) {
 			Common::String key = Common::String::format("chapter %u", ch);
 			Common::String name = UiSaves::portEpisodeName(n, ch);

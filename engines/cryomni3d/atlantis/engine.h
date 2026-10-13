@@ -43,6 +43,7 @@
 #include "cryomni3d/atlantis/menu_layout.h"
 #include "cryomni3d/atlantis/npc_click.h"
 #include "cryomni3d/atlantis/omni3d.h"
+#include "cryomni3d/atlantis/saveload_format.h"
 #include "cryomni3d/atlantis/sprite_anim.h"
 #include "cryomni3d/atlantis/sprite_decode.h"
 #include "cryomni3d/atlantis/toolbar.h"
@@ -184,9 +185,9 @@ private:
 	// rewrites it when that episode is (re-)entered.  Up to kMaxPlayers named
 	// players each own the absolute slot block [id*stride, id*stride+stride);
 	// chapter N's save is local slot N of the block.
-	static const uint kMaxPlayers       = 5;
+	static const uint kMaxPlayers       = kSaveMaxPlayers;
 	static const uint kPlayerNameLen    = 16;
-	static const uint kPlayerSlotStride = 100;
+	static const uint kPlayerSlotStride = kSavePlayerSlotStride;
 	int episodeSaveSlot(uint player, uint chapter) const {
 		return (int)(player * kPlayerSlotStride + chapter);
 	}
@@ -652,7 +653,7 @@ private:
 	Common::String _players[kMaxPlayers];   // named player profiles (empty = unused)
 	int            _currentPlayer;          // owning player for autosave slots
 	int            _playerChapter[kMaxPlayers];  // per-player resume chapter
-	Common::Array<Common::String> _episodeNames;
+	Common::Array<byte> _epiText;   // SPRLIST\EPI.TXT, read by episodeName
 
 	byte *_mainPalette;
 

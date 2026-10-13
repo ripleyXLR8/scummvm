@@ -52,6 +52,7 @@ MODULE_OBJS += \
 	atlantis/puzzle_eclipse.o \
 	atlantis/puzzle_ogregame.o \
 	atlantis/saveload.o \
+	atlantis/saveload_format.o \
 	atlantis/sprite_anim.o \
 	atlantis/sprite_decode.o \
 	atlantis/sprite_renderer.o \

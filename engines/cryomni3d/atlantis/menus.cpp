@@ -1377,9 +1377,7 @@ uint CryOmni3DEngine_Atlantis::displayInGameMenu() {
 }
 
 Common::String CryOmni3DEngine_Atlantis::episodeName(uint chapter) const {
-	if (chapter < 1 || chapter > _episodeNames.size())
-		return Common::String();
-	return _episodeNames[chapter - 1];
+	return epiEpisodeName(_epiText.data(), _epiText.size(), chapter);
 }
 
 // Parse a SPRLIST\*MENU.TXT layout (base name only, e.g. "MAINMENU.TXT").

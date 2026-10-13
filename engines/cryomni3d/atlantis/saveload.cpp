@@ -49,8 +49,9 @@ static const uint32 kExtVersion      = 7;
 
 // Player-profile file (cannot collide with the "atlantis.NNNN" save files).
 static const char  *kPlayersFile    = "atlantis-players.dat";
-static const uint32 kPlayersMagic   = 0x41504c52u;  // 'APLR'
-static const uint32 kPlayersVersion = 2;             // v2 appends resume chapters
+// The original's profile file, read when the port's own file is absent (its
+// p<L><N>.gam checkpoints are not read, so such a player starts anew).
+static const char  *kOrigPlayersFile = "players.atl";
 
 void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &saveName) {
 	Common::String saveFileName = getSaveStateName((int)saveNum - 1);
@@ -347,15 +348,12 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 }
 
 void CryOmni3DEngine_Atlantis::autosave() {
-	// One named save per episode, in the current player's slot block.  Chapters
-	// with no EPI.TXT name (the intro chapter 1, the end-game sentinels) get no
-	// checkpoint, matching the original.
+	// One named save per episode, in the current player's slot block.  The
+	// original writes one on every chapter change, whatever its EPI.TXT name.
 	uint chapter = _currentCONChapter;
-	if (chapter < 1 || chapter >= kPlayerSlotStride)
+	if (!checkpointWritten(chapter))
 		return;
 	Common::String name = episodeName(chapter);
-	if (name.empty())
-		return;
 	saveGame((uint)episodeSaveSlot((uint)_currentPlayer, chapter) + 1, name);
 	if (_currentPlayer >= 0 && _currentPlayer < (int)kMaxPlayers) {
 		_playerChapter[_currentPlayer] = (int)chapter;
@@ -372,23 +370,11 @@ void CryOmni3DEngine_Atlantis::loadPlayers() {
 	}
 	Common::InSaveFile *in = _saveFileMan->openForLoading(kPlayersFile);
 	if (!in)
+		in = _saveFileMan->openForLoading(kOrigPlayersFile);
+	if (!in)
 		return;
-	uint32 magic   = in->readUint32BE();
-	uint32 version = in->readUint32BE();
-	if (magic == kPlayersMagic && version >= 1) {
-		uint32 count = in->readUint32BE();
-		for (uint32 i = 0; i < count && i < kMaxPlayers && !in->eos(); i++) {
-			uint16 len = in->readUint16BE();
-			Common::String name;
-			for (uint16 j = 0; j < len && !in->eos(); j++)
-				name += (char)in->readByte();
-			_players[i] = name;
-		}
-		if (version >= 2) {
-			for (uint32 i = 0; i < count && i < kMaxPlayers && !in->eos(); i++)
-				_playerChapter[i] = in->readSint32BE();
-		}
-	}
+	if (!readPlayersFile(*in, _players, _playerChapter))
+		warning("loadPlayers: unrecognised players file");
 	delete in;
 }
 
@@ -398,15 +384,7 @@ void CryOmni3DEngine_Atlantis::savePlayers() {
 		warning("savePlayers: cannot write %s", kPlayersFile);
 		return;
 	}
-	out->writeUint32BE(kPlayersMagic);
-	out->writeUint32BE(kPlayersVersion);
-	out->writeUint32BE(kMaxPlayers);
-	for (uint i = 0; i < kMaxPlayers; i++) {
-		out->writeUint16BE((uint16)_players[i].size());
-		out->write(_players[i].c_str(), _players[i].size());
-	}
-	for (uint i = 0; i < kMaxPlayers; i++)
-		out->writeSint32BE(_playerChapter[i]);
+	writePlayersFile(*out, _players, _playerChapter);
 	out->finalize();
 	delete out;
 }
@@ -446,35 +424,20 @@ bool CryOmni3DEngine_Atlantis::playerHasSave(uint player) const {
 	return playerResumeSave(player) != 0;
 }
 
-// SPRLIST\EPI.TXT — CR/LF-separated episode checkpoint names, /FIN-terminated.
+// SPRLIST\EPI.TXT, kept whole: episodeName extracts a chapter's name as the
+// original load picker does (saveload_format.cpp).
 void CryOmni3DEngine_Atlantis::loadEpisodeNames() {
-	_episodeNames.clear();
+	_epiText.clear();
 	Common::ScopedPtr<Common::SeekableReadStream> s(
 	    openBigFileStream(kFileTypeSprite, "EPI.TXT"));
 	if (!s) {
 		warning("loadEpisodeNames: cannot open SPRLIST\\EPI.TXT");
 		return;
 	}
-	uint32 sz = (uint32)s->size();
-	Common::Array<char> buf;
-	buf.resize(sz + 1);
-	if (sz)
-		s->read(buf.data(), sz);
-	buf[sz] = '\0';
-
-	Common::String cur;
-	for (uint32 i = 0; i <= sz; i++) {
-		char c = buf[i];
-		if (c == '\n' || c == '\0') {
-			if (cur.equalsIgnoreCase("/FIN"))
-				break;
-			_episodeNames.push_back(cur);
-			cur.clear();
-		} else if (c != '\r') {
-			cur += c;
-		}
-	}
-	debugC(1, kDebugSaveLoad, "loadEpisodeNames: %u episode checkpoint names", _episodeNames.size());
+	_epiText.resize((uint)s->size());
+	if (!_epiText.empty())
+		s->read(_epiText.data(), _epiText.size());
+	debugC(1, kDebugSaveLoad, "loadEpisodeNames: %u bytes", _epiText.size());
 }
 
 } // End of namespace Atlantis
