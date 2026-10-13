@@ -145,6 +145,8 @@ public:
 	void playPuzzleSound(const char *name);
 	// The held object (the OBJETENMAIN variable), and emptying the hand.
 	const Object *heldObject() const { return _inventory.selectedObject(); }
+	uint currentPlaceId() const { return _currentPlaceId; }
+	void setGameVar(const char *name, int value) { _gameVars[name] = value; }
 	void clearHeldObject() {
 		_inventory.setSelectedObject(nullptr);
 		_gameVars["objetenmain"] = 0;

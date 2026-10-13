@@ -44,6 +44,7 @@
 #include "cryomni3d/atlantis/puzzle_dispatch.h"
 #include "cryomni3d/atlantis/puzzle_hens.h"
 #include "cryomni3d/atlantis/puzzle_pieces.h"
+#include "cryomni3d/atlantis/puzzle_meta.h"
 #include "cryomni3d/atlantis/puzzle_rat.h"
 #include "cryomni3d/atlantis/puzzle_snakes.h"
 #include "cryomni3d/atlantis/puzzle_taquin.h"
@@ -260,6 +261,15 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 		// The sliding puzzles at CHAPI045..051 (FUN_00446300, FUN_0044659c,
 		// FUN_00446830).
 		TaquinPuzzle puz(this, puzzleId);
+		finPuzzle = puz.play();
+		break;
+	}
+	case 9:
+	case 10:
+	case 11:
+	case 12: {
+		// The metal pieces at CHAPI046 (FUN_0044763c, stages 1..4).
+		MetaPuzzle puz(this, puzzleId - 8);
 		finPuzzle = puz.play();
 		break;
 	}
