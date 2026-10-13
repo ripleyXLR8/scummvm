@@ -358,13 +358,14 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	                        this, &CryOmni3DEngine_Atlantis::refreshInventoryToolbar));
 
 	// The inventory bar: the OBJETS0.SPR background is added as the toolbar's
-	// only menu sprite, left edge centred at x=20 (the sprite carries
-	// xoff=-20, so tx=0 yields draw_x=20).  Item icons composite on top.
+	// only menu sprite, hotspot at (0, 443) as in the original.  Item icons
+	// composite on top.
 	_toolbar.init(&_inventory, this);
 	if (!_inventoryBarSprite.pixels.empty()) {
 		const SubjSprite &s = _inventoryBarSprite;
 		_toolbar.addMenuSprite(s.w, s.h, s.xoff, s.yoff, kSprTransp,
-		                       0, s.yoff, s.pixels.data(), s.blend.data());
+		                       0, Atlantis_Toolbar::kBarHotspotY - Atlantis_Toolbar::kBarSurfaceTop,
+		                       s.pixels.data(), s.blend.data());
 	}
 
 	_canLoadSave = true;

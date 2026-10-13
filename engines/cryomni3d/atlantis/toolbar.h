@@ -45,6 +45,14 @@ public:
 	~Atlantis_Toolbar();
 
 	void init(Inventory *inventory, CryOmni3DEngine_Atlantis *engine);
+
+	// The bar surface covers the bottom 82 rows; atlantis.exe draws the
+	// OBJETS0 background with its hotspot at y = 443 (FUN_0042c8ac @
+	// 0x0042c96e), so the menu sprite's ty is kBarHotspotY - kBarSurfaceTop.
+	static const int kBarSurfaceTop = 480 - 82;
+	static const int kBarHotspotY = 443;
+	// Top row, in the bar surface, of a menu sprite at (tx, ty).
+	static int menuSpriteTop(int ty, int16 yoff, uint position) { return (ty - yoff) + (int)position; }
 	void addMenuSprite(uint16 w, uint16 h, int16 xoff, int16 yoff, uint16 transpKey,
 	                   int tx, int ty, const uint16 *pix, const uint8 *blend);
 
@@ -107,6 +115,7 @@ private:
 	// 9 visible inventory slots, one per star-of-David ornament in OBJETS0.SPR.
 	static const uint kInventorySlots = 9;
 
+	void setupZones();
 	void addZone(Common::Rect rect, ZoneCallback callback);
 	void updateZones();
 	Common::Array<Zone>::const_iterator hitTestZones(const Common::Point &mousePos) const;

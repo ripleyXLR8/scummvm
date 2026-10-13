@@ -18,13 +18,10 @@
 // the Atlantis inventory unit (inventory.cpp: readInventoryIconTable,
 // buildInventoryCatalogue, findInventoryObject, inventoryAppend,
 // inventoryRemove, inventoryReset), Atlantis_Toolbar::hitTestZones /
-// callbackInventory / addZone (toolbar.cpp); init() itself cannot run (see
-// initToolbarNoGfx).
+// callbackInventory / setupZones / menuSpriteTop (toolbar.cpp); init()
+// itself cannot run (see initToolbarNoGfx).
 // portInvent() repeats the "inventN" branch of execConSetCommand
 // (con_exec.cpp), which only calls the inventory unit.
-// FAITHFUL COPIES (stated explicitly):
-//  - the bar-sprite placement of engine.cpp (addMenuSprite(..., 0, s.yoff))
-//    combined with Atlantis_Toolbar::drawToolbar's baseY formula.
 
 #include "atlantis_test_helper.h"
 #include "../../../system/null_osystem.h"
@@ -90,20 +87,10 @@ inline Common::String order(const CryOmni3D::Inventory &inv) {
 // a FAITHFUL COPY of init()'s zone set-up (toolbar.cpp) plus the 82-row
 // destination surface hitTestZones() reads; everything else is real code.
 inline void initToolbarNoGfx(CryOmni3D::Atlantis::Atlantis_Toolbar &tb, CryOmni3D::Inventory *inv) {
-	typedef CryOmni3D::Atlantis::Atlantis_Toolbar T;
 	tb._inventory = inv;
 	tb._engine = nullptr;
 	tb._destSurface.create(640, 82, Graphics::PixelFormat(2, 5, 6, 5, 0, 11, 5, 0, 0));
-	static const int kSlotCenters[9] = {42, 112, 182, 252, 322, 392, 462, 532, 602};
-	const int kSlotHalfW = 25, kSlotTop = 25, kSlotBot = 65;
-	T::ZoneCallback cbs[9] = {
-		&T::callbackInventory<0>, &T::callbackInventory<1>, &T::callbackInventory<2>,
-		&T::callbackInventory<3>, &T::callbackInventory<4>, &T::callbackInventory<5>,
-		&T::callbackInventory<6>, &T::callbackInventory<7>, &T::callbackInventory<8>,
-	};
-	for (uint i = 0; i < 9; i++)
-		tb.addZone(Common::Rect(kSlotCenters[i] - kSlotHalfW, kSlotTop,
-		                        kSlotCenters[i] + kSlotHalfW, kSlotBot), cbs[i]);
+	tb.setupZones();
 }
 
 } // End of namespace GraphicsToolbarTest
@@ -282,8 +269,8 @@ public:
 	void test_icon_hotspots() {
 		CryOmni3D::Atlantis::Atlantis_Toolbar tb;
 		GraphicsToolbarTest::initToolbarNoGfx(tb, nullptr);
-		TS_ASSERT_EQUALS(tb._zones.size(), 9u);
-		for (uint i = 0; i < tb._zones.size(); i++) {
+		TS_ASSERT_EQUALS(tb._zones.size(), 10u);   // 9 slots + the column at x >= 630
+		for (uint i = 0; i < 9; i++) {
 			const Common::Rect &r = tb._zones[i].rect;
 			TS_ASSERT_EQUALS((r.left + r.right) / 2, (int)(i * 70 + 42));
 			TS_ASSERT_EQUALS((r.top + r.bottom) / 2 + (480 - 82), 443);
@@ -345,8 +332,12 @@ public:
 		int16 xoff = s->readSint16LE();
 		int16 yoff = s->readSint16LE();
 		delete s;
+		typedef CryOmni3D::Atlantis::Atlantis_Toolbar T;
 		int origLeft = 0 - xoff, origTop = 443 - yoff;
-		int portLeft = 0 - xoff, portTop = (480 - 82) + ((yoff - yoff) + 0);
+		// engine.cpp adds the sprite at (0, kBarHotspotY - kBarSurfaceTop);
+		// drawToolbar places it with menuSpriteTop (bar open: position 0).
+		int portLeft = 0 - xoff;
+		int portTop = T::kBarSurfaceTop + T::menuSpriteTop(T::kBarHotspotY - T::kBarSurfaceTop, yoff, 0);
 		TS_ASSERT_EQUALS(portLeft, origLeft);
 		TS_ASSERT_EQUALS(portTop, origTop);
 	}
@@ -364,6 +355,7 @@ public:
 			for (int y = 380; y < 480; y++)
 				for (int x = 0; x < 640; x++) {
 					int orig = (x / 70 + 1 <= end && y >= 409) ? x / 70 + first : -1;
+					tb._inventoryOffset = first;
 					Common::Array<CryOmni3D::Atlantis::Atlantis_Toolbar::Zone>::const_iterator it =
 					    tb.hitTestZones(Common::Point(x, y - (480 - 82)));
 					int port = (it == tb._zones.end()) ? -1 : (int)(it - tb._zones.begin()) + first;

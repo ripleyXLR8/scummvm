@@ -53,6 +53,11 @@ void Atlantis_Toolbar::init(Inventory *inventory, CryOmni3DEngine_Atlantis *engi
 	_bgSurface.create(640, 82, _format);
 	_destSurface.create(640, 82, _format);
 
+	setupZones();
+}
+
+void Atlantis_Toolbar::setupZones() {
+	_zones.clear();
 	// 9 inventory slot rectangles.  Slot centres are from atlantis.exe (toolbar
 	// setup FUN_0042c2c4): the slot-X table at 0x00611710 is x = i*0x46 + 0x2a
 	// = i*70 + 42; the slot-Y table settles at 443 (screen) = 45 in the
@@ -78,6 +83,10 @@ void Atlantis_Toolbar::init(Inventory *inventory, CryOmni3DEngine_Atlantis *engi
 		addZone(Common::Rect(kSlotCenters[i] - kSlotHalfW, kSlotTop,
 		                     kSlotCenters[i] + kSlotHalfW, kSlotBot),
 		        kSlotCbs[i]);
+	// FUN_0042c098 takes record x / 70 + first while x / 70 + 1 <= first + 9
+	// (0x00496924 / 0x00496928 move together), so once the bar is scrolled
+	// the 10-px column at x >= 630 takes record first + 9.  It has no icon.
+	addZone(Common::Rect(630, kSlotTop, 630, kSlotBot), &Atlantis_Toolbar::callbackInventory<kInventorySlots>);
 }
 
 void Atlantis_Toolbar::addZone(Common::Rect rect, ZoneCallback callback) {
@@ -110,7 +119,8 @@ Common::Array<Atlantis_Toolbar::Zone>::const_iterator Atlantis_Toolbar::hitTestZ
 	if (mousePos.y < 11 || mousePos.y >= (int)_destSurface.h)
 		return _zones.end();
 	int column = mousePos.x / 70;
-	if (column < 0 || column >= (int)_zones.size())
+	if (column < 0 || column >= (int)_zones.size() ||
+	    column + 1 > (int)(_inventoryOffset + kInventorySlots))
 		return _zones.end();
 	Common::Array<Zone>::const_iterator it = _zones.begin() + column;
 	if (it->hidden || !it->callback)
@@ -179,7 +189,7 @@ void Atlantis_Toolbar::drawToolbar(const Graphics::Surface *original) {
 	// Draw the bar background (and any other menu sprites) over it.
 	for (const MenuSprData &spr : _menuSprData) {
 		int baseX = spr.tx - spr.xoff;
-		int baseY = (spr.ty - spr.yoff) + _position;
+		int baseY = menuSpriteTop(spr.ty, spr.yoff, _position);
 		for (int y = 0; y < (int)spr.h; y++) {
 			int dy = baseY + y;
 			if (dy < 0 || dy >= _destSurface.h)
