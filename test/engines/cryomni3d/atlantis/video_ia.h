@@ -5,15 +5,9 @@
 // FUN_00450d90), LUT from FUN_00450e61; all emulated unmodified by
 // atlantis-re/tools/emu/video_ia_compositor.py.
 //
-// Port: the opcode walk lives inside
-// CryOmni3DEngine_Atlantis::playSingleConLine() (dialog.cpp, the lambda
-// drawFrame) and cannot be called without a running engine.
-// portCompose() below is a FAITHFUL COPY of that walk (dialog.cpp lines
-// 721-782 at atlantis-v2 693c26414e5), with the blend function made a
-// parameter; the real port blend, blendUbbPixel565 (sprite_blend.h), is
-// called directly. Extracting the walk into a free function
-// (e.g. compositeUbbFrame(dst16, src8, palLUT, ops, size)) would make the
-// real code testable.
+// Port: composeUbbIa (the opcode walk) and blendUbbPixel565 (the blend), both
+// in sprite_blend.h and called by playSingleConLine; the tests call them
+// directly.
 
 #include "atlantis_test_helper.h"
 #include "video_test_big.h"
@@ -209,55 +203,12 @@ static void portLut(const byte *pal, uint16 *lut) {
 		lut[i] = (uint16)fmt.RGBToColor(pal[i * 3 + 0], pal[i * 3 + 1], pal[i * 3 + 2]);
 }
 
-// FAITHFUL COPY of the opcode walk of dialog.cpp drawFrame() (see header).
+// The port's opcode walk (composeUbbIa, sprite_blend.h, FUN_00450b08).
 static void portCompose(uint16 *dst16, const byte *srcBase, const uint16 *palLUT,
                         const byte *opcodes, uint32 opSize, BlendFn blend,
                         int fw = 640, int fh = 480) {
-	const byte *op = opcodes, *opEnd = opcodes + opSize;
-	uint32 pos = 0;
-	const uint32 frameN = (uint32)fw * (uint32)fh;
-	while (op + 2 <= opEnd && pos < frameN) {
-		const byte type = op[0];
-		const byte runHi = op[1];
-		if (type == 0) {
-			if (op + 4 > opEnd) break;
-			const uint32 runlen = ((uint32)op[1]) |
-			                      ((uint32)op[2] << 8) |
-			                      ((uint32)op[3] << 16);
-			if (runlen == 0) break;            // terminator
-			pos += runlen;
-			op += 4;
-		} else if (type == 1) {
-			if (op + 3 > opEnd) break;
-			const uint32 runlen = runHi;
-			const byte *src = srcBase + pos;
-			const uint shade = (uint)(op[2] >> 3);
-			if (shade >= 0x1f) {
-				for (uint32 i = 0; i < runlen && pos + i < frameN; i++)
-					dst16[pos + i] = palLUT[src[i]];
-			} else {
-				for (uint32 i = 0; i < runlen && pos + i < frameN; i++)
-					dst16[pos + i] = blend(palLUT[src[i]], dst16[pos + i], shade);
-			}
-			pos += runlen;
-			op += 3;
-		} else if (type == 2) {
-			if (op + 2 + runHi > opEnd) break;
-			const uint32 runlen = runHi;
-			const byte *src = srcBase + pos;
-			const byte *shadeBytes = op + 2;
-			for (uint32 i = 0; i < runlen && pos + i < frameN; i++) {
-				const uint shade = (uint)(shadeBytes[i] >> 3);
-				dst16[pos + i] = (shade >= 0x1f)
-				    ? palLUT[src[i]]
-				    : blend(palLUT[src[i]], dst16[pos + i], shade);
-			}
-			pos += runlen;
-			op += 2 + runlen;
-		} else {
-			break;
-		}
-	}
+	CryOmni3D::Atlantis::composeUbbIa(dst16, srcBase, palLUT, opcodes, opSize,
+	                                  (uint32)fw * (uint32)fh, blend);
 }
 
 static Common::String md5Le16(const uint16 *p, uint32 n) {
@@ -294,16 +245,21 @@ public:
 		TS_ASSERT_EQUALS(diff, 0);
 	}
 
-	// Opcode 2 with shade 31: the original still calls the blend, which
-	// drops the green LSB; the port writes the LUT colour unchanged.
+	// Opcode 2 with shade 31: the original still calls the blend (FUN_00450b08),
+	// whose result differs from fg in some cases. The port's walk must give
+	// the original's blend result there (kBlendOrig[31], emulated).
 	void test_op2_full_shade() {
 		using namespace VideoIa;
 		int diff = 0;
-		for (uint i = 0; i < ARRAYSIZE(kBlendPairs); i++)
-			if (kBlendOrig[31][i] != kBlendPairs[i][0])
+		for (uint i = 0; i < ARRAYSIZE(kBlendPairs); i++) {
+			const byte ops[3] = { 2, 1, 0xf8 };
+			const byte src[1] = { 0 };
+			const uint16 lut[1] = { kBlendPairs[i][0] };
+			uint16 dst[1] = { kBlendPairs[i][1] };
+			CryOmni3D::Atlantis::composeUbbIa(dst, src, lut, ops, sizeof(ops), 1);
+			if (dst[0] != kBlendOrig[31][i])
 				diff++;
-		TS_WARN(Common::String::format("FUN_004508e0(31, fg, bg) != fg for %d of %d samples",
-		        diff, (int)ARRAYSIZE(kBlendPairs)).c_str());
+		}
 		TS_ASSERT_EQUALS(diff, 0);
 	}
 

@@ -774,60 +774,9 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 					                                  ubbPal[i*3+2]);
 
 				if (opcodes && opSize >= 4 && fmt.bytesPerPixel == 2) {
-					// Walk the FUN_00450b08 opcode stream: 0=SKIP (4-byte, 24-bit
-					// runlen), 1=RUN with one shade byte, 2=RUN with per-pixel
-					// shade.  shade>>3 == 0x1f is solid; lower blends the head
-					// edge against the cyclo seed (anti-aliasing).
-					const byte *op = opcodes, *opEnd = opcodes + opSize;
-					uint32 pos = 0;
-					const uint32 frameN = (uint32)fw * (uint32)fh;
-					uint16 *dst16 = (uint16 *)ubbConvFrame.getPixels();
-					while (op + 2 <= opEnd && pos < frameN) {
-						const byte type = op[0];
-						const byte runHi = op[1];
-						if (type == 0) {
-							if (op + 4 > opEnd) break;
-							const uint32 runlen = ((uint32)op[1]) |
-							                      ((uint32)op[2] << 8) |
-							                      ((uint32)op[3] << 16);
-							if (runlen == 0) break;            // terminator
-							pos += runlen;
-							op += 4;
-						} else if (type == 1) {
-							if (op + 3 > opEnd) break;
-							const uint32 runlen = runHi;
-							const byte *src = srcBase + pos;
-							const uint shade = (uint)(op[2] >> 3);
-							if (shade >= 0x1f) {
-								for (uint32 i = 0; i < runlen && pos + i < frameN; i++)
-									dst16[pos + i] = palLUT[src[i]];
-							} else {
-								for (uint32 i = 0; i < runlen && pos + i < frameN; i++)
-									dst16[pos + i] = blendUbbPixel565(
-									    palLUT[src[i]], dst16[pos + i], shade);
-							}
-							pos += runlen;
-							op += 3;
-						} else if (type == 2) {
-							if (op + 2 + runHi > opEnd) break;
-							const uint32 runlen = runHi;
-							const byte *src = srcBase + pos;
-							const byte *shadeBytes = op + 2;
-							for (uint32 i = 0; i < runlen && pos + i < frameN; i++) {
-								const uint shade = (uint)(shadeBytes[i] >> 3);
-								dst16[pos + i] = (shade >= 0x1f)
-								    ? palLUT[src[i]]
-								    : blendUbbPixel565(palLUT[src[i]],
-								                       dst16[pos + i], shade);
-							}
-							pos += runlen;
-							op += 2 + runlen;
-						} else {
-							warning("playSingleConLine: unknown UBB opcode 0x%02x at +%u",
-							        type, (uint)(op - opcodes));
-							break;
-						}
-					}
+					// FUN_00450b08 (sprite_blend.h).
+					composeUbbIa((uint16 *)ubbConvFrame.getPixels(), srcBase, palLUT,
+					             opcodes, opSize, (uint32)fw * (uint32)fh);
 				} else {
 					// No opcode stream (or non-16bpp) — flat composite so the
 					// head is at least visible.
