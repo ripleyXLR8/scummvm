@@ -30,7 +30,7 @@ class Omni3DManager {
 public:
 	Omni3DManager() : _hfov(0), _vfov(0), _alpha(0), _beta(0), _xSpeed(0), _ySpeed(0), _alphaMin(0), _alphaMax(0),
 		_betaMin(0), _betaMax(0), _helperValue(0), _dirty(true), _dirtyCoords(true),
-		_bytesPerPixel(1), _sourceSurface(nullptr) {}
+		_bytesPerPixel(1), _sourceSurface(nullptr), _rowStepShiftX(10), _rowStepShiftY(15) {}
 	virtual ~Omni3DManager();
 
 	void init(double hfov);
@@ -45,6 +45,13 @@ public:
 	double getHFov() const;
 
 	void setSourceSurface(const Graphics::Surface *surface) { _sourceSurface = surface; _dirty = true; }
+	// Shifts of the per-row change of the tile step in getSurface()
+	// (default 10 / 15).  Atlantis's renderer uses 4 / 9.
+	void setRowStepShifts(uint shiftX, uint shiftY) {
+		_rowStepShiftX = shiftX;
+		_rowStepShiftY = shiftY;
+		_dirty = true;
+	}
 
 	void clearConstraints();
 	void setAlphaConstraints(double alphaMin, double alphaMax) { _alphaMin = alphaMin; _alphaMax = alphaMax; }
@@ -86,6 +93,7 @@ private:
 	bool _dirty;
 	bool _dirtyCoords;
 	uint _bytesPerPixel;
+	uint _rowStepShiftX, _rowStepShiftY;
 	const Graphics::Surface *_sourceSurface;
 	Graphics::Surface _surface;
 };

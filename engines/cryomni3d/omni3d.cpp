@@ -222,8 +222,8 @@ const Graphics::Surface *Omni3DManager::getSurface() {
 				int x1_ = (_imageCoords[off + 82 + 2] - _imageCoords[off + 82 + 0]) >> 4;
 				int y1_ = (_imageCoords[off + 82 + 3] - _imageCoords[off + 82 + 1]) >> 4;
 
-				int dx1 = (x1_ - x1) >> 10;
-				int dy1 = (y1_ - y1) >> 15;
+				int dx1 = (x1_ - x1) >> _rowStepShiftX;
+				int dy1 = (y1_ - y1) >> _rowStepShiftY;
 
 				y1 >>= 5;
 

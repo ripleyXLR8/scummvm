@@ -22,6 +22,7 @@
 #include "graphics/surface.h"
 
 #include "cryomni3d/omni3d.h"
+#include "cryomni3d/atlantis/omni3d_setup.h"
 #include "cryomni3d/atlantis/bigfile.h"
 #include "cryomni3d/atlantis/npc_click.h"
 #include "cryomni3d/atlantis/sprite_anim.h"
@@ -51,6 +52,7 @@ inline void setupPort(CryOmni3D::Omni3DManager &m, const Graphics::Surface &src,
                       double fovDeg, double alpha, double beta) {
 	// The original receives float arguments; give the port the same values.
 	m.init((double)f32(fovDeg) * M_PI / 180.0);
+	CryOmni3D::Atlantis::configureOmni3D(m);   // as the engine does
 	m.setPixelFormat(kFmt565);
 	m.setSourceSurface(&src);
 	m.setAlpha((double)f32(alpha));
@@ -104,12 +106,12 @@ public:
 
 	// The warp FOV: the original passes 75.137 deg (0x42964625, pushed at
 	// atlantis-cd-en-714240 @ 0x0044a701, 0x0043044c, 0x00428abb, 0x00428b48,
-	// 0x00428cbd); the port initialises Omni3DManager with 75 deg (engine.cpp).
+	// 0x00428cbd); the port initialises Omni3DManager with kWarpFovDeg.
 	void test_projection_warp_fov() {
 		using namespace GraphicsNavTest;
 		Pano pano;
 		CryOmni3D::Omni3DManager m;
-		setupPort(m, pano.s, 75.0, 0.0, 0.0);   // what the port renders
+		setupPort(m, pano.s, CryOmni3D::Atlantis::kWarpFovDeg, 0.0, 0.0);   // what the port renders
 		TS_ASSERT_EQUALS(md5Surface(m.getSurface()), Common::String("7ba99e56c5c021625370e91515570015"));
 	}
 
