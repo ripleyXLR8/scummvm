@@ -146,6 +146,8 @@ Common::String CryOmni3DEngine_Atlantis::getSaveStateName(int slot) const {
 }
 
 Common::Error CryOmni3DEngine_Atlantis::loadGameState(int slot) {
+	// FUN_0042de5c sets LastVue to 1 (0x0042e285).
+	_lastVue = 1;
 	// The slot's block identifies its owning player.
 	_currentPlayer = slot / (int)kPlayerSlotStride;
 	if (loadGame((uint)slot + 1)) {
@@ -558,6 +560,9 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 		// _nextPlaceId, or redirect it via /set(vue=N)), then transition.
 		if (actionId >= 1 && actionId < 10000) {
 			_nextPlaceId = actionId;
+			// LastVue = the place being left (0x00423dcf), before the
+			// departure scan.
+			_lastVue = _currentPlaceId;
 			runDepartureSelSections((int)actionId);
 			if (_arrivalScanPending) {
 				// A Vue= inside a departure section already entered its place

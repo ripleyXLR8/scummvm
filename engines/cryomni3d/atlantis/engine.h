@@ -229,6 +229,12 @@ private:
 	void enterPlaceFromScript(uint placeId);
 	bool _arrivalScanPending = false;
 	uint _arrivalFromVue = 0;
+	// atlantis.exe DAT_0049692c, LastVue: 1 at game start (0x004195fb) and
+	// after a load (0x0042e285); the place being left on a transition
+	// (FUN_00423ad8 @ 0x00423dcf) and on a script Vue= outside loading
+	// (FUN_0042a100 @ 0x0042a6b5).  A chapter change hands it to the /sel
+	// scan as ARRIVEEVUE (FUN_00427634 @ 0x0042777d).
+	uint _lastVue = 1;
 	// CON /set(StartPuzzle=N) — run minigame N and write FinPuzzle back
 	// (255 = win; smaller values denote per-puzzle loss variants).  Puzzles
 	// without a handler auto-win so their CHAPI script chains keep

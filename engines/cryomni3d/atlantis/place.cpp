@@ -97,6 +97,8 @@ void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 		_guestsShown = true;
 		// FUN_00423760 @ 0x004237a0: the IncPerso count starts at 0.
 		_incPersoCount = 0;
+		// LastVue = 1 next to that set-up (0x004195fb, before FUN_0042c054).
+		_lastVue = 1;
 	}
 
 	if ((uint)chapter != _currentCONChapter) {

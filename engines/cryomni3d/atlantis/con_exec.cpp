@@ -442,8 +442,10 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 			// fires /set(chapter=14).  Without this scan the chapter switches
 			// silently and the player just lands at the same vue with no
 			// cinematic.  Same-place arrival keeps (arriveevue>0) true.
+			// FUN_00427634 sets ARRIVEEVUE to LastVue (0x0042777d), then
+			// FUN_0042a100 runs the /sel scan FUN_004277c8 (0x0042a60e).
 			if (_currentPlaceId != uint(-1))
-				runArrivalSelSections((int)_currentPlaceId, (int)_currentPlaceId);
+				runArrivalSelSections((int)_currentPlaceId, (int)_lastVue);
 		}
 		return;
 	}
@@ -748,6 +750,9 @@ void CryOmni3DEngine_Atlantis::enterPlaceFromScript(uint placeId) {
 			break;
 		}
 	}
+	// LastVue = the place being left, unless loading (0x0042a6a7..0x0042a6b5).
+	if (!_conInitRunning)
+		_lastVue = from;
 	_nextPlaceId = placeId;
 	doPlaceChange();
 	_gameVars["arriveevue"] = (int)from;
