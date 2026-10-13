@@ -917,9 +917,13 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 		g_system->updateScreen();
 	};
 
-	// Linger scales with subtitle length (≈80 ms/char, min 1.5 s) so longer
-	// lines aren't cut short when no audio exists.
-	int lingerMs = text.empty() ? 1500 : MAX(1500, (int)text.size() * 80);
+	// The line lasts as long as its sound (atlantis.exe FUN_0042ee88 /
+	// FUN_00430258): it ends when the sample is done or on a left click
+	// (0x0049611c).  A line with a talking head runs with 0x00496188 set, so
+	// Escape also ends it (FUN_0041a298 @ 0x0041a3c0); the voice-only path
+	// FUN_00430258 clears that flag first.  Without its APC the original
+	// shows nothing and moves on (FUN_00430258 returns 0).
+	const bool escapeSkips = (camNum != 0);
 
 	// One click/key skips only one line: drain a still-held skip from the
 	// previous line so this one watches for a fresh press.
@@ -933,13 +937,7 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 	Common::SeekableReadStream *apcFile = openBigFileStream(kFileTypeSound, apcName);
 
 	if (!apcFile) {
-		for (int ms = 0; ms < lingerMs && !shouldAbort(); ms += 20) {
-			drawFrame();
-			pollEvents();
-			if (checkKeysPressed(1, Common::KEYCODE_SPACE) || getCurrentMouseButton() != 0)
-				break;
-			g_system->delayMillis(20);
-		}
+		debugC(1, kDebugScript, "playSingleConLine: no %s, line skipped", apcName.c_str());
 	} else {
 		Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*apcFile);
 		if (apc) {
@@ -958,7 +956,8 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 			while (!shouldAbort() && _mixer->isSoundHandleActive(handle)) {
 				drawFrame();
 				pollEvents();
-				if (checkKeysPressed(1, Common::KEYCODE_SPACE) || getCurrentMouseButton() != 0) {
+				if (getCurrentMouseButton() == 1 ||
+				        (escapeSkips && checkKeysPressed(1, Common::KEYCODE_ESCAPE))) {
 					_mixer->stopHandle(handle);
 					break;
 				}
@@ -967,15 +966,6 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 			_mixer->stopHandle(handle);
 		}
 		delete apcFile;
-
-		// Fixed 500 ms subtitle tail after the audio ends.
-		for (int ms = 0; ms < 500 && !shouldAbort(); ms += 20) {
-			drawFrame();
-			pollEvents();
-			if (checkKeysPressed(1, Common::KEYCODE_SPACE) || getCurrentMouseButton() != 0)
-				break;
-			g_system->delayMillis(20);
-		}
 	}
 
 #ifdef USE_HNM
