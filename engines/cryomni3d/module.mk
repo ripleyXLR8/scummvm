@@ -49,6 +49,7 @@ MODULE_OBJS += \
 	atlantis/ogre_rules.o \
 	atlantis/rat_game.o \
 	atlantis/rat_rules.o \
+	atlantis/taquin_game.o \
 	atlantis/throne_game.o \
 	atlantis/omni3d.o \
 	atlantis/place.o \
@@ -58,6 +59,7 @@ MODULE_OBJS += \
 	atlantis/puzzle_hens.o \
 	atlantis/puzzle_pieces.o \
 	atlantis/puzzle_rat.o \
+	atlantis/puzzle_taquin.o \
 	atlantis/puzzle_throne.o \
 	atlantis/puzzle_snakes.o \
 	atlantis/saveload.o \

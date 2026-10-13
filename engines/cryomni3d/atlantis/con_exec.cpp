@@ -46,6 +46,7 @@
 #include "cryomni3d/atlantis/puzzle_pieces.h"
 #include "cryomni3d/atlantis/puzzle_rat.h"
 #include "cryomni3d/atlantis/puzzle_snakes.h"
+#include "cryomni3d/atlantis/puzzle_taquin.h"
 #include "cryomni3d/atlantis/puzzle_throne.h"
 
 namespace CryOmni3D {
@@ -250,6 +251,15 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 	case 5: {
 		// The throne lock at CHAPI044 (FUN_0043fcb4).
 		ThronePuzzle puz(this);
+		finPuzzle = puz.play();
+		break;
+	}
+	case 6:
+	case 7:
+	case 14: {
+		// The sliding puzzles at CHAPI045..051 (FUN_00446300, FUN_0044659c,
+		// FUN_00446830).
+		TaquinPuzzle puz(this, puzzleId);
 		finPuzzle = puz.play();
 		break;
 	}

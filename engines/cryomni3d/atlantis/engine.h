@@ -143,6 +143,12 @@ public:
 	}
 	// Play WAV\<name>.APC once (puzzle sound effects).
 	void playPuzzleSound(const char *name);
+	// The held object (the OBJETENMAIN variable), and emptying the hand.
+	const Object *heldObject() const { return _inventory.selectedObject(); }
+	void clearHeldObject() {
+		_inventory.setSelectedObject(nullptr);
+		_gameVars["objetenmain"] = 0;
+	}
 	// Open a file from the BigFile archive and return a new stream (caller owns it).
 	// Returns nullptr if not found.
 	Common::SeekableReadStream *openBigFileStream(FileType fileType,
