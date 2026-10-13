@@ -56,7 +56,8 @@ MODULE_OBJS += \
 	atlantis/sprite_renderer.o \
 	atlantis/subtitle_layout.o \
 	atlantis/toolbar.o \
-	atlantis/wam_parser.o
+	atlantis/wam_parser.o \
+	atlantis/warp_cursor.o
 endif
 
 # This module can be built as a plugin

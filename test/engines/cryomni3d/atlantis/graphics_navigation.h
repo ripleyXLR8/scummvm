@@ -23,6 +23,7 @@
 
 #include "cryomni3d/omni3d.h"
 #include "cryomni3d/atlantis/omni3d.h"
+#include "cryomni3d/atlantis/warp_cursor.h"
 #include "cryomni3d/atlantis/bigfile.h"
 #include "cryomni3d/atlantis/npc_click.h"
 #include "cryomni3d/atlantis/sprite_anim.h"
@@ -479,39 +480,74 @@ public:
 		}
 	}
 
-	// Warp cursor: CURSEURS.SPR sprite drawn on 16 consecutive frames.
-	// Original: FUN_00422fcc emulated (graphics_cursor.py), mouse-look mode
-	// (DAT_004960c8 = 0, the default), -1 = no cursor drawn.  Port: FAITHFUL
-	// COPY of handleWarp's group choice (talk if an NPC is hit, navigate if a
-	// zone is hit, else default) and of tickWarpCursor's frame advance
-	// (kGroupFirst/kGroupCount, default group static), one advance per frame.
+	// Warp cursor: CURSEURS.SPR sprite drawn on 16 consecutive frames, -1 =
+	// none.  Original: FUN_00422fcc emulated (tools/emu/graphics_cursor.py)
+	// for both look modes (DAT_004960c8 = 0 mouse-look, 1 edge-scroll);
+	// "click" presets 0x004968b8 as FUN_004278a0 does.  Port: warpCursorStep.
 	void test_cursor_sequences() {
-		static const int kGroupFirst[] = {0, 9, 18, 26};
-		static const int kGroupCount[] = {9, 9, 8, 20};
-		static const struct { const char *name; int zone, npc; int orig[16]; } cases[] = {
-			{"nothing",            0,   0, {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1}},
-			{"navigation zone 12", 12,  0, {9, 10, 11, 12, 13, 14, 13, 12, 11, 10, 9, 10, 11, 12, 13, 14}},
-			{"npc 600",            0, 600, {26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}},
-			{"scene object 300",   0, 300, {18, 19, 20, 21, 22, 21, 20, 19, 18, 19, 20, 21, 22, 21, 20, 19}},
+		static const struct { const char *name; uint zone, id, held; bool click; int orig[2][16]; } cases[] = {
+			{"nothing", 0, 0, 0, false,
+			 {{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+			  {5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5}}},
+			{"navigation zone 12", 12, 0, 0, false,
+			 {{9, 10, 11, 12, 13, 14, 13, 12, 11, 10, 9, 10, 11, 12, 13, 14},
+			  {9, 10, 11, 12, 13, 14, 13, 12, 11, 10, 9, 10, 11, 12, 13, 14}}},
+			{"npc 600", 0, 600, 0, false,
+			 {{26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41},
+			  {26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}}},
+			{"scene object 300", 0, 300, 0, false,
+			 {{18, 19, 20, 21, 22, 21, 20, 19, 18, 19, 20, 21, 22, 21, 20, 19},
+			  {18, 19, 20, 21, 22, 21, 20, 19, 18, 19, 20, 21, 22, 21, 20, 19}}},
+			{"zone 12 while holding 300", 12, 0, 300, false,
+			 {{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+			  {5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5}}},
+			{"id 0x219", 0, 0x219, 0, false,
+			 {{9, 10, 11, 12, 13, 14, 13, 12, 11, 10, 9, 10, 11, 12, 13, 14},
+			  {9, 10, 11, 12, 13, 14, 13, 12, 11, 10, 9, 10, 11, 12, 13, 14}}},
+			{"zone 2300 holding 300", 2300, 0, 300, false,
+			 {{18, 19, 20, 21, 22, 21, 20, 19, 18, 19, 20, 21, 22, 21, 20, 19},
+			  {18, 19, 20, 21, 22, 21, 20, 19, 18, 19, 20, 21, 22, 21, 20, 19}}},
+			{"zone 2300 holding 301", 2300, 0, 301, false,
+			 {{-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+			  {5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5}}},
+			{"zone 3300 holding 300", 3300, 0, 300, false,
+			 {{18, 19, 20, 21, 22, 21, 20, 19, 18, 19, 20, 21, 22, 21, 20, 19},
+			  {18, 19, 20, 21, 22, 21, 20, 19, 18, 19, 20, 21, 22, 21, 20, 19}}},
+			{"zone 600", 600, 0, 0, false,
+			 {{26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41},
+			  {26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41}}},
+			{"click, nothing", 0, 0, 0, true,
+			 {{0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1},
+			  {0, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5}}},
+			{"click, zone 12", 12, 0, 0, true,
+			 {{3, 4, 5, 6, 7, 6, 5, 4, 3, 2, 1, 9, 10, 11, 12, 13},
+			  {3, 4, 5, 6, 7, 6, 5, 4, 3, 2, 1, 9, 10, 11, 12, 13}}},
+			{"click, npc 600", 0, 600, 0, true,
+			 {{0, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40},
+			  {0, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40}}},
 		};
 		for (uint c = 0; c < ARRAYSIZE(cases); c++) {
-			int grp = (cases[c].npc > 0) ? 3 : (cases[c].zone > 0) ? 1 : 0;
-			int frame = -1;
-			uint diffs = 0;
-			Common::String seq;
-			for (int f = 0; f < 16; f++) {
-				if (grp == 0)
-					frame = 0;
-				else
-					frame = (frame + 1) % kGroupCount[grp];
-				int spr = kGroupFirst[grp] + frame;
-				seq += Common::String::format("%d ", spr);
-				if (spr != cases[c].orig[f])
-					diffs++;
+			for (int mode = 0; mode < 2; mode++) {
+				CryOmni3D::Atlantis::WarpCursorState st;
+				st.clickAnim = cases[c].click;
+				CryOmni3D::Atlantis::WarpCursorInput in;
+				in.zone = cases[c].zone;
+				in.id = cases[c].id;
+				in.held = cases[c].held;
+				in.hidden = false;
+				in.edgeScroll = (mode == 1);
+				uint diffs = 0;
+				Common::String seq;
+				for (int f = 0; f < 16; f++) {
+					int spr = CryOmni3D::Atlantis::warpCursorStep(st, in).sprite;
+					seq += Common::String::format("%d ", spr);
+					if (spr != cases[c].orig[mode][f])
+						diffs++;
+				}
+				if (diffs)
+					TS_WARN(Common::String::format("cursor %s (mode %d): port %s", cases[c].name, mode, seq.c_str()).c_str());
+				TS_ASSERT_EQUALS(diffs, 0u);
 			}
-			if (diffs)
-				TS_WARN(Common::String::format("cursor %s: port %s", cases[c].name, seq.c_str()).c_str());
-			TS_ASSERT_EQUALS(diffs, 0u);
 		}
 	}
 };

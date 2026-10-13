@@ -45,8 +45,8 @@
 namespace CryOmni3D {
 namespace Atlantis {
 
-// Cursor group indices matching CURSEURS.SPR sprite groups.
-enum WarpCursorState {
+// Sprite ranges of CURSEURS.SPR, for the fallback cursors.
+enum WarpCursorGroup {
 	kWarpCursorDefault  = 0,  // sprites 0–8   — no interactive zone (static)
 	kWarpCursorNavigate = 1,  // sprites 9–17  — place transition
 	kWarpCursorObject   = 2,  // sprites 18–25 — object interaction
@@ -124,13 +124,6 @@ void CryOmni3DEngine_Atlantis::setBlendedCursor(uint16 w, uint16 h,
 	}
 }
 
-void CryOmni3DEngine_Atlantis::setWarpCursor(int group) {
-	_warpCursorGroup = group;
-	_warpCursorFrame = -1;   // tickWarpCursor advances to 0 on first call
-	_warpCursorNextMs = 0;   // trigger an immediate update
-	tickWarpCursor();
-}
-
 // The plain Atlantis pointer: CURSEURS.SPR sprite 8 (last frame of the default
 // group) — the static arrow used for menus and the subject grid.
 void CryOmni3DEngine_Atlantis::setArrowCursor() {
@@ -198,25 +191,19 @@ void CryOmni3DEngine_Atlantis::setItemCursor(const Object *obj, int overlayCurso
 	                 hx, hy, kSprTransp);
 }
 
-void CryOmni3DEngine_Atlantis::tickWarpCursor() {
-	static const int kGroupFirst[] = {  0,  9, 18, 26 };
-	static const int kGroupCount[] = {  9,  9,  8, 20 };
-
-	if (!_cursorSprites.empty()) {
-		int grp = CLIP(_warpCursorGroup, 0, 3);
-		// The default cursor is static in the original; only navigate / object
-		// / talk animate.
-		if (grp == kWarpCursorDefault) {
-			if (_warpCursorFrame == 0)
-				return;
-			_warpCursorFrame = 0;
-		} else {
-			uint32 now = g_system->getMillis();
-			if (now < _warpCursorNextMs) return;
-			_warpCursorNextMs = now + 80;  // ~12 fps
-			_warpCursorFrame = (_warpCursorFrame + 1) % kGroupCount[grp];
-		}
-		const CursorSpr &spr = _cursorSprites[kGroupFirst[grp] + _warpCursorFrame];
+// Show the CURSEURS.SPR sprite FUN_00422fcc drew this frame; -1 hides the
+// cursor (nothing drawn).
+void CryOmni3DEngine_Atlantis::showWarpCursorSprite(int sprite) {
+	if (sprite == _warpCursorShown)
+		return;
+	_warpCursorShown = sprite;
+	if (sprite < 0) {
+		showMouse(false);
+		return;
+	}
+	showMouse(true);
+	if ((uint)sprite < _cursorSprites.size()) {
+		const CursorSpr &spr = _cursorSprites[(uint)sprite];
 		if (!spr.pixels.empty())
 			setBlendedCursor(spr.w, spr.h, spr.pixels.data(), spr.blend.data(),
 			                 spr.xoff, spr.yoff, kWarpCursorKey);
@@ -224,11 +211,11 @@ void CryOmni3DEngine_Atlantis::tickWarpCursor() {
 	}
 
 	// Fallback: hardcoded bitmask cursors when CURSEURS.SPR is not loaded.
-	if (_warpCursorFrame == 0) return;
-	_warpCursorFrame = 0;
 	uint16 buf[16 * 16];
 	Graphics::PixelFormat fmt(2, 5, 6, 5, 0, 11, 5, 0, 0);
-	switch (_warpCursorGroup) {
+	const int group = (sprite >= 26) ? kWarpCursorTalk : (sprite >= 9 && sprite < 18) ? kWarpCursorNavigate
+	                : kWarpCursorDefault;
+	switch (group) {
 	case kWarpCursorNavigate:
 		buildWarpCursorFallback(buf, kCursorNavigateMask, 0xFFE0u, kWarpCursorKey);
 		CursorMan.replaceCursor(buf, 16, 16, 0, 7, kWarpCursorKey, &fmt);
@@ -275,10 +262,9 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 	static const double kLookPitchDiv  = 800.0;
 	static const double kWarpBetaLimit = M_PI / 4.0;  // matches doPlaceChange
 
-	// Cursor group reflecting what the crosshair is over (talk / navigate /
-	// default), re-applied only when it changes; tickWarpCursor animates it.
-	// When the player is carrying an object the item cursor replaces it.
-	int curCursorGroup = -1;
+	// The cursor follows FUN_00422fcc (warpCursorStep).  When the player is
+	// carrying an object the item cursor replaces it.
+	_warpCursorShown = kWarpCursorUnset;
 	const Object *curHeldObj = nullptr;
 	// The arrow frame starts at 0 on every warp entry (0x0041c017).
 	_arrowFrame = 0;
@@ -326,21 +312,26 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		const Object *heldObj = _inventory.selectedObject();
 		if (heldObj) {
 			if (heldObj != curHeldObj) {
+				showMouse(true);
 				setItemCursor(heldObj);
 				curHeldObj = heldObj;
-				curCursorGroup = -1;   // force a warp-cursor re-apply once dropped
+				_warpCursorShown = kWarpCursorUnset;   // re-apply once dropped
 			}
 		} else {
 			if (curHeldObj)
 				curHeldObj = nullptr;
-			int wantCursor = (centrePerso > 0) ? kWarpCursorTalk
-			               : (actionId > 0)    ? kWarpCursorNavigate
-			               :                     kWarpCursorDefault;
-			if (wantCursor != curCursorGroup) {
-				setWarpCursor(wantCursor);
-				curCursorGroup = wantCursor;
-			} else {
-				tickWarpCursor();
+			// [UNKNOWN] the original steps once per warp-loop frame; the
+			// port keeps one step per 80 ms.
+			const uint32 now = g_system->getMillis();
+			if (_warpCursorShown == kWarpCursorUnset || now >= _warpCursorNextMs) {
+				_warpCursorNextMs = now + 80;
+				WarpCursorInput in;
+				in.zone = actionId;
+				in.id = (uint)MAX(centrePerso, 0);
+				in.held = 0;
+				in.hidden = false;
+				in.edgeScroll = false;
+				showWarpCursorSprite(warpCursorStep(_warpCursor, in).sprite);
 			}
 		}
 
@@ -350,6 +341,9 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		// and pick-up), from 0x200 the conversation (FUN_00425828).
 		if (clicked && centrePerso >= 0x100) {
 			g_system->lockMouse(false);
+			showMouse(true);   // the warp cursor may be hidden
+			// FUN_004278a0 starts the click animation (0x004278b5).
+			_warpCursor.clickAnim = true;
 			if (centrePerso < 0x200)
 				clickObject(centrePerso);
 			else
@@ -367,7 +361,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				takeMouseRelative();
 				setMousePos(Common::Point(320, 240));
 				_dialogGivenObjSprite = -1;   // the conversation ended
-				curCursorGroup = -1;   // dialog changed the cursor; re-apply
+				_warpCursorShown = kWarpCursorUnset;   // dialog changed the cursor
 				// Drain the skip click the dialog ended on so it isn't read as
 				// a fresh navigation press next frame.
 				while (getCurrentMouseButton() != 0 && !shouldAbort()) {
@@ -402,6 +396,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 					g_system->copyRectToScreen(bg->getPixels(), bg->pitch, 0, 0, bg->w, bg->h);
 			}
 			g_system->lockMouse(false);
+			showMouse(true);   // the warp cursor may be hidden
 			if (_inventory.selectedObject() != nullptr)
 				setItemCursor(_inventory.selectedObject());
 			else
@@ -438,7 +433,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			g_system->lockMouse(true);
 			takeMouseRelative();
 			setMousePos(Common::Point(320, 240));
-			curCursorGroup = -1;   // re-apply the warp cursor next frame
+			_warpCursorShown = kWarpCursorUnset;   // re-apply the warp cursor next frame
 			curHeldObj = nullptr;
 			while (getCurrentMouseButton() != 0 && !shouldAbort()) {
 				pollEvents();
@@ -447,6 +442,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		} else if (kc == Common::KEYCODE_ESCAPE) {
 			// Open the in-game menu (resume / load / quit).
 			g_system->lockMouse(false);
+			showMouse(true);   // the warp cursor may be hidden
 			uint act = displayInGameMenu();
 			if (act == 40) {                 // quit
 				actionId = 66666;
@@ -464,7 +460,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				g_system->lockMouse(true);
 				takeMouseRelative();
 				setMousePos(Common::Point(320, 240));
-				curCursorGroup = -1;
+				_warpCursorShown = kWarpCursorUnset;
 				curHeldObj = nullptr;
 			}
 		}
@@ -500,7 +496,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				takeMouseRelative();
 				setMousePos(Common::Point(320, 240));
 				_dialogGivenObjSprite = -1;
-				curCursorGroup = -1;
+				_warpCursorShown = kWarpCursorUnset;
 				while (getCurrentMouseButton() != 0 && !shouldAbort()) {
 					pollEvents();
 					g_system->delayMillis(10);

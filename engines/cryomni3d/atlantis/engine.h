@@ -45,6 +45,7 @@
 #include "cryomni3d/atlantis/omni3d.h"
 #include "cryomni3d/atlantis/sprite_anim.h"
 #include "cryomni3d/atlantis/toolbar.h"
+#include "cryomni3d/atlantis/warp_cursor.h"
 #include "cryomni3d/atlantis/wam_parser.h"
 
 namespace CryOmni3D {
@@ -452,8 +453,8 @@ private:
 	// Install an alpha-blended hardware cursor from sprite pixels + blend factors.
 	void setBlendedCursor(uint16 w, uint16 h, const uint16 *pixels,
 	                      const uint8 *blend, int hotX, int hotY, uint16 transpKey);
-	void setWarpCursor(int group);  // set cursor group + reset animation
-	void tickWarpCursor();          // advance the animation frame (call each tick)
+	void showWarpCursorSprite(int sprite);  // CURSEURS.SPR sprite, -1 hides
+	static const int kWarpCursorUnset = -2;
 public:
 	void setArrowCursor();          // plain arrow (CURSEURS.SPR sprite 8)
 private:
@@ -624,8 +625,8 @@ private:
 
 	// Animated warp-view cursors (CURSEURS.SPR) + current group/frame state.
 	Common::Array<CursorSpr> _cursorSprites;
-	int    _warpCursorGroup;    // WarpCursorState: 0=default 1=navigate 2=object 3=talk
-	int    _warpCursorFrame;    // current frame index within the group
+	WarpCursorState _warpCursor;  // FUN_00422fcc animation globals
+	int    _warpCursorShown;    // sprite on screen, -1 hidden, kWarpCursorUnset
 	uint32 _warpCursorNextMs;   // getMillis() threshold for the next frame
 
 	// NPC / prop scene sprites for the current chapter (parsed from the WAM's
