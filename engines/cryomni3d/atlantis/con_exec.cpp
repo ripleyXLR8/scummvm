@@ -472,7 +472,7 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 	if (key == "cinema") {
 		Common::String hnm = Common::String::format("CINEM%03d.HNM", value);
 		debugC(1, kDebugScript, "execConSetCommand: cinema=%d -> %s", value, hnm.c_str());
-		playTransitionVideo(hnm);
+		playTransitionVideo(hnm, uint(-1), uint(-1), kCinemaFrameMs);
 		return;
 	}
 

@@ -203,7 +203,7 @@ void CryOmni3DEngine_Atlantis::executeTransition(uint nextPlaceId) {
 		// FUN_00423ad8 @ 0x00423ec0: FUN_004212cc turns the view to the
 		// transition's source angles before the video.
 		turnToTransition(trans->srcAlpha, trans->srcBeta);
-		playTransitionVideo(trans->videoName, _currentPlaceId, nextPlaceId);
+		playTransitionVideo(trans->videoName, _currentPlaceId, nextPlaceId, kTransitionFrameMs);
 		_omni3dMan.setAlpha(trans->dstAlpha);
 		_omni3dMan.setBeta(trans->dstBeta);
 	}
@@ -281,7 +281,7 @@ void CryOmni3DEngine_Atlantis::turnToTransition(float srcAlpha, float srcBeta) {
 }
 
 void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoName,
-                                                    uint fromPlace, uint toPlace) {
+                                                    uint fromPlace, uint toPlace, uint frameMs) {
 #ifdef USE_HNM
 	// WAM records use .UBB extension but the BigFile stores them as .HNM.
 	Common::String hnmName = videoName;
@@ -336,6 +336,10 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 	// HNMDecoder takes ownership of savedPalette and (via loadStream) stream.
 	Video::HNMDecoder *decoder = new Video::HNMDecoder(fmt, false, savedPalette);
 	decoder->setSoundType(Audio::Mixer::kSFXSoundType);
+	// Atlantis' HNM6 files have no sound, so the decoder paces them with
+	// this delay (it must be set before loadStream).
+	if (frameMs)
+		decoder->setRegularFrameDelay(frameMs);
 	if (!decoder->loadStream(stream)) {
 		delete decoder;
 		return;

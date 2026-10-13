@@ -479,9 +479,17 @@ private:
 	// When (fromPlace, toPlace) name a real transition, the SPF walk-on
 	// sprites listed for that pair composite onto each video frame so NPCs
 	// remain visible as the camera moves between the two places.
+	// frameMs: 0 keeps the decoder's default; see kTransitionFrameMs.
 	void playTransitionVideo(const Common::String &videoName,
 	                         uint fromPlace = uint(-1),
-	                         uint toPlace   = uint(-1));
+	                         uint toPlace   = uint(-1),
+	                         uint frameMs   = 0);
+	// FUN_0041bc74 waits until the 200 Hz tick counter 0x006ce118 has moved
+	// by 6 ticks between frames, by 13 while CINEMA is playing (0x0049618c,
+	// 0x0041bdfc..0x0041be1f); the timer rate is set with
+	// AIL_set_timer_frequency(…, 200).
+	static const uint kTransitionFrameMs = 6 * 5;
+	static const uint kCinemaFrameMs = 13 * 5;
 
 	BigFileArchive _bigFile;
 	AtlantisWAMParser _wam;

@@ -383,6 +383,7 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	// Cryo logo and pre-intro cinematics before the player screen (skipped
 	// when launched directly into a save).
 	if (bootSlot < 0) {
+		// [UNKNOWN] which player and pace the exe uses for these two.
 		playTransitionVideo("LOGO15N.HNM");
 		playTransitionVideo("PREINTRO.HNM");
 	}
