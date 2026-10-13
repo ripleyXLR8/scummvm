@@ -155,6 +155,13 @@ public:
 			                                     corners[i][1], won(r, corners[i][0], corners[i][1])));
 		}
 
+		const int edges[4] = { 29, 30, 620, 621 };
+		for (int i = 0; i < 4; i++) {
+			Rules r = start;
+			r.place(edges[i], 448);
+			out.push_back(Common::String::format("placement click at (%d, 448): result %d", edges[i], r.result));
+		}
+
 		Common::Array<Placement> placements;
 		int chosen[4];
 		placeAll(0, start, chosen, placements);

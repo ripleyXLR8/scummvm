@@ -27,6 +27,7 @@
 
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/puzzle_snakes.h"
+#include "cryomni3d/atlantis/sprite_decode.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
@@ -71,6 +72,41 @@ void SnakesPuzzle::render(Graphics::ManagedSurface &out) {
 			blitFrame(out, _frames[draws[i].frame], draws[i].x, draws[i].y);
 }
 
+// FUN_0043c7e8, each frame after FUN_0043bebc: CURSEURS.SPR frame 11 near
+// the edges (where a click leaves), else the normal cursor (FUN_0042d558,
+// frame 6; no object can be held here).
+void SnakesPuzzle::drawCursor(Graphics::ManagedSurface &out, int mouseX, int mouseY) {
+	const SprSprite *spr = _engine->cursorSprite(SnakesRules::atEdge(mouseX) ? 11 : 6);
+	if (spr)
+		drawSprSprite(*out.surfacePtr(), *spr, mouseX, mouseY);
+}
+
+// FUN_0043c114: 20 steps of 100 ticks of the 200 Hz timer 0x006ce118
+// (500 ms), the pieces shown every other step (from the second), drawn
+// before the snakes; no cursor.
+void SnakesPuzzle::winAnimation(Graphics::ManagedSurface &out) {
+	bool hidden = true;
+	for (int step = 0x14; step != 0 && !_engine->shouldAbort(); step--) {
+		if (_bgPixels.size() == (uint)kScreenW * kScreenH && out.format.bytesPerPixel == 2) {
+			for (int y = 0; y < kScreenH; y++)
+				memcpy(out.getBasePtr(0, y), _bgPixels.begin() + (uint)y * kScreenW, kScreenW * 2);
+		}
+		Common::Array<SnakesRules::Draw> draws;
+		_rules.drawsWin(!hidden, draws);
+		for (uint i = 0; i < draws.size(); i++)
+			if (draws[i].frame >= 0 && (uint)draws[i].frame < _frames.size())
+				blitFrame(out, _frames[draws[i].frame], draws[i].x, draws[i].y);
+		hidden = !hidden;
+		g_system->copyRectToScreen(out.getPixels(), out.pitch, 0, 0, kScreenW, kScreenH);
+		g_system->updateScreen();
+		const uint32 until = g_system->getMillis() + 500;
+		while (g_system->getMillis() < until && !_engine->shouldAbort()) {
+			_engine->pollEvents();
+			g_system->delayMillis(10);
+		}
+	}
+}
+
 // The samples the entry loads into 0x007739b8.. (PzS1_1..5.wav); PzS1_4 is
 // loaded but not played.
 void SnakesPuzzle::playSound(SnakesRules::Sound s) {
@@ -80,7 +116,8 @@ void SnakesPuzzle::playSound(SnakesRules::Sound s) {
 }
 
 // FUN_0043b0f4: phase 1 (FUN_0043c35c) until the four pieces are placed,
-// then phase 2 (FUN_0043c6bc); each frame FUN_0043bebc.
+// then phase 2 (FUN_0043c6bc); each frame FUN_0043bebc then the cursor
+// FUN_0043c7e8.  A leave click ends either phase before the frame.
 int SnakesPuzzle::run() {
 	if (!_loaded)
 		return 1;
@@ -88,9 +125,7 @@ int SnakesPuzzle::run() {
 	Graphics::ManagedSurface working(kScreenW, kScreenH, fmt);
 
 	g_system->lockMouse(false);
-	// [UNKNOWN] the exe draws no cursor of its own here (FUN_0043bebc has no
-	// cursor call); the engine's cursor is left shown.
-	_engine->showMouse(true);
+	_engine->showMouse(false);   // the cursor is drawn into the frame
 
 	bool prevButton = (_engine->getCurrentMouseButton() != 0);
 	while (_rules.result == 0 && !_engine->shouldAbort()) {
@@ -106,14 +141,18 @@ int SnakesPuzzle::run() {
 		prevButton = nowButton;
 		if (_rules.result != 0)
 			break;   // phase 2 leaves before the frame
-		if (_rules.frame(m.x, m.y))
+		if (_rules.frame(m.x, m.y)) {
 			playSound(SnakesRules::kSoundWin);
-		// [UNKNOWN] FUN_0043c114, the win animation, is not ported.
+			winAnimation(working);
+			break;
+		}
 		render(working);
+		drawCursor(working, m.x, m.y);
 		g_system->copyRectToScreen(working.getPixels(), working.pitch, 0, 0, kScreenW, kScreenH);
 		g_system->updateScreen();
 		g_system->delayMillis(15);
 	}
+	_engine->showMouse(true);
 	memcpy(g_lastSnakes, _rules.snakes, sizeof(g_lastSnakes));
 	return _rules.result ? _rules.result : 1;
 }

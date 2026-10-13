@@ -54,6 +54,8 @@ private:
 	bool _loaded;
 
 	void render(Graphics::ManagedSurface &out);
+	void drawCursor(Graphics::ManagedSurface &out, int mouseX, int mouseY);
+	void winAnimation(Graphics::ManagedSurface &out);
 	void playSound(SnakesRules::Sound s);
 };
 

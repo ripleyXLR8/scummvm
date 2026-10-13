@@ -186,8 +186,14 @@ public:
 		return snd;
 	}
 
+	// FUN_0043a748: a click near the left or right edge leaves
+	// (DAT_00496d0c); the click is still processed.
+	static bool atEdge(int x) { return x < 0x1e || x > 0x26c; }
+
 	// FUN_0043c35c: phase 1.
 	Sound place(int x, int y) {
+		if (atEdge(x))
+			result = 1;
 		if (carried == 0) {
 			for (int k = 0; k < kNumSnakes; k++) {
 				const Piece &p = pieces[k];
@@ -256,7 +262,7 @@ public:
 
 	// FUN_0043c6bc: phase 2.
 	Sound steer(int x, int y) {
-		if (x < 0x1e || x > 0x26c)        // FUN_0043a748: leave, DAT_00496d0c
+		if (atEdge(x))
 			result = 1;
 		const int k = nearest(x, y);
 		const int d = direction(x - snakes[k].x, y - snakes[k].y);
@@ -296,6 +302,17 @@ public:
 			add(out, pieces[k].x, pieces[k].y, k * 15);
 		if (carried)
 			add(out, pieces[carried - 1].x, pieces[carried - 1].y, (carried - 1) * 15);
+	}
+
+	// FUN_0043c114's draws for one step: the pieces when shown, then the
+	// active snakes.
+	void drawsWin(bool piecesShown, Common::Array<Draw> &out) const {
+		if (piecesShown)
+			for (int k = 0; k < kNumSnakes; k++)
+				add(out, pieces[k].x, pieces[k].y, k * 15);
+		for (int k = 0; k < kNumSnakes; k++)
+			if (snakes[k].active)
+				drawSnake(k, out);
 	}
 
 private:
