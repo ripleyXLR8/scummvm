@@ -124,8 +124,11 @@ void CryOmni3DEngine_Atlantis::loadConScript(int chapter) {
 }
 
 void CryOmni3DEngine_Atlantis::execConInitCommands() {
+	const bool wasRunning = _conInitRunning;
+	_conInitRunning = true;
 	for (uint i = 0; i < _conScript.initCmds().size(); i++)
 		execConSetCommand(_conScript.initCmds()[i], _conScript.initCmdOffsets()[i]);
+	_conInitRunning = wasRunning;
 }
 
 int CryOmni3DEngine_Atlantis::resolveSpeakerPersoId(const Common::String &speaker) const {
@@ -365,12 +368,14 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 		if (value > 0 && (uint)value != _currentCONChapter) {
 			debugC(1, kDebugScript, "execConSetCommand: switching CON script to chapter %d", value);
 			_currentCONChapter = (uint)value;
+			// The chapter checkpoint: FUN_00427634 writes it first
+			// (0x0042765f), before loading the new CON, so it holds the
+			// state where chapter= fired with the new chapter number.  Its
+			// /INIT runner FUN_00425eb0 sets the loading flag 0x00496168,
+			// which suppresses the write for a chapter= inside /INIT.
+			if (!_conInitRunning)
+				autosave();
 			loadConScript(value);
-			// Original-game autosave point: a real chapter advance rewrites
-			// the player's checkpoint.  Defer the write to doPlaceChange() so
-			// it captures the new chapter's first place (atlantis.exe
-			// FUN_00427634 saves as it enters that place).
-			_autosavePending = true;
 			// Fire the new chapter's intro /sel sections — canonical example
 			// is CHAPI014.CON section 10 (`/sel(initflag=0)` -> /set(Cinema=36)),
 			// the throw-success cinematic that plays right after CHAPI013
