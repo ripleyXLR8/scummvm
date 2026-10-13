@@ -1,0 +1,36 @@
+name: Atlantis builds
+# Test builds of the atlantis-v2 branch for the fork's owner: a macOS app
+# (Apple Silicon) with the Cryo Omni3D engines, downloadable from the run's
+# artifacts.  The app is signed ad hoc only (not notarised).
+on:
+  push:
+    branches: [atlantis-v2]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  macos:
+    name: macOS (Apple Silicon)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install libraries
+        run: brew install sdl2 freetype libpng jpeg-turbo dylibbundler
+      - name: Configure
+        run: ./configure --disable-all-engines --enable-engine=cryomni3d,versailles,atlantis --enable-release
+      - name: Build
+        run: make -j$(sysctl -n hw.ncpu)
+      - name: Make the app
+        run: |
+          cp scummvm scummvm-static
+          make bundle-pack
+          dylibbundler -od -b -x ScummVM.app/Contents/MacOS/scummvm \
+            -d ScummVM.app/Contents/libs/ -p @executable_path/../libs/
+          codesign --force --deep --sign - ScummVM.app
+          ditto -c -k --keepParent ScummVM.app ScummVM-atlantis-macos-arm64.zip
+      - name: Upload the app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ScummVM-atlantis-macos-arm64
+          path: ScummVM-atlantis-macos-arm64.zip
+          retention-days: 30
