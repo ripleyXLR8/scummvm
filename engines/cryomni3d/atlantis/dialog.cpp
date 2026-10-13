@@ -448,11 +448,14 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		bool effHasAngle = item.line.hasAngle;
 		int  effAngleX   = item.line.angleX;
 		int  effAngleY   = item.line.angleY;
-		// The original's Seth flag (0x00428670): the line starts with "Seth".
-		// The angle rule below predates the reverse engineering of
-		// 0x00428949..0x00428b13 and is not checked against it.
+		// FUN_0042844c @ 0x00428949..0x00428afc: a line starting with "Seth"
+		// (the original's Seth flag, 0x00428670) shows the view at the
+		// player's angle + pi (wrapped below 2 pi), pitch 0; another line does
+		// so at the player's angle when its perso is >= 0x200, and leaves the
+		// view alone otherwise; explicit X, Y angles in the header win
+		// (0x00428afc).  The player's own angle is kept (restored at 0x00428a7a).
 		const bool isHero = sethLine;
-		if (!effHasAngle && _warpLoaded && !isOffCam) {
+		if (!effHasAngle && _warpLoaded && !isOffCam && (isHero || persoId >= 0x200)) {
 			// _dialBaseAlpha is the click-time facing during an NPC interaction
 			// (set by the NPC layer that lands later); /sel-triggered dialog
 			// falls back to the live alpha.
