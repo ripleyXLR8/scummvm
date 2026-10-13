@@ -137,6 +137,12 @@ public:
 	// Build a path for a named file of the given type (for files outside the BigFile).
 	Common::Path getFilePath(FileType fileType, const Common::String &baseName) const;
 
+	// CURSEURS.SPR frame idx, or null (puzzles draw cursors into the frame).
+	const SprSprite *cursorSprite(uint idx) const {
+		return (idx < _cursorSprites.size() && !_cursorSprites[idx].pixels.empty()) ? &_cursorSprites[idx] : nullptr;
+	}
+	// Play WAV\<name>.APC once (puzzle sound effects).
+	void playPuzzleSound(const char *name);
 	// Open a file from the BigFile archive and return a new stream (caller owns it).
 	// Returns nullptr if not found.
 	Common::SeekableReadStream *openBigFileStream(FileType fileType,

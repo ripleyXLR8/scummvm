@@ -41,6 +41,7 @@
 #include "cryomni3d/atlantis/inventory.h"
 #include "cryomni3d/atlantis/puzzle_eclipse.h"
 #include "cryomni3d/atlantis/puzzle_ogregame.h"
+#include "cryomni3d/atlantis/puzzle_pieces.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
@@ -166,12 +167,43 @@ int CryOmni3DEngine_Atlantis::resolveSpeakerPersoId(const Common::String &speake
 	return persoId;
 }
 
+void CryOmni3DEngine_Atlantis::playPuzzleSound(const char *name) {
+	Common::String fname = Common::String::format("%s.APC", name);
+	Common::SeekableReadStream *apcFile = openBigFileStream(kFileTypeSound, fname);
+	if (!apcFile) {
+		warning("playPuzzleSound: cannot open WAV\\%s", fname.c_str());
+		return;
+	}
+	Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*apcFile);
+	if (!apc) {
+		delete apcFile;
+		return;
+	}
+	int64 remaining = apcFile->size() - apcFile->pos();
+	if (remaining > 0) {
+		byte *buf = new byte[remaining];
+		apcFile->read(buf, (uint32)remaining);
+		apc->queuePacket(new Common::MemoryReadStream(buf, remaining, DisposeAfterUse::YES));
+	}
+	apc->finish();
+	delete apcFile;
+	Audio::SoundHandle handle;
+	_mixer->playStream(Audio::Mixer::kSFXSoundType, &handle, apc);
+}
+
 void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 	// Dispatch to the per-puzzle handler.  Puzzles not yet implemented
 	// fall back to the auto-win stub so their CHAPI script chains keep
 	// progressing (most of them gate further story content behind
 	// FinPuzzle=255, e.g. CHAPI012's /sel(FinPuzzle=255)&(Vue=N)&...).
 	int finPuzzle = 255;
+	// FUN_0043a1e0: puzzles below 6, 8, 9 and above 14 do not start while an
+	// object is held; they return DAT_00496d0c (1).
+	if ((puzzleId < 6 || puzzleId == 8 || puzzleId == 9 || puzzleId > 14) &&
+	        _inventory.selectedObject() != nullptr) {
+		_gameVars["finpuzzle"] = 1;
+		return;
+	}
 	switch (puzzleId) {
 	case 0: {
 		// Celestial alignment ("eclipse on Atlantis") at CHAPI012 vue 221.
@@ -182,6 +214,12 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 	case 2: {
 		// The rat-hunter's "ogre & hero" board pursuit at CHAPI018 place 290.
 		OgreGamePuzzle puz(this);
+		finPuzzle = puz.run();
+		break;
+	}
+	case 3: {
+		// Six rotating pieces at CHAPI029 (FUN_004459c0).
+		RotatingPiecesPuzzle puz(this);
 		finPuzzle = puz.run();
 		break;
 	}
