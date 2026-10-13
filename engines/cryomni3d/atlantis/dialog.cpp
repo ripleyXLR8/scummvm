@@ -395,7 +395,9 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		int camNum = pickDialCam(persoId, explicitCam, sethLine);
 
 		// Off-camera variants (off / off0 / off1) play as voiceover: no head
-		// shot, no FOV change, view left where the player was facing.
+		// shot, view left where the player was facing.  "off" (FUN_00430258)
+		// sets the warp FOV 75.137 (0x00430447), which is the port's FOV here
+		// anyway (each line restores its own), so nothing is changed.
 		const bool isOffCam = tailIs("off", 3) || tailIs("off0", 4) || tailIs("off1", 4);
 		// off0 (FUN_004305e8): the subtitle is drawn over the screen as it
 		// stands, with no view redraw and no FOV reset.  off1 (FUN_00430884)
