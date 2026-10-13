@@ -990,7 +990,12 @@ void CryOmni3DEngine_Atlantis::playArcMagique() {
 }
 
 void CryOmni3DEngine_Atlantis::hidePerso(int perso) {
-	// atlantis.exe FUN_00427bd0.
+	// atlantis.exe FUN_00427bd0.  The original keeps at most 0x100 ids; the
+	// shipped scripts hide 145 distinct ids and 16 objects can be picked up,
+	// so the limit is never reached.  Its second table (0x00555d10, the
+	// transition SPF sprites) is filtered through _hiddenPersos at playback,
+	// which matches its flags: FUN_00427da8 clears them for hidden ids when
+	// the table is built.
 	bool found = false;
 	for (int h : _hiddenPersos) if (h == perso) { found = true; break; }
 	if (!found)
