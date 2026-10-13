@@ -161,8 +161,13 @@ void CryOmni3DEngine_Atlantis::drawFontMinText(Graphics::ManagedSurface &dst,
 
 // CREDBLAN.SPR / CREDBLEU.SPR credits glyphs.  Advance widths come from the
 // exe char-width table (_creditCharWidths); the glyph index is char-0x21
-// (these atlases have NO space slot, unlike FONTMAX's char-0x20).
+// (these atlases have NO space slot, unlike FONTMAX's char-0x20).  A space
+// advances 6 without reading the table, both when a line is measured
+// (FUN_0042073c @ 0x00420774) and when it is drawn (FUN_0041a72c @
+// 0x0041ab0d / 0x0041abde).
 int CryOmni3DEngine_Atlantis::creditCharAdvance(unsigned char c) const {
+	if (c == ' ')
+		return 6;
 	return (int)_creditCharWidths[c];
 }
 

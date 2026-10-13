@@ -105,8 +105,8 @@ void CryOmni3DEngine_Atlantis::loadAtlantisExeTables() {
 	      _inventoryObjectIds.size());
 
 	// Credits-font char-width table at VA 0x004966fc: 256 raw bytes indexed by
-	// char code, for proportional spacing of CREDBLAN.SPR / CREDBLEU.SPR (the
-	// space value 0x20 = 13 is authentic).
+	// char code, for proportional spacing of CREDBLAN.SPR / CREDBLEU.SPR.  The
+	// byte for 0x20 (13) is never read: a space advances 6 (creditCharAdvance).
 	memset(_creditCharWidths, 0, sizeof(_creditCharWidths));
 	const uint32 kCredWidthsVA = 0x004966fc;
 	const uint32 kCredWidthsFileOff =
