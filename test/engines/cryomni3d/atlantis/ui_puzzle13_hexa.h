@@ -195,6 +195,6 @@ public:
 			TS_ASSERT_EQUALS(got, atoi(tok[7].c_str()));
 			scenarios++;
 		}
-		TS_ASSERT(scenarios >= 2);
+		TS_ASSERT(scenarios >= 3);
 	}
 };
