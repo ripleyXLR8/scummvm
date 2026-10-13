@@ -71,7 +71,8 @@ public:
 	virtual ~MetaGame() {}
 
 	// The coverage of every frame, from the SPR file.
-	bool loadCoverage(const byte *spr, uint32 size);
+	bool loadCoverage(const byte *spr, uint32 size) { return readCoverage(spr, size, coverage); }
+	static bool readCoverage(const byte *spr, uint32 size, Common::Array<Coverage> &out);
 
 	// FUN_00448ad0 (no state) then FUN_0044763c(v): 255 won, 2 left.  The
 	// map must hold the file's pixels.

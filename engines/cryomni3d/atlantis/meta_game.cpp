@@ -58,7 +58,7 @@ MetaGame::MetaGame()
 	memcpy(pieces, kPieces, sizeof(pieces));
 }
 
-bool MetaGame::loadCoverage(const byte *d, uint32 size) {
+bool MetaGame::readCoverage(const byte *d, uint32 size, Common::Array<Coverage> &coverage) {
 	if (size < 4)
 		return false;
 	uint32 p = 0;

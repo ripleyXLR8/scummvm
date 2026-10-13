@@ -44,6 +44,7 @@
 #include "cryomni3d/atlantis/puzzle_dispatch.h"
 #include "cryomni3d/atlantis/puzzle_hens.h"
 #include "cryomni3d/atlantis/puzzle_pieces.h"
+#include "cryomni3d/atlantis/puzzle_hexa.h"
 #include "cryomni3d/atlantis/puzzle_meta.h"
 #include "cryomni3d/atlantis/puzzle_rat.h"
 #include "cryomni3d/atlantis/puzzle_snakes.h"
@@ -270,6 +271,12 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 	case 12: {
 		// The metal pieces at CHAPI046 (FUN_0044763c, stages 1..4).
 		MetaPuzzle puz(this, puzzleId - 8);
+		finPuzzle = puz.play();
+		break;
+	}
+	case 13: {
+		// The hexagon at CHAPI060 (FUN_004404fc).
+		HexaPuzzle puz(this);
 		finPuzzle = puz.play();
 		break;
 	}
