@@ -47,6 +47,8 @@ MODULE_OBJS += \
 	atlantis/navigation.o \
 	atlantis/npc_click.o \
 	atlantis/ogre_rules.o \
+	atlantis/rat_game.o \
+	atlantis/rat_rules.o \
 	atlantis/omni3d.o \
 	atlantis/place.o \
 	atlantis/puzzle_assets.o \
@@ -54,6 +56,7 @@ MODULE_OBJS += \
 	atlantis/puzzle_ogregame.o \
 	atlantis/puzzle_hens.o \
 	atlantis/puzzle_pieces.o \
+	atlantis/puzzle_rat.o \
 	atlantis/puzzle_snakes.o \
 	atlantis/saveload.o \
 	atlantis/saveload_format.o \
