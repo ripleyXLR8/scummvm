@@ -61,12 +61,10 @@ endif
 	# The engine and libvideo depend on libaudio and libimage: link them first.
 	TEST_LIBS := engines/cryomni3d/libcryomni3d.a video/libvideo.a $(TEST_LIBS)
 	# Some Atlantis tests reach engine code, which needs the engine framework,
-	# GUI and backends: resolve everything as one group.
-	CRYOMNI3D_TEST_LINK = $(DETECT_OBJS) -Wl,--start-group engines/cryomni3d/libcryomni3d.a \
-		engines/libengines.a gui/libgui.a backends/libbackends.a base/libbase.a \
-		graphics/libgraphics.a image/libimage.a video/libvideo.a audio/libaudio.a \
-		math/libmath.a common/formats/libformats.a common/compression/libcompression.a \
-		common/libcommon.a -Wl,--end-group
+	# GUI and backends: resolve everything as one group.  base/libbase.a pulls
+	# in every enabled engine's detection, and that can reference its engine,
+	# so the group holds all the executable's libraries.
+	CRYOMNI3D_TEST_LINK = $(DETECT_OBJS) -Wl,--start-group $(filter %.a,$(OBJS)) -Wl,--end-group
 endif
 
 ifeq ($(ENABLE_TWINE), STATIC_PLUGIN)
