@@ -1,7 +1,9 @@
 name: Atlantis builds
 # Test builds of the atlantis-v2 branch for the fork's owner: a macOS app
 # (Apple Silicon) with the Cryo Omni3D engines, downloadable from the run's
-# artifacts.  The app is signed ad hoc only (not notarised).
+# artifacts.  The app is signed ad hoc only (not notarised).  It is built on
+# macOS 15 with a 15.0 deployment target, so it runs on Sequoia and later
+# (Homebrew's libraries target the runner's macOS version).
 on:
   push:
     branches: [atlantis-v2]
@@ -11,7 +13,9 @@ permissions:
 jobs:
   macos:
     name: macOS (Apple Silicon)
-    runs-on: macos-latest
+    runs-on: macos-15
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "15.0"
     steps:
       - uses: actions/checkout@v4
       - name: Install libraries
@@ -28,6 +32,17 @@ jobs:
           dylibbundler -od -b -x ScummVM.app/Contents/MacOS/scummvm \
             -d ScummVM.app/Contents/libs/ -p @executable_path/../libs/
           codesign --force --deep --sign - ScummVM.app
+      - name: Check the minimum macOS of every binary
+        run: |
+          bad=0
+          for f in ScummVM.app/Contents/MacOS/scummvm ScummVM.app/Contents/libs/*.dylib; do
+            v=$(vtool -show-build "$f" | awk '/minos/ {print $2; exit}')
+            echo "$v $f"
+            case "$v" in 15.*|1[0-4].*|[0-9].*) ;; *) bad=1 ;; esac
+          done
+          exit $bad
+      - name: Zip the app
+        run: |
           ditto -c -k --keepParent ScummVM.app ScummVM-atlantis-macos-arm64.zip
       - name: Upload the app
         uses: actions/upload-artifact@v4
