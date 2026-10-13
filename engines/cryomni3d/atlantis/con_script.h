@@ -55,9 +55,10 @@ struct ConLine {
 
 	// Optional panorama angle hints, sourced directly from the CON dialog
 	// directive — when present, the original engine writes them straight into
-	// the cyclo view's alpha/beta before playing the line (atlantis.exe.c
-	// FUN_004283e7 line 22381+22543, then FUN_00451915 line 47181 stores into
-	// the global current-view angle).  Syntax in CON files:
+	// the cyclo view's alpha/beta before playing the line (the dialog line
+	// code, atlantis-re functions/video-FUN_0042ee88.md; FUN_00451915 stores
+	// the angles of the current view; the address 0x004283e7 cited here
+	// before is a jump inside FUN_0042831c, from an older decompilation).  Syntax in CON files:
 	//   [Speaker, X, Y, camN] text       — X,Y present (hasAngle = true)
 	//   [Speaker, camN] text             — no numeric tokens (hasAngle = false)
 	// X is a panorama-pixel offset for the horizontal angle; Y is the vertical

@@ -128,7 +128,8 @@ int menuVolumeFromKnob(int x);
 // DAT_00496098).  Subtitles are drawn when on is set (FUN_00430178).
 void subtitleToggleClick(bool &on, uint8 &counter);
 
-// FONTMAX measuring widths (atlantis.exe @ 0x004965ee, index char - 0x20):
+// FONTMAX measuring widths (atlantis.exe @ 0x0049660e indexed by char - 0x20,
+// i.e. 0x004965ee indexed by the raw byte):
 // FUN_004206c8 centres labels and sizes hit rects with it, and the pen
 // advances by it while drawing (0x004202cc).
 extern const uint8 kFontMaxMeasureWidths[137];

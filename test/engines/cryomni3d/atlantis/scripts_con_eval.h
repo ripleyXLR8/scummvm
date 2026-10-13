@@ -157,7 +157,8 @@ public:
 			c.time1Offset = kOrig[i].t1o;
 			c.time2Start = kOrig[i].t2s;
 			c.time2Offset = kOrig[i].t2o;
-			// Random is timeGetTime() & 0xff (updateConClocks).
+			// Random is FUN_00451d0c() & 0xff, the game clock with its epoch
+			// subtracted (0x0041c774; updateConClocks).
 			TS_ASSERT_EQUALS((int32)(kOrig[i].now & 0xff), kOrig[i].random);
 			TS_ASSERT_EQUALS(c.chapterTime(kOrig[i].now), kOrig[i].chapterTime);
 			TS_ASSERT_EQUALS(c.timerValue(1, kOrig[i].now), kOrig[i].time1);

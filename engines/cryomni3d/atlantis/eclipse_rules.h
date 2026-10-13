@@ -44,7 +44,7 @@ static const EclipseRecordInit kEclipseRecordInit[7] = {
 	{ 0, 271, 198, 142, 212 },   // 6  PZ1L 142..212 -- EARTH sphere (lever 1)
 };
 
-// The rules of the eclipse puzzle (StartPuzzle=1) without drawing: the
+// The rules of the eclipse puzzle (StartPuzzle=0) without drawing: the
 // record tick FUN_00441f50, the win test and click zones of FUN_00441cd8.
 class EclipseRules {
 public:

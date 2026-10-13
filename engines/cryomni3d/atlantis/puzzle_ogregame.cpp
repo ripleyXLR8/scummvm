@@ -130,7 +130,7 @@ void OgreGamePuzzle::moveOgres(Graphics::ManagedSurface &working, int &result) {
 			// for a zero step, then takes the new cell.
 			const int fromX = ogre.x * kCellSize + kBoardX;
 			const int fromY = ogre.y * kCellSize + kBoardY;
-			ogre.flag = 2;   // exe marks the slider with flag 2
+			ogre.flag = 2;   // port-only marker for the drawing (the exe never writes 2)
 			for (int step = 5; step <= kCellSize && !_engine->shouldAbort();
 			     step += 5) {
 				_engine->pollEvents();

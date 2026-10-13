@@ -773,9 +773,9 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 
 				// Per-cam SPF overlay (INITDIAL columns 10..13).  The
 				// original engine composites the matching SPF frame on top
-				// of every UBB frame in the dialog playback loop at
-				// FUN_0042f9e8 (atlantis.exe.c:26609-26734), sharing the
-				// UBB's frame counter.  We mirror that exactly, plus a
+				// of every UBB frame in the dialog playback loop (loaded by
+				// FUN_0042fc90, drawn by FUN_0042ff90), sharing the UBB's
+				// frame counter.  We mirror that exactly, plus a
 				// modulo so the SPF LOOPS when the UBB outlives it —
 				// compositeSpfFrame draws nothing past the last frame,
 				// which would drop the overlay while the head keeps talking
@@ -795,7 +795,7 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 
 				// Advance the SPF frame counter once per fresh UBB frame —
 				// the same one-to-one mapping the original engine uses
-				// (atlantis.exe.c FUN_0042f9e8:26710).
+				// (FUN_0042ff90).
 				++spfFrameIdx;
 			}
 		} else

@@ -54,13 +54,11 @@ inline uint16 blendSprPixel565(uint16 src, uint16 dst, byte factor) {
 }
 
 // UBB dialog-compositor blend — atlantis.exe FUN_00450b08's shade path (the
-// indirect PTR_FUN_00497c8c blend).  Unlike the sprite blend, the foreground
-// here is the RAW palette colour (not premultiplied): the 5-bit `shade`
-// (0..31) is the foreground coverage and the background contributes the
-// remaining (32 - shade)/32.  shade == 0x1f is full intensity and is handled
-// by a plain copy at the call site; this is the partial-coverage path that
-// anti-aliases the UBB head edge against the cyclo panorama, so the head
-// blends smoothly instead of leaving a hard black outline.
+// indirect blend through the pointer at 0x00497c8c, FUN_004508e0).  The
+// foreground counts fully (32/32) and the background with the weight
+// 31 - max(shade, fg blue, fg green >> 1, fg red), as below.  shade == 0x1f
+// is a plain copy at the call site; this is the partial-coverage path that
+// anti-aliases the UBB head edge against the cyclo panorama.
 inline uint16 blendUbbPixel565(uint16 fg, uint16 dst, uint shade) {
 	// atlantis.exe FUN_004508e0(shade, fg, dst) with the table FUN_00450d90
 	// builds (T[a][c] = (31 - a) * c): a is the largest of shade and fg's

@@ -402,7 +402,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			else
 				setArrowCursor();
 			// The bar is drawn over the view with the guest portraits (atlantis.exe
-			// FUN_0042c8ac draws them each frame, FUN_0042bd08).
+			// FUN_0042c8ac draws them each frame with FUN_0042bc58).
 			Graphics::ManagedSurface barFrame;
 			const Graphics::Surface *barBg = _warpLoaded ? _omni3dMan.getSurface() : nullptr;
 			if (barBg) {
