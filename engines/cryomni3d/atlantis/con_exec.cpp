@@ -47,6 +47,7 @@
 #include "cryomni3d/atlantis/puzzle_crab.h"
 #include "cryomni3d/atlantis/puzzle_hexa.h"
 #include "cryomni3d/atlantis/puzzle_meta.h"
+#include "cryomni3d/atlantis/puzzle_muria.h"
 #include "cryomni3d/atlantis/puzzle_rat.h"
 #include "cryomni3d/atlantis/puzzle_snakes.h"
 #include "cryomni3d/atlantis/puzzle_taquin.h"
@@ -291,6 +292,12 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 	case 15: {
 		// The crab race at CHAPI066 (FUN_0043d28c).
 		CrabPuzzle puz(this);
+		finPuzzle = puz.play();
+		break;
+	}
+	case 16: {
+		// Muria at CHAPI069 and 070 (FUN_0043ee54).
+		MuriaPuzzle puz(this);
 		finPuzzle = puz.play();
 		break;
 	}

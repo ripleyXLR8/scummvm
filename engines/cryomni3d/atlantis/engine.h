@@ -150,6 +150,9 @@ public:
 	const Object *heldObject() const { return _inventory.selectedObject(); }
 	uint currentPlaceId() const { return _currentPlaceId; }
 	void setGameVar(const char *name, int value) { _gameVars[name] = value; }
+	// FUN_004277c8: the first /sel entry whose condition holds runs (the
+	// puzzle hooks call it too).
+	void runSelScan();
 	void clearHeldObject() {
 		_inventory.setSelectedObject(nullptr);
 		_gameVars["objetenmain"] = 0;
@@ -252,7 +255,6 @@ private:
 	// progressing past the gate.
 	void playPuzzle(int puzzleId);
 	void runPuzzleZone(int puzzleId);
-	void runSelScan();
 	// Evaluate a /sel section's condition list (left-to-right short-circuit).
 	bool evalSelSection(const ConSection &sec, int departZone, int currentVue) const;
 	// Execute a fired section's body (its /set commands and /go redirect; the

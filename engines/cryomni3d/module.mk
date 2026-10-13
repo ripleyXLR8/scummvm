@@ -49,6 +49,7 @@ MODULE_OBJS += \
 	atlantis/crab_game.o \
 	atlantis/hexa_game.o \
 	atlantis/meta_game.o \
+	atlantis/muria_game.o \
 	atlantis/ogre_rules.o \
 	atlantis/rat_game.o \
 	atlantis/rat_rules.o \
@@ -64,6 +65,7 @@ MODULE_OBJS += \
 	atlantis/puzzle_crab.o \
 	atlantis/puzzle_hexa.o \
 	atlantis/puzzle_meta.o \
+	atlantis/puzzle_muria.o \
 	atlantis/puzzle_rat.o \
 	atlantis/puzzle_taquin.o \
 	atlantis/puzzle_throne.o \
