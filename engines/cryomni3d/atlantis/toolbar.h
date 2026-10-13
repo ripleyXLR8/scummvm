@@ -65,6 +65,12 @@ public:
 	// One frame of the bar loops' engine work (barFrameTick); true when the
 	// bar must close.  Redraws the view and the bar after a timer section.
 	bool barTick(const Graphics::Surface *original);
+	// One frame of a bar slide: the view, the guest portraits, the bar at
+	// _position (82 = not drawn), on the whole screen.
+	void slideFrame(const Graphics::Surface *original);
+	// FUN_0042c2c4 / FUN_0042c59c; true when a timer closed the bar.
+	bool slideIn(const Graphics::Surface *original);
+	bool slideOut(const Graphics::Surface *original);
 	void inventoryChanged(uint newPosition);
 	// The guest whose portrait was clicked in the open bar (0: none); the
 	// caller talks to it (atlantis.exe FUN_0042c8ac @ 0x0042cbfe).

@@ -578,6 +578,14 @@ private:
 	void slideGuest(byte sprite, int fromX, int toX, int step);
 	void addGuest(int32 guestId);
 	int32 guestAt(int x, int y) const { return _guestsShown ? _guests.at(x, y) : 0; }
+	// The portraits' y during a bar slide: -7 a frame up (FUN_0042c2c4),
+	// +7 down while below 350 (FUN_0042c59c), only with guests shown.
+	void slideGuestPortraits(int dy) {
+		if (_guests.count == 0 || !_guestsShown)
+			return;
+		if (dy < 0 || _guests.portraitY < 350)
+			_guests.portraitY += dy;
+	}
 	void talkToGuest(int32 guestId);
 	void subGuest(int32 guestId);
 	Common::Array<SubjSprite> _objSprites;

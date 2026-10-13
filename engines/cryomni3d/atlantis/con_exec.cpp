@@ -763,16 +763,16 @@ void CryOmni3DEngine_Atlantis::enterPlaceFromScript(uint placeId) {
 }
 
 void CryOmni3DEngine_Atlantis::drawGuests(Graphics::ManagedSurface &dst, int movingSprite, int movingX) {
-	// FUN_0042bc58: every record not hidden, at (540 - 100 i, 350).
+	// FUN_0042bc58: every record not hidden, at (540 - 100 i, [0x00496880]).
 	if (!_guestsShown)
 		return;
 	for (uint i = 0; i < _guests.count; i++) {
 		byte s = _guests.sprite[i];
 		if (s != AtlantisGuests::kHidden && s < _guestSprites.size())
-			drawSprite(dst, _guestSprites[s], 540 - 100 * (int)i, 350);
+			drawSprite(dst, _guestSprites[s], 540 - 100 * (int)i, _guests.portraitY);
 	}
 	if (movingSprite >= 0 && (uint)movingSprite < _guestSprites.size())
-		drawSprite(dst, _guestSprites[movingSprite], movingX, 350);
+		drawSprite(dst, _guestSprites[movingSprite], movingX, _guests.portraitY);
 }
 
 void CryOmni3DEngine_Atlantis::slideGuest(byte sprite, int fromX, int toX, int step) {

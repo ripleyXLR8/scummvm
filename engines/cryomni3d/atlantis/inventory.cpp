@@ -107,7 +107,7 @@ int32 AtlantisGuests::at(int x, int y) const {
 	if (count == 0)
 		return 0;
 	const int x0 = 540 - 100 * ((int)count - 1);
-	const int y0 = 350;
+	const int y0 = portraitY;
 	if (x < x0 || x > x0 + (int)count * 85 || y < y0 || y > y0 + 100)
 		return 0;
 	const int cell = ((y - y0) / 100) * (int)count + (x - x0) / 85;

@@ -83,7 +83,11 @@ struct AtlantisGuests {
 	byte sprite[kSlots];
 	uint count;
 
-	AtlantisGuests() { clear(); }
+	// 0x00496880: the portraits' y, 350 in the exe image; the bar slide-in
+	// lowers it by 7 a frame and the slide-out raises it back (FUN_0042c2c4,
+	// FUN_0042c59c).  Not reset with the list.
+	int32 portraitY;
+	AtlantisGuests() : portraitY(350) { clear(); }
 	void clear();
 	// FUN_0042b480 (list part): append {id, index of id in table}.
 	void add(int32 guestId, const Common::Array<int32> &table);
@@ -94,7 +98,7 @@ struct AtlantisGuests {
 	// that moved into the freed slot.
 	void remove(int32 guestId);
 	// FUN_0042bdb8: the guest whose portrait cell holds (x, y), 0 if none.
-	// Grid FUN_004211f0 at x0 = 540 - 100 * (count - 1), y0 = 350, cells
+	// Grid FUN_004211f0 at x0 = 540 - 100 * (count - 1), y0 = portraitY, cells
 	// 85 x 100, count columns, one row, edges inclusive; the record is
 	// count - 1 - cell.  On the right and bottom edge pixels the original
 	// reads the memory before the list; 0 here.

@@ -244,20 +244,7 @@ bool Atlantis_Toolbar::displayToolbar(const Graphics::Surface *original) {
 
 	// Slide the bar up (FUN_0042c2c4); a timer that sets GameOver or Exit
 	// ends it early (0x0042c55d).
-	bool closed = false;
-	for (_position = _destSurface.h; _position > 0 && !_engine->shouldAbort(); _position--) {
-		drawToolbar(original);
-		g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0,
-		                           original ? original->h - _destSurface.h : (480 - 82),
-		                           _destSurface.w, _destSurface.h);
-		g_system->updateScreen();
-		g_system->delayMillis(10);
-		_engine->pollEvents();
-		if (barTick(original)) {
-			closed = true;
-			break;
-		}
-	}
+	bool closed = slideIn(original);
 	if (_engine->shouldAbort())
 		return false;
 
@@ -268,23 +255,58 @@ bool Atlantis_Toolbar::displayToolbar(const Graphics::Surface *original) {
 	if (_engine->shouldAbort())
 		return false;
 
-	// Slide down (FUN_0042c59c) — skipped when an item was just taken, so the
-	// carried object reaches the centred crosshair at once; a timer that sets
-	// GameOver or Exit ends it early (0x0042c805).
-	if (!itemTaken) {
-		for (_position = 0; _position <= (uint)_destSurface.h && !_engine->shouldAbort(); _position++) {
-			drawToolbar(original);
-			g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0,
-			                           original ? original->h - _destSurface.h : (480 - 82),
-			                           _destSurface.w, _destSurface.h);
-			g_system->updateScreen();
-			g_system->delayMillis(10);
-			_engine->pollEvents();
-			if (barTick(original))
-				break;
-		}
-	}
+	// Slide down (FUN_0042c59c), after a take too (FUN_0042c098 calls it at
+	// 0x0042c219 on every exit); a timer that sets GameOver or Exit ends it
+	// early (0x0042c805).
+	(void)itemTaken;
+	slideOut(original);
 
+	return false;
+}
+
+void Atlantis_Toolbar::slideFrame(const Graphics::Surface *original) {
+	Graphics::ManagedSurface frame(640, 480, _format);
+	if (original)
+		frame.blitFrom(*original);
+	_engine->drawGuests(frame);
+	drawToolbar(&frame.rawSurface());
+	if (_position < (uint)_destSurface.h)
+		frame.blitFrom(_destSurface, Common::Point(0, frame.h - _destSurface.h));
+	g_system->copyRectToScreen(frame.getPixels(), frame.pitch, 0, 0, frame.w, frame.h);
+	g_system->updateScreen();
+	// [UNKNOWN] the slides have no timer of their own; the port's pace.
+	g_system->delayMillis(10);
+	_engine->pollEvents();
+}
+
+// FUN_0042c2c4: the slots start at y 499 and move up 7 a frame, then are
+// drawn, until 443 (8 frames): the bar's offset from its up position is
+// 49, 42, .. 0.  The guest portraits move up with it.
+bool Atlantis_Toolbar::slideIn(const Graphics::Surface *original) {
+	for (int slotY = 499 - 7; slotY >= 443 && !_engine->shouldAbort(); slotY -= 7) {
+		_position = (uint)(slotY - 443);
+		_engine->slideGuestPortraits(-7);
+		slideFrame(original);
+		if (barTick(original))
+			return true;
+	}
+	_position = 0;
+	return false;
+}
+
+// FUN_0042c59c: each frame the bar is drawn at the slots' y while it is
+// below 0x1fa (506), then they move down 7; it stops when they reach 0x208
+// (520): 11 frames, the last two without the bar.  The portraits go back
+// down to 350.
+bool Atlantis_Toolbar::slideOut(const Graphics::Surface *original) {
+	for (int slotY = 443; slotY < 0x208 && !_engine->shouldAbort(); slotY += 7) {
+		_position = slotY < 0x1fa ? (uint)(slotY - 443) : (uint)_destSurface.h;
+		slideFrame(original);
+		_engine->slideGuestPortraits(7);
+		if (barTick(original))
+			return true;
+	}
+	_position = _destSurface.h;
 	return false;
 }
 
@@ -313,16 +335,7 @@ bool Atlantis_Toolbar::displayPickup(const Graphics::Surface *original, Object *
 	updateZones();
 
 	const int barY = original ? original->h - _destSurface.h : (480 - 82);
-	for (_position = _destSurface.h; _position > 0 && !_engine->shouldAbort(); _position--) {
-		drawToolbar(original);
-		g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0, barY,
-		                           _destSurface.w, _destSurface.h);
-		g_system->updateScreen();
-		g_system->delayMillis(10);
-		_engine->pollEvents();
-		if (barTick(original))
-			break;
-	}
+	slideIn(original);
 
 	// The loop ends on the press edge of either button (FUN_0041a298 sets
 	// 0x0049611c on a VK_LBUTTON edge, 0x00496120 on a VK_RBUTTON edge); a
@@ -372,16 +385,7 @@ bool Atlantis_Toolbar::displayPickup(const Graphics::Surface *original, Object *
 		_engine->setArrowCursor();
 	}
 
-	for (_position = 0; _position <= (uint)_destSurface.h && !_engine->shouldAbort(); _position++) {
-		drawToolbar(original);
-		g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0, barY,
-		                           _destSurface.w, _destSurface.h);
-		g_system->updateScreen();
-		g_system->delayMillis(10);
-		_engine->pollEvents();
-		if (barTick(original))
-			break;
-	}
+	slideOut(original);
 	return right;
 }
 
