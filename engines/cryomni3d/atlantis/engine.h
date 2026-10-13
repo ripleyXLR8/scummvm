@@ -44,6 +44,7 @@
 #include "cryomni3d/atlantis/npc_click.h"
 #include "cryomni3d/atlantis/omni3d.h"
 #include "cryomni3d/atlantis/sprite_anim.h"
+#include "cryomni3d/atlantis/sprite_decode.h"
 #include "cryomni3d/atlantis/toolbar.h"
 #include "cryomni3d/atlantis/warp_cursor.h"
 #include "cryomni3d/atlantis/wam_parser.h"
@@ -304,23 +305,8 @@ private:
 	int showSubjectMenu(const Common::Array<int> &sujIds);
 
 	// --- 2D sprites (sprite_renderer.cpp) ---------------------------------
-	// 2D sprite (SPR) decoded into screen-format pixels plus a parallel
-	// per-pixel blend array (kSprNoBlend = opaque; otherwise a 5-bit edge
-	// anti-alias coverage factor).  kSprTransp marks transparent pixels.
-	struct SubjSprite {
-		uint16 w, h;
-		int16  xoff, yoff;
-		Common::Array<uint16> pixels;  // RGB565; kSprTransp marks transparent pixels
-		Common::Array<uint8>  blend;   // per-pixel blend factor; kSprNoBlend = opaque
-	};
-	static const uint16 kSprTransp = 0x0001;  // sentinel: not a real game colour
-
-	// Decode one sprite's RLE rows (atlantis.exe FUN_0041047f) into spr.pixels
-	// and spr.blend.  spr.w/h must already be set and the stream positioned at
-	// the per-row offset table.  Shared by every SPR loader.  colorTable maps
-	// the 8-bit indices to RGB565.
-	void decodeSprite(Common::SeekableReadStream &stream, SubjSprite &spr,
-	                  const uint16 *colorTable);
+	// 2D sprite (SPR): sprite_decode.h.
+	typedef SprSprite SubjSprite;
 	// Load the subject-menu icon sprites from SPRITE\2D\SUJETS.SPR.
 	void loadSubjectSprites();
 	// Load inventory item icons from SPRITE\2D\OBJETS1.SPR into _objSprites.
@@ -443,16 +429,11 @@ private:
 	// RGB565 colour key (pure blue) for the cursor sprites and CursorMan masks.
 	static const uint16 kWarpCursorKey = 0x001Fu;
 	// Animated warp-view cursor frames decoded from SPRITE\2D\CURSEURS.SPR.
-	struct CursorSpr {
-		uint16 w, h;
-		int16  xoff, yoff;
-		Common::Array<uint16> pixels;  // RGB565; kWarpCursorKey = transparent
-		Common::Array<uint8>  blend;   // per-pixel blend factor; kSprNoBlend = opaque
-	};
+	typedef SprSprite CursorSpr;
 	void loadCursorSprites();
 	// Install an alpha-blended hardware cursor from sprite pixels + blend factors.
 	void setBlendedCursor(uint16 w, uint16 h, const uint16 *pixels,
-	                      const uint8 *blend, int hotX, int hotY, uint16 transpKey);
+	                      const uint8 *blend, int hotX, int hotY);
 	void showWarpCursorSprite(int sprite);  // CURSEURS.SPR sprite, -1 hides
 	static const int kWarpCursorUnset = -2;
 public:
@@ -636,13 +617,6 @@ private:
 	// Parsed SPF transition-sprite list (e.g. SPFATL1.TXT).
 	Common::Array<SpriteTransEntry> _spriteTransList;
 
-	// Decode a single frame of an SPF transition sprite stream and composite
-	// it onto `dst`.  The SPF format is identical to SPW (same header / RLE
-	// pixel stream), so the same flat-buffer decoder is reused — but here
-	// the surface width matches the transition video (640) rather than the
-	// 2048-wide cyclo panorama.  Implemented in sprite_renderer.cpp.
-	void compositeSpfFrame(Common::SeekableReadStream *spf, uint frameIdx,
-	                       Graphics::Surface &dst);
 	// The WAM NPC entries' click rectangles (from the file, overwritten by
 	// the sprite-list loader), parallel to _wam.getNPCEntries().
 	Common::Array<NpcClickRect> _npcRects;

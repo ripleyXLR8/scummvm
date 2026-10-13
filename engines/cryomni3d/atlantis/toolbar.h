@@ -53,7 +53,7 @@ public:
 	static const int kBarHotspotY = 443;
 	// Top row, in the bar surface, of a menu sprite at (tx, ty).
 	static int menuSpriteTop(int ty, int16 yoff, uint position) { return (ty - yoff) + (int)position; }
-	void addMenuSprite(uint16 w, uint16 h, int16 xoff, int16 yoff, uint16 transpKey,
+	void addMenuSprite(uint16 w, uint16 h, int16 xoff, int16 yoff,
 	                   int tx, int ty, const uint16 *pix, const uint8 *blend);
 
 	bool displayToolbar(const Graphics::Surface *original);
@@ -101,7 +101,6 @@ private:
 		uint16 w, h;
 		int16  xoff, yoff;
 		int    tx, ty;
-		uint16 transpKey;
 	};
 	Common::Array<MenuSprData> _menuSprData;
 

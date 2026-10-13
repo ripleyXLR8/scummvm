@@ -120,7 +120,7 @@ void CryOmni3DEngine_Atlantis::drawSprFontText(Graphics::ManagedSurface &dst,
 				for (int sx = 0; sx < (int)spr.w; ++sx) {
 					uint sidx = sy * spr.w + sx;
 					uint16 pix = spr.pixels[sidx];
-					if (pix == kSprTransp)
+					if (spr.blend[sidx] == kSprTranspBlend)
 						continue;
 					int tx = dx + sx;
 					if (tx < 0 || tx >= dst.w)
@@ -206,7 +206,7 @@ void CryOmni3DEngine_Atlantis::drawCreditText(Graphics::ManagedSurface &dst,
 			for (int sx = 0; sx < (int)spr.w; ++sx) {
 				uint sidx = sy * spr.w + sx;
 				uint16 pix = spr.pixels[sidx];
-				if (pix == kSprTransp)
+				if (spr.blend[sidx] == kSprTranspBlend)
 					continue;
 				int tx = dx + sx;
 				if (tx < 0 || tx >= dst.w)
@@ -438,7 +438,7 @@ void CryOmni3DEngine_Atlantis::drawPlayerText(Graphics::ManagedSurface &dst,
 			for (int sx = 0; sx < (int)spr.w; ++sx) {
 				const uint sidx = sy * spr.w + sx;
 				uint16 pix = spr.pixels[sidx];
-				if (pix == kSprTransp)
+				if (spr.blend[sidx] == kSprTranspBlend)
 					continue;
 				const int tx = dx + sx;
 				if (tx < 0 || tx >= dst.w)

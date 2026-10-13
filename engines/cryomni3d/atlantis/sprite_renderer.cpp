@@ -51,26 +51,13 @@
 #include "cryomni3d/objects.h"
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/sprite_blend.h"
+#include "cryomni3d/atlantis/sprite_decode.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
 
 // --- SPW (panoramic NPC/prop sprite) decode --------------------------------
 //
-// SPW file layout (verified from atlantis.exe):
-//   [0x00] uint32 file_size
-//   [0x04] uint32 num_frames
-//   [0x08] uint32 format            (9 = 16-bit palette, 8 = 15-bit)
-//   [0x14] uint32 frame_offsets[]   (low 2 bits hold flags; mask with ~3)
-//   per frame: x1/y_bot/x2/y_top bbox, format, pixel_stream_off, RGB565
-//   palette, then the flat-buffer RLE pixel stream.
-
-static uint32 readSPWFrameOffset(Common::SeekableReadStream *s, uint frameIdx = 0) {
-	if (!s->seek(0x14 + frameIdx * 4))
-		return 0;
-	return s->readUint32LE() & 0xFFFFFFFCU;
-}
-
 static bool readSPWBounds(Common::SeekableReadStream *s,
                           int16 &x1, int16 &y1, int16 &x2, int16 &y2,
                           uint frameIdx = 0) {
@@ -85,155 +72,6 @@ static bool readSPWBounds(Common::SeekableReadStream *s,
 	x2 = (int16)s->readUint32LE();  // frame[0x08]: x_right
 	y1 = (int16)s->readUint16LE();  // frame[0x0C]: y_top
 	return !s->err();
-}
-
-static inline uint32 rgb565ToSurfaceColor(uint16 v, const Graphics::PixelFormat &fmt) {
-	uint8 r = ((v >> 11) & 0x1F) * 255 / 31;
-	uint8 g = ((v >>  5) & 0x3F) * 255 / 63;
-	uint8 b = (v & 0x1F) * 255 / 31;
-	return fmt.RGBToColor(r, g, b);
-}
-
-static inline void putSurfacePixel(Graphics::Surface &surf, int x, int y, uint32 color) {
-	byte *dst = (byte *)surf.getBasePtr(x, y);
-	switch (surf.format.bytesPerPixel) {
-	case 2: *(uint16 *)dst = (uint16)color; break;
-	case 4: *(uint32 *)dst = color;         break;
-	default: break;
-	}
-}
-
-// Decode an SPW frame and composite it onto surf.  The pixel stream uses a
-// flat-buffer model matching the original engine: the output pointer starts at
-// flat offset 0 of the framebuffer and ROW_SEP opcodes advance it by an
-// arbitrary pixel count that may cross row boundaries; pixel coordinates derive
-// from the flat offset divided by the surface width.
-static void decodeSPWPixels(Common::SeekableReadStream *spw,
-                            Graphics::Surface &surf, uint frameIdx = 0) {
-	uint32 frameOff = readSPWFrameOffset(spw, frameIdx);
-	if (!frameOff)
-		return;
-
-	if (!spw->seek(frameOff + 0x14))
-		return;
-	uint32 pixOff = spw->readUint32LE();
-	if (spw->err() || pixOff < 0x18)
-		return;
-
-	// Palette: frame[0x18 .. frame+pixOff-1], 2 bytes per RGB565 entry.
-	uint32 palCount = (pixOff - 0x18) / 2;
-	if (palCount > 256)
-		palCount = 256;
-	uint16 palette[256] = {};
-	if (!spw->seek(frameOff + 0x18))
-		return;
-	for (uint32 i = 0; i < palCount; ++i)
-		palette[i] = spw->readUint16LE();
-	if (spw->err())
-		return;
-
-	if (!spw->seek(frameOff + pixOff))
-		return;
-
-	const Graphics::PixelFormat &fmt = surf.format;
-	const int32 surfW = surf.w;
-	const int64 surfArea = (int64)surfW * surf.h;
-	int64 curFlat = 0;
-
-	while (!spw->eos()) {
-		uint16 ctrl = spw->readUint16LE();
-		if (ctrl == 0x8000)
-			break;  // END
-		if (ctrl >= 0xC000) {
-			// ROW_SEP long form: advance = (ctrl & 0x3FFF)*65536 + extra word.
-			uint16 extra = spw->readUint16LE();
-			curFlat += (int64)(ctrl & 0x3FFF) * 65536 + extra;
-			if (curFlat >= surfArea)
-				break;
-		} else if (ctrl >= 0x8000) {
-			// ROW_SEP short form: advance = ctrl & 0x7FFF pixels.
-			curFlat += (ctrl & 0x7FFF);
-			if (curFlat >= surfArea)
-				break;
-		} else if (ctrl >= 0x4000) {
-			// BLEND: (ctrl & 0x3FFF) pixels; 2 bytes each (index, factor).
-			int count = ctrl & 0x3FFF;
-			for (int i = 0; i < count && !spw->eos(); ++i) {
-				uint8 idx    = spw->readByte();
-				uint8 factor = spw->readByte();
-				if (curFlat >= 0 && curFlat < surfArea) {
-					int cx = (int)(curFlat % surfW);
-					int cy = (int)(curFlat / surfW);
-					uint16 src = (idx < palCount) ? palette[idx] : 0;
-					uint16 dst = ((const uint16 *)surf.getBasePtr(cx, cy))[0];
-					uint16 out = blendSpwPixel565(src, dst, factor);
-					putSurfacePixel(surf, cx, cy, rgb565ToSurfaceColor(out, fmt));
-				}
-				++curFlat;
-			}
-		} else if (ctrl > 0) {
-			// DRAW: ctrl pixels; 1 byte each (palette index).
-			int count = ctrl;
-			for (int i = 0; i < count && !spw->eos(); ++i) {
-				uint8 idx = spw->readByte();
-				if (curFlat >= 0 && curFlat < surfArea) {
-					int cx = (int)(curFlat % surfW);
-					int cy = (int)(curFlat / surfW);
-					uint16 c = (idx < palCount) ? palette[idx] : 0;
-					putSurfacePixel(surf, cx, cy, rgb565ToSurfaceColor(c, fmt));
-				}
-				++curFlat;
-			}
-		}
-		// ctrl == 0: no-op
-	}
-}
-
-void CryOmni3DEngine_Atlantis::decodeSprite(Common::SeekableReadStream &stream,
-        SubjSprite &spr, const uint16 *colorTable) {
-	// Per-row offset table: h x uint32, relative to the pixel-data base.
-	Common::Array<uint32> rowOff(spr.h);
-	for (uint16 r = 0; r < spr.h; r++)
-		rowOff[r] = stream.readUint32LE();
-	const int64 pixBase = stream.pos();
-
-	spr.pixels.resize((uint)spr.w * spr.h);
-	spr.blend.resize((uint)spr.w * spr.h);
-	for (uint i = 0; i < spr.pixels.size(); i++) {
-		spr.pixels[i] = kSprTransp;
-		spr.blend[i]  = kSprNoBlend;
-	}
-
-	for (uint16 ry = 0; ry < spr.h; ry++) {
-		stream.seek(pixBase + rowOff[ry]);
-		int rx = 0;
-		while (rx < spr.w && !stream.eos()) {
-			byte b = stream.readByte();
-			int btype = (b >> 6) & 0x3;
-			int cnt   = b & 0x3F;
-			if (btype == 0) {
-				rx += cnt;  // transparent run
-			} else if (btype == 1) {
-				// Opaque run: cnt colour-index bytes.
-				for (int i = 0; i < cnt && rx < spr.w; i++, rx++) {
-					uint16 col = colorTable[stream.readByte()];
-					if (col == kSprTransp) col = 0x0000;
-					spr.pixels[ry * spr.w + rx] = col;
-				}
-			} else {
-				// Blend run: cnt (factor, index) pairs.  The colour-table
-				// entry is already premultiplied by factor/32 in the data;
-				// keep the factor so drawing adds the framebuffer share.
-				for (int i = 0; i < cnt && rx < spr.w; i++, rx++) {
-					byte factor = stream.readByte() & 0x1f;
-					uint16 col  = colorTable[stream.readByte()];
-					if (col == kSprTransp) col = 0x0000;
-					spr.pixels[ry * spr.w + rx] = col;
-					spr.blend[ry * spr.w + rx]  = factor;
-				}
-			}
-		}
-	}
 }
 
 void CryOmni3DEngine_Atlantis::loadSubjectSprites() {
@@ -289,7 +127,7 @@ void CryOmni3DEngine_Atlantis::loadSubjectSprites() {
 		spr.yoff = stream->readSint16LE();
 		if (spr.w == 0 || spr.h == 0 || spr.w > 640 || spr.h > 480)
 			continue;
-		decodeSprite(*stream, spr, colorTable);
+		decodeSprRows(*stream, spr, colorTable);
 	}
 
 	debugC(1, kDebugScript, "loadSubjectSprites: loaded %u sprites from SUJETS.SPR", count);
@@ -344,7 +182,7 @@ void CryOmni3DEngine_Atlantis::loadFontSpriteSet(const char *sprName,
 		spr.yoff = stream->readSint16LE();
 		if (spr.w == 0 || spr.h == 0 || spr.w > 640 || spr.h > 480)
 			continue;
-		decodeSprite(*stream, spr, colorTable);
+		decodeSprRows(*stream, spr, colorTable);
 	}
 }
 
@@ -375,29 +213,9 @@ void CryOmni3DEngine_Atlantis::loadMenuSprites() {
 
 void CryOmni3DEngine_Atlantis::blitMenuSprite(Graphics::ManagedSurface &dst, uint idx,
         int hx, int hy) const {
-	if (idx >= _menuSprites.size() || _menuSprites[idx].pixels.empty())
+	if (idx >= _menuSprites.size())
 		return;
-	const SubjSprite &s = _menuSprites[idx];
-	int baseX = hx - s.xoff;
-	int baseY = hy - s.yoff;
-	for (int sy = 0; sy < (int)s.h; sy++) {
-		int dy = baseY + sy;
-		if (dy < 0 || dy >= dst.h)
-			continue;
-		for (int sx = 0; sx < (int)s.w; sx++) {
-			int dx = baseX + sx;
-			if (dx < 0 || dx >= dst.w)
-				continue;
-			uint sidx = sy * s.w + sx;
-			uint16 pix = s.pixels[sidx];
-			if (pix == kSprTransp)
-				continue;
-			uint16 *dp = (uint16 *)dst.getBasePtr(dx, dy);
-			if (s.blend[sidx] != kSprNoBlend)
-				pix = blendSprPixel565(pix, *dp, s.blend[sidx]);
-			*dp = pix;
-		}
-	}
+	drawSprSprite(*dst.surfacePtr(), _menuSprites[idx], hx, hy);
 }
 
 void CryOmni3DEngine_Atlantis::loadInventoryBarSprite() {
@@ -449,7 +267,7 @@ void CryOmni3DEngine_Atlantis::loadInventoryBarSprite() {
 		spr = SubjSprite();
 		return;
 	}
-	decodeSprite(*stream, spr, colorTable);
+	decodeSprRows(*stream, spr, colorTable);
 
 	debugC(1, kDebugScript, "loadInventoryBarSprite: loaded %ux%u from OBJETS0.SPR (hotspot %d,%d)",
 	      spr.w, spr.h, spr.xoff, spr.yoff);
@@ -476,25 +294,7 @@ void CryOmni3DEngine_Atlantis::drawInventoryIcon(Graphics::ManagedSurface &dst,
 void CryOmni3DEngine_Atlantis::drawSprite(Graphics::ManagedSurface &dst, const SubjSprite &spr,
                                           int x, int y) {
 	// The sprite's hotspot lands on (x, y), as FUN_00410430 draws it.
-	if (spr.pixels.empty())
-		return;
-	int dx = x - spr.xoff;
-	int dy = y - spr.yoff;
-	for (int row = 0; row < (int)spr.h; row++) {
-		int sy = dy + row;
-		if (sy < 0 || sy >= (int)dst.h) continue;
-		for (int col = 0; col < (int)spr.w; col++) {
-			int sx = dx + col;
-			if (sx < 0 || sx >= (int)dst.w) continue;
-			uint sidx = row * spr.w + col;
-			uint16 pix = spr.pixels[sidx];
-			if (pix == kSprTransp) continue;
-			uint16 *dp = (uint16 *)dst.getBasePtr(sx, sy);
-			if (spr.blend[sidx] != kSprNoBlend)
-				pix = blendSprPixel565(pix, *dp, spr.blend[sidx]);
-			*dp = pix;
-		}
-	}
+	drawSprSprite(*dst.surfacePtr(), spr, x, y);
 }
 
 Graphics::Surface *CryOmni3DEngine_Atlantis::loadTGA(FileType ft, const char *name) {
@@ -588,7 +388,7 @@ void CryOmni3DEngine_Atlantis::loadObjectSprites() {
 		spr.yoff = stream->readSint16LE();
 		if (spr.w == 0 || spr.h == 0 || spr.w > 640 || spr.h > 480)
 			continue;
-		decodeSprite(*stream, spr, colorTable);
+		decodeSprRows(*stream, spr, colorTable);
 	}
 
 	debugC(1, kDebugScript, "loadObjectSprites: loaded %u sprites from OBJETS1.SPR", count);
@@ -611,9 +411,7 @@ void CryOmni3DEngine_Atlantis::loadCursorSprites() {
 			uint16 r = (rgb555 >> 10) & 0x1f;
 			uint16 g = (rgb555 >> 5)  & 0x1f;
 			uint16 b =  rgb555        & 0x1f;
-			uint16 rgb565 = (uint16)((r << 11) | (g << 6) | b);
-			// Remap the transparency key to near-black to avoid false keying.
-			colorTable[i] = (rgb565 == kWarpCursorKey) ? 0x0000u : rgb565;
+			colorTable[i] = (uint16)((r << 11) | (g << 6) | b);
 		}
 	}
 	if (flags & 0x8)
@@ -644,35 +442,7 @@ void CryOmni3DEngine_Atlantis::loadCursorSprites() {
 		if (spr.w == 0 || spr.h == 0 || spr.w > 64 || spr.h > 64)
 			continue;
 
-		Common::Array<uint32> rowOff(spr.h);
-		for (uint16 r = 0; r < spr.h; r++)
-			rowOff[r] = stream->readUint32LE();
-		const int64 pixBase = stream->pos();
-
-		spr.pixels.resize(spr.w * spr.h, kWarpCursorKey);
-		spr.blend.resize(spr.w * spr.h, kSprNoBlend);
-
-		for (uint16 ry = 0; ry < spr.h; ry++) {
-			stream->seek(pixBase + rowOff[ry]);
-			int rx = 0;
-			while (rx < (int)spr.w && !stream->eos()) {
-				byte b = stream->readByte();
-				int btype = (b >> 6) & 0x3;
-				int cnt   = b & 0x3F;
-				if (btype == 0) {
-					rx += cnt;
-				} else if (btype == 1) {
-					for (int i = 0; i < cnt && rx < (int)spr.w; i++, rx++)
-						spr.pixels[ry * spr.w + rx] = colorTable[stream->readByte()];
-				} else {
-					for (int i = 0; i < cnt && rx < (int)spr.w; i++, rx++) {
-						byte factor = stream->readByte() & 0x1f;
-						spr.pixels[ry * spr.w + rx] = colorTable[stream->readByte()];
-						spr.blend[ry * spr.w + rx]  = factor;
-					}
-				}
-			}
-		}
+		decodeSprRows(*stream, spr, colorTable);
 	}
 
 	debugC(1, kDebugScript, "loadCursorSprites: loaded %u sprites from CURSEURS.SPR", count);
@@ -809,20 +579,6 @@ void CryOmni3DEngine_Atlantis::loadSpfList() {
 // the same decoder against the transition video's 640×480 frame surface.
 // Out-of-range frameIdx (transition video longer than the SPF animation)
 // clamps: the SPF's last frame stays on screen instead of glitching.
-void CryOmni3DEngine_Atlantis::compositeSpfFrame(Common::SeekableReadStream *spf,
-                                                  uint frameIdx,
-                                                  Graphics::Surface &dst) {
-	if (!spf) return;
-
-	// Bounds check against header[0x04] = num_frames.
-	if (!spf->seek(4)) return;
-	uint32 numFrames = spf->readUint32LE();
-	if (!numFrames) return;
-	if (frameIdx >= numFrames) frameIdx = numFrames - 1;
-
-	decodeSPWPixels(spf, dst, frameIdx);
-}
-
 void CryOmni3DEngine_Atlantis::rebuildNpcRects() {
 	// atlantis.exe FUN_00424a20: see npc_click.h.  See atlantis-re:
 	// functions/graphics-FUN_00422d5c.md.

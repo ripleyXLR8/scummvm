@@ -39,9 +39,11 @@ namespace Atlantis {
 // (channel * (32 - factor)) / 32, so a `>> 5` reproduces every table lookup
 // (the 6-bit green channel's *2/64 reduces to the same *1/32).
 //
-// A value of kSprNoBlend in a sprite's parallel blend array marks a pixel that
-// is opaque (or fully transparent) and needs no framebuffer blending.
-enum { kSprNoBlend = 0xFF };
+// A value of kSprNoBlend in a sprite's parallel blend array marks an opaque
+// pixel that needs no framebuffer blending; kSprTranspBlend marks a
+// transparent pixel.  SPR factors are 0..31, so every RGB565 colour stays
+// usable (the original draws by run type, not by colour).
+enum { kSprNoBlend = 0xFF, kSprTranspBlend = 0xFE };
 
 inline uint16 blendSprPixel565(uint16 src, uint16 dst, byte factor) {
 	uint inv = 32 - (factor & 0x1f);

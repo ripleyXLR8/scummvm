@@ -195,7 +195,7 @@ void CryOmni3DEngine_Atlantis::drawGivenObject(Graphics::Surface &dst) const {
 			if (sx < 0 || sx >= dst.w) continue;
 			uint sidx = y * spr.w + x;
 			uint16 pix = spr.pixels[sidx];
-			if (pix == kSprTransp) continue;
+			if (spr.blend[sidx] == kSprTranspBlend) continue;
 			uint16 *dp = (uint16 *)dst.getBasePtr(sx, sy);
 			if (spr.blend[sidx] != kSprNoBlend)
 				pix = blendSprPixel565(pix, *dp, spr.blend[sidx]);
@@ -222,7 +222,7 @@ void CryOmni3DEngine_Atlantis::drawSubjectSprite(Graphics::Surface &dst,
 			if (sx < 0 || sx >= dst.w) continue;
 			uint sidx = y * spr.w + x;
 			uint16 pix = spr.pixels[sidx];
-			if (pix == kSprTransp) continue;
+			if (spr.blend[sidx] == kSprTranspBlend) continue;
 			uint16 *dp = (uint16 *)dst.getBasePtr(sx, sy);
 			if (spr.blend[sidx] != kSprNoBlend)
 				pix = blendSprPixel565(pix, *dp, spr.blend[sidx]);
@@ -649,10 +649,9 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 			if (spfStream->seek(4))
 				spfFrameCount = spfStream->readUint32LE();
 			// Composite frame[0] onto a scratch RGB565 surface seeded with
-			// 0xFFFE.  SPF palettes emit RGB565 colours; 0xFFFE is reserved
-			// (kSprTransp is 0x0001 and pure white is 0xFFFF), so any pixel
-			// left at 0xFFFE was untouched and any other value was painted
-			// by the SPF.
+			// 0xFFFE.  SPF palettes emit RGB565 colours; 0xFFFE is taken as
+			// unused (pure white is 0xFFFF), so any pixel left at 0xFFFE was
+			// untouched and any other value was painted by the SPF.
 			Graphics::PixelFormat probeFmt(2, 5, 6, 5, 0, 11, 5, 0, 0);
 			Graphics::Surface probe;
 			probe.create(640, 480, probeFmt);
@@ -796,8 +795,8 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 				// FUN_0042f9e8 (atlantis.exe.c:26609-26734), sharing the
 				// UBB's frame counter.  We mirror that exactly, plus a
 				// modulo so the SPF LOOPS when the UBB outlives it —
-				// compositeSpfFrame clamps to the last frame on its own,
-				// which freezes the overlay while the head keeps talking
+				// compositeSpfFrame draws nothing past the last frame,
+				// which would drop the overlay while the head keeps talking
 				// (visible on EnnemiPilot whose UBB runs 30+ frames against
 				// a much shorter SPF).  Drawn on top of the UBB head.
 				if (spfStream) {

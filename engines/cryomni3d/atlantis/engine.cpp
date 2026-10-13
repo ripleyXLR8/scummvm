@@ -363,7 +363,7 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	_toolbar.init(&_inventory, this);
 	if (!_inventoryBarSprite.pixels.empty()) {
 		const SubjSprite &s = _inventoryBarSprite;
-		_toolbar.addMenuSprite(s.w, s.h, s.xoff, s.yoff, kSprTransp,
+		_toolbar.addMenuSprite(s.w, s.h, s.xoff, s.yoff,
 		                       0, Atlantis_Toolbar::kBarHotspotY - Atlantis_Toolbar::kBarSurfaceTop,
 		                       s.pixels.data(), s.blend.data());
 	}

@@ -136,13 +136,12 @@ uint Atlantis_Toolbar::captureEvent(const Common::Point &mousePos, uint dragStat
 }
 
 void Atlantis_Toolbar::addMenuSprite(uint16 w, uint16 h, int16 xoff, int16 yoff,
-                                      uint16 transpKey, int tx, int ty, const uint16 *pix,
+                                      int tx, int ty, const uint16 *pix,
                                       const uint8 *blend) {
 	MenuSprData s;
 	s.w = w; s.h = h;
 	s.xoff = xoff; s.yoff = yoff;
 	s.tx = tx; s.ty = ty;
-	s.transpKey = transpKey;
 	s.pixels.assign(pix, pix + (uint)w * h);
 	s.blend.assign(blend, blend + (uint)w * h);
 	_menuSprData.push_back(s);
@@ -200,7 +199,7 @@ void Atlantis_Toolbar::drawToolbar(const Graphics::Surface *original) {
 					continue;
 				uint sidx = y * spr.w + x;
 				uint16 pix = spr.pixels[sidx];
-				if (pix == spr.transpKey)
+				if (spr.blend[sidx] == kSprTranspBlend)
 					continue;
 				uint16 *dp = (uint16 *)_destSurface.getBasePtr(dx, dy);
 				if (spr.blend[sidx] != kSprNoBlend)

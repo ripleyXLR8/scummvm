@@ -77,8 +77,8 @@ static const uint16 kCursorTalkMask[16] = {
 // Convert one RGB565 sprite pixel to straight-alpha ARGB8888 for a hardware
 // cursor.  Blend pixels carry a premultiplied colour (src*factor/32), so the
 // colour is un-premultiplied and the factor becomes the alpha.
-static uint32 spriteToArgb(uint16 p, uint8 factor, uint16 transpKey) {
-	if (p == transpKey)
+static uint32 spriteToArgb(uint16 p, uint8 factor) {
+	if (factor == kSprTranspBlend)
 		return 0;  // fully transparent
 	uint r = (p >> 11) & 0x1f;
 	uint g = (p >>  5) & 0x3f;
@@ -100,8 +100,7 @@ static uint32 spriteToArgb(uint16 p, uint8 factor, uint16 transpKey) {
 }
 
 void CryOmni3DEngine_Atlantis::setBlendedCursor(uint16 w, uint16 h,
-        const uint16 *pixels, const uint8 *blend, int hotX, int hotY,
-        uint16 transpKey) {
+        const uint16 *pixels, const uint8 *blend, int hotX, int hotY) {
 	const uint n = (uint)w * h;
 	if (g_system->hasFeature(OSystem::kFeatureCursorAlpha)) {
 		// ARGB8888 cursor: the backend alpha-composites it, so anti-aliased
@@ -110,16 +109,18 @@ void CryOmni3DEngine_Atlantis::setBlendedCursor(uint16 w, uint16 h,
 		Common::Array<uint32> buf(n);
 		for (uint i = 0; i < n; i++)
 			buf[i] = spriteToArgb(pixels[i],
-			                      blend ? blend[i] : (uint8)kSprNoBlend, transpKey);
+			                      blend ? blend[i] : (uint8)kSprNoBlend);
 		CursorMan.replaceCursor(buf.data(), w, h, hotX, hotY, 0, &fmt);
 	} else {
-		// No alpha-cursor support: fall back to a key-colour RGB565 cursor.
+		// No alpha-cursor support: fall back to a key-colour RGB565 cursor;
+		// a sprite pixel of the key colour itself is drawn black.
 		Graphics::PixelFormat fmt(2, 5, 6, 5, 0, 11, 5, 0, 0);
-		Common::Array<uint16> buf;
-		buf.assign(pixels, pixels + n);
-		for (uint16 &p : buf)
-			if (p == transpKey)
-				p = kWarpCursorKey;
+		Common::Array<uint16> buf(n);
+		for (uint i = 0; i < n; i++) {
+			const bool transparent = blend && blend[i] == kSprTranspBlend;
+			buf[i] = transparent ? kWarpCursorKey
+			       : (pixels[i] == kWarpCursorKey ? 0x0000 : pixels[i]);
+		}
 		CursorMan.replaceCursor(buf.data(), w, h, hotX, hotY, kWarpCursorKey, &fmt);
 	}
 }
@@ -133,7 +134,7 @@ void CryOmni3DEngine_Atlantis::setArrowCursor() {
 	if (spr.pixels.empty())
 		return;
 	setBlendedCursor(spr.w, spr.h, spr.pixels.data(), spr.blend.data(),
-	                 spr.xoff, spr.yoff, kWarpCursorKey);
+	                 spr.xoff, spr.yoff);
 }
 
 void CryOmni3DEngine_Atlantis::setItemCursor(const Object *obj, int overlayCursorFrame) {
@@ -150,7 +151,7 @@ void CryOmni3DEngine_Atlantis::setItemCursor(const Object *obj, int overlayCurso
 	if (!overlay) {
 		// No action overlay: the object sprite alone is the cursor.
 		setBlendedCursor(spr.w, spr.h, spr.pixels.data(), spr.blend.data(),
-		                 spr.xoff, spr.yoff, kSprTransp);
+		                 spr.xoff, spr.yoff);
 		return;
 	}
 
@@ -164,14 +165,14 @@ void CryOmni3DEngine_Atlantis::setItemCursor(const Object *obj, int overlayCurso
 
 	Common::Array<uint16> buf;
 	Common::Array<uint8>  blendBuf;
-	buf.resize((uint)(w * h), kSprTransp);
-	blendBuf.resize((uint)(w * h), kSprNoBlend);
+	buf.resize((uint)(w * h), 0);
+	blendBuf.resize((uint)(w * h), kSprTranspBlend);
 
 	const int ox = hx - spr.xoff, oy = hy - spr.yoff;   // object (base)
 	for (int y = 0; y < (int)spr.h; y++)
 		for (int x = 0; x < (int)spr.w; x++) {
 			uint si = y * spr.w + x;
-			if (spr.pixels[si] != kSprTransp) {
+			if (spr.blend[si] != kSprTranspBlend) {
 				uint di = (oy + y) * w + (ox + x);
 				buf[di]      = spr.pixels[si];
 				blendBuf[di] = spr.blend[si];
@@ -181,14 +182,13 @@ void CryOmni3DEngine_Atlantis::setItemCursor(const Object *obj, int overlayCurso
 	for (int y = 0; y < (int)act.h; y++)
 		for (int x = 0; x < (int)act.w; x++) {
 			uint si = y * act.w + x;
-			if (act.pixels[si] != kWarpCursorKey) {
+			if (act.blend[si] != kSprTranspBlend) {
 				uint di = (ay + y) * w + (ax + x);
 				buf[di]      = act.pixels[si];
 				blendBuf[di] = act.blend[si];
 			}
 		}
-	setBlendedCursor((uint16)w, (uint16)h, buf.data(), blendBuf.data(),
-	                 hx, hy, kSprTransp);
+	setBlendedCursor((uint16)w, (uint16)h, buf.data(), blendBuf.data(), hx, hy);
 }
 
 // Show the CURSEURS.SPR sprite FUN_00422fcc drew this frame; -1 hides the
@@ -206,7 +206,7 @@ void CryOmni3DEngine_Atlantis::showWarpCursorSprite(int sprite) {
 		const CursorSpr &spr = _cursorSprites[(uint)sprite];
 		if (!spr.pixels.empty())
 			setBlendedCursor(spr.w, spr.h, spr.pixels.data(), spr.blend.data(),
-			                 spr.xoff, spr.yoff, kWarpCursorKey);
+			                 spr.xoff, spr.yoff);
 		return;
 	}
 
