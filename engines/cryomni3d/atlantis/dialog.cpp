@@ -47,6 +47,7 @@
 #endif
 
 #include "cryomni3d/omni3d.h"
+#include "cryomni3d/atlantis/sprite_decode.h"
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/subtitle_layout.h"
 #include "cryomni3d/atlantis/sprite_blend.h"
@@ -179,29 +180,10 @@ void CryOmni3DEngine_Atlantis::drawGivenObject(Graphics::Surface &dst) const {
 	const SubjSprite &spr = _objSprites[(uint)_dialogGivenObjSprite];
 	if (spr.pixels.empty())
 		return;
-	// Centre horizontally; anchor the icon's bottom a fixed gap above the
-	// screen edge, above the subtitle strip (the original's DAT_0049619c
-	// overlay; the exact Y isn't recoverable so we use a fixed inset).
-	const int cx = dst.w / 2;
-	const int objBottom = dst.h - 56;
-	const int cy = objBottom - ((int)spr.h - spr.yoff);
-	const int dx = cx - spr.xoff;
-	const int dy = cy - spr.yoff;
-	for (int y = 0; y < (int)spr.h; y++) {
-		int sy = dy + y;
-		if (sy < 0 || sy >= dst.h) continue;
-		for (int x = 0; x < (int)spr.w; x++) {
-			int sx = dx + x;
-			if (sx < 0 || sx >= dst.w) continue;
-			uint sidx = y * spr.w + x;
-			uint16 pix = spr.pixels[sidx];
-			if (spr.blend[sidx] == kSprTranspBlend) continue;
-			uint16 *dp = (uint16 *)dst.getBasePtr(sx, sy);
-			if (spr.blend[sidx] != kSprNoBlend)
-				pix = blendSprPixel565(pix, *dp, spr.blend[sidx]);
-			*dp = pix;
-		}
-	}
+	// FUN_0042ee88 @ 0x0042f52b..0x0042f555: when DAT_0049619c is set,
+	// FUN_00410430(OBJETS1.SPR, frame DAT_0049619c) with its hotspot at
+	// (0x136, 0x1a4) = (310, 420).
+	drawSprSprite(dst, spr, 0x136, 0x1a4);
 }
 
 void CryOmni3DEngine_Atlantis::drawSubjectSprite(Graphics::Surface &dst,
