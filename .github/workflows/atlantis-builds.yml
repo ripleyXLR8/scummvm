@@ -14,6 +14,7 @@ jobs:
   macos:
     name: macOS (Apple Silicon)
     runs-on: macos-15
+    timeout-minutes: 30
     env:
       MACOSX_DEPLOYMENT_TARGET: "15.0"
     steps:
@@ -36,12 +37,16 @@ jobs:
       - name: Build
         run: make -j$(sysctl -n hw.ncpu)
       - name: Make the app
+        timeout-minutes: 10
         run: |
           cp scummvm scummvm-static
           make scummvm.docktileplugin
           make bundle-pack
+          # SDL2 built by CMake is linked as @rpath/libSDL2-2.0.0.dylib:
+          # tell dylibbundler where it is, or it waits for an answer on stdin.
           dylibbundler -od -b -x ScummVM.app/Contents/MacOS/scummvm \
-            -d ScummVM.app/Contents/libs/ -p @executable_path/../libs/
+            -d ScummVM.app/Contents/libs/ -p @executable_path/../libs/ \
+            -s "$HOME/sdl2/lib" < /dev/null
           codesign --force --deep --sign - ScummVM.app
       - name: Check the bundled libraries
         run: |
