@@ -81,7 +81,7 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_currentPlaceId(uint(-1)),
 	_nextPlaceId(uint(-1)),
 	_currentPlace(nullptr),
-	_isPlaying(false),
+	_isPlaying(false), _shotCountdown(0),
 	_abortCommand(kAbortQuit),
 	_loadedSave(0),
 	_conInitRunning(false),
@@ -301,6 +301,15 @@ bool CryOmni3DEngine_Atlantis::loadCycloHNM(const Common::String &name) {
 #endif
 }
 
+bool CryOmni3DEngine_Atlantis::pollEvents() {
+	const bool r = CryOmni3DEngine::pollEvents();
+	if (_shotCountdown > 0 && --_shotCountdown == 0) {
+		g_system->saveScreenshot();
+		warning("Atlantis: screenshot saved");
+	}
+	return r;
+}
+
 Common::Error CryOmni3DEngine_Atlantis::run() {
 	CryOmni3DEngine::run();
 
@@ -391,6 +400,10 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 					break;
 				}
 		}
+		// atlantis_puzzle_shot=<n> saves a screenshot (ScummVM's screenshotpath)
+		// after n input polls of the puzzle.
+		if (ConfMan.hasKey("atlantis_puzzle_shot"))
+			_shotCountdown = ConfMan.getInt("atlantis_puzzle_shot");
 		playPuzzle(puzzle);
 		warning("Atlantis: puzzle %d ended with FinPuzzle %d", puzzle,
 		        _gameVars.getValOrDefault("finpuzzle", 0));

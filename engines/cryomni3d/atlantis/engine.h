@@ -127,6 +127,8 @@ public:
 	// The base class only checks shouldQuit(), which would not propagate a
 	// mid-dialog load/game-over request out of handleWarp.
 	bool shouldAbort() override;
+	// The base poll, plus the port-only screenshot countdown (atlantis_puzzle_shot).
+	bool pollEvents();
 	Common::Error loadGameState(int slot) override;
 	Common::Error saveGameState(int slot, const Common::String &desc, bool isAutosave = false) override;
 	Common::String getSaveStateName(int slot) const override;
@@ -676,6 +678,7 @@ private:
 	const AtlantisPlace *_currentPlace;
 
 	bool _isPlaying;
+	int _shotCountdown;   // port-only: polls left before g_system->saveScreenshot()
 	AbortCommand _abortCommand;
 	uint _loadedSave;          // 1-based slot a kAbortLoadGame should re-enter
 	bool _conInitRunning;      // a CON /INIT block runs (0x00496168): no checkpoint
