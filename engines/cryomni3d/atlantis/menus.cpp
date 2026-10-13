@@ -850,8 +850,9 @@ void CryOmni3DEngine_Atlantis::displayOptionsMenu(const Graphics::ManagedSurface
 
 	while (!done && !shouldAbort()) {
 		pollEvents();
-		if (getNextKey().keycode == Common::KEYCODE_ESCAPE)
-			break;
+		// FUN_0041d5f4 ends only on a click on SOUND OPTIONS or OK
+		// (records 1 and 6); it reads no key.
+		getNextKey();
 
 		int newHover = hitTestMenu(layout, hitRects, getMousePos());
 		if (newHover != soundIdx && newHover != okIdx &&
