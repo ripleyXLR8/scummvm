@@ -39,6 +39,7 @@
 #include "graphics/managed_surface.h"
 #include "graphics/surface.h"
 
+#include "cryomni3d/atlantis/subtitle_layout.h"
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/sprite_blend.h"
 
@@ -235,29 +236,23 @@ void CryOmni3DEngine_Atlantis::showGameOver(int sectionId, int n,
 	raw->free();
 	delete raw;
 
-	// Narrator subtitle, bottom-anchored with a drop shadow — the proportional
-	// kBigGUIFont (Arial-like), matching playSingleConLine; honours the
-	// subtitle toggle (the voice still plays when it is off).
+	// Narrator subtitle (FUN_00426590 -> FUN_0042ffe8 / FUN_00430178, as for
+	// dialog lines): split at 100 characters, line i of n at x 5,
+	// y 0x1ce - (n - i + 1) * 14, black shadow at (+1, +1); drawn when the
+	// subtitles are on.
 	if (showSubtitles() && !narratorText.empty()) {
 		const int leftMargin = 5;
 		int widthBudget = img.w - leftMargin - 5;
 		if (widthBudget < 32)
 			widthBudget = 32;
-		const Graphics::Font *guiFont =
-		    FontMan.getFontByUsage(Graphics::FontManager::kBigGUIFont);
-		if (!guiFont)
-			guiFont = FontMan.getFontByUsage(Graphics::FontManager::kGUIFont);
+		const Graphics::Font *guiFont = subtitleFont();
 		if (guiFont) {
-			int subLineH = guiFont->getFontHeight() + 2;
 			Common::Array<Common::String> subLines;
-			guiFont->wordWrapText(narratorText, widthBudget, subLines);
+			splitSubtitle(narratorText, subLines);
 			const uint32 subColor  = fmt.RGBToColor(255, 255, 255);
 			const uint32 subShadow = fmt.RGBToColor(0, 0, 0);
-			int subBaseY = img.h - (int)subLines.size() * subLineH - 6;
-			if (subBaseY < 0)
-				subBaseY = 0;
 			for (uint i = 0; i < subLines.size(); ++i) {
-				int by = subBaseY + (int)i * subLineH;
+				int by = subtitleLineY(i, subLines.size());
 				guiFont->drawString(&img, subLines[i], leftMargin + 1, by + 1,
 				                    widthBudget, subShadow, Graphics::kTextAlignLeft);
 				guiFont->drawString(&img, subLines[i], leftMargin, by,

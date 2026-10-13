@@ -693,13 +693,9 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 #endif
 	if (subWidthBudget < 32) subWidthBudget = 32;
 
-	// Subtitles render in a proportional sans-serif font, matching the original
-	// (Arial via GDI) — kBigGUIFont is ScummVM's built-in Helvetica, compiled
-	// in so it works on the no-FreeType Windows build too.
-	const Graphics::Font *guiFont =
-	    FontMan.getFontByUsage(Graphics::FontManager::kBigGUIFont);
-	if (!guiFont)
-		guiFont = FontMan.getFontByUsage(Graphics::FontManager::kGUIFont);
+	// The subtitle font (subtitleFont(): Liberation Sans for the original's
+	// GDI Arial 16).
+	const Graphics::Font *guiFont = subtitleFont();
 	Common::Array<Common::String> subLines;
 	int subLineH = 0;
 	if (showSubtitles() && !text.empty() && guiFont) {

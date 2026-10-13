@@ -562,6 +562,14 @@ private:
 	// atlantis.exe 0x00496188: set while a talking-head line plays; the place
 	// sprites then leave out the persos (id >= 0x200, FUN_00425304).
 	bool _spritesHideNpcs = false;
+	// The subtitle font: atlantis.exe FUN_0041ae20 creates GDI Arial, cell
+	// height 16 (CreateFontA(16, ..., FW_DONTCARE, DEFAULT_CHARSET, ...,
+	// "Arial"), called at 0x00418f7e).  The port uses the metric-compatible
+	// Liberation Sans from fonts.dat (as other engines do for Arial), falling
+	// back to the built-in GUI font without FreeType.
+	Graphics::Font *_subtitleTTF = nullptr;
+	bool _subtitleFontTried = false;
+	const Graphics::Font *subtitleFont();
 	Common::Array<SubjSprite> _bowSprites;
 	uint _arrowFrame = 0;
 	void drawSprite(Graphics::ManagedSurface &dst, const SubjSprite &spr, int x, int y);

@@ -44,6 +44,9 @@
 
 #include "cryomni3d/atlantis/engine.h"
 
+#include "graphics/fontman.h"
+#include "graphics/fonts/ttf.h"
+
 namespace CryOmni3D {
 namespace Atlantis {
 
@@ -104,7 +107,24 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 		_sonMenuKnobX[i] = 0;
 }
 
+const Graphics::Font *CryOmni3DEngine_Atlantis::subtitleFont() {
+	if (!_subtitleFontTried) {
+		_subtitleFontTried = true;
+#ifdef USE_FREETYPE2
+		_subtitleTTF = Graphics::loadTTFFontFromArchive("LiberationSans-Regular.ttf", 16,
+		                                                 Graphics::kTTFSizeModeCell);
+#endif
+		if (!_subtitleTTF)
+			debugC(1, kDebugScript, "subtitleFont: LiberationSans unavailable, using the GUI font");
+	}
+	if (_subtitleTTF)
+		return _subtitleTTF;
+	const Graphics::Font *f = FontMan.getFontByUsage(Graphics::FontManager::kBigGUIFont);
+	return f ? f : FontMan.getFontByUsage(Graphics::FontManager::kGUIFont);
+}
+
 CryOmni3DEngine_Atlantis::~CryOmni3DEngine_Atlantis() {
+	delete _subtitleTTF;
 	_mixer->stopHandle(_musicHandle);
 	delete[] _musicRawData;
 	_cycloSurface.free();
