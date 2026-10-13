@@ -978,8 +978,10 @@ public:
 		Common::install_null_g_system();
 		_portMax.clear();
 		_portMin.clear();
-		_haveSrc = readSourceArray("menus.cpp", "kFontMaxMeasureWidths", _portMax) &&
-		           readSourceArray("menus.cpp", "kPlayerCharWidths", _portMin);
+		_haveSrc = readSourceArray("menus.cpp", "kFontMaxMeasureWidths", _portMax);
+		// The FONTMIN table lives in menu_layout.cpp (fontMinAdvance).
+		for (uint i = 0; i < 137; i++)
+			_portMin.push_back(CryOmni3D::Atlantis::fontMinAdvance(i));
 	}
 
 	// FONTMAX measuring table: port kFontMaxMeasureWidths vs FUN_004206c8.
@@ -991,15 +993,19 @@ public:
 			                  _portMax[i], kUiOrigFontMaxWidth[i]);
 	}
 
-	// FONTMIN pen advance: port kPlayerCharWidths (drawPlayerText advance) vs
-	// the original name-field renderer FUN_00420f60.  The original advances a
-	// space by 20 px (0x420f08 region, constant 0x14) instead of the table.
+	// FONTMIN pen advance of the name-field renderer FUN_00420f60, measured as
+	// the emulation did (blit x of 'A' after <c>, minus that of <c>; the space
+	// from " A"): port fontMinBlits(kFontMinNameField).
 	void test_fontmin_advance_table() {
-		if (!_haveSrc) { TS_WARN("menus.cpp not found; skipped"); return; }
-		TS_ASSERT_EQUALS(_portMin.size(), 137u);
-		for (uint i = 0; i < 137 && i < _portMin.size(); i++)
+		for (uint i = 0; i < 137; i++) {
+			const char c = (char)(i + 0x20);
+			char s[3] = { c, 'A', 0 };
+			Common::Array<CryOmni3D::Atlantis::FontMinBlit> b;
+			CryOmni3D::Atlantis::fontMinBlits(CryOmni3D::Atlantis::kFontMinNameField, s, 100, 100, b);
+			int adv = (c == ' ') ? b[0].x - 100 : (b.size() == 2 ? b[1].x - b[0].x : -1);
 			TSM_ASSERT_EQUALS(Common::String::format("char 0x%02x", i + 0x20).c_str(),
-			                  _portMin[i], kUiOrigFontMinAdvance[i]);
+			                  adv, kUiOrigFontMinAdvance[i]);
+		}
 	}
 
 	// Synthetic layouts: port MenuLayout + PORT COPY rect/centring vs the
@@ -1121,25 +1127,22 @@ public:
 	// by kPlayerCharWidths[c-0x20], read from menus.cpp).  Spaces are skipped
 	// in the comparison because the original never blits them in the player
 	// list and name field.
-	void portPlayerText(const char *s, int x, int y, Common::Array<Common::String> &out) {
-		for (; *s; ++s) {
-			int gi = (unsigned char)*s - 0x20;
-			if (gi < 0 || gi >= (int)_portMin.size())
-				continue;
-			if (*s != ' ')
-				out.push_back(Common::String::format("%d,%d,%c", x, y, *s));
-			x += _portMin[gi];
-		}
+	// The port's glyph blits (fontMinBlits, the renderer drawPlayerText uses).
+	void portPlayerText(const char *s, int x, int y, CryOmni3D::Atlantis::FontMinRenderer r,
+	                    Common::Array<Common::String> &out) {
+		Common::Array<CryOmni3D::Atlantis::FontMinBlit> blits;
+		CryOmni3D::Atlantis::fontMinBlits(r, s, x, y, blits);
+		for (const CryOmni3D::Atlantis::FontMinBlit &b : blits)
+			out.push_back(Common::String::format("%d,%d,%c", b.x, b.y, (char)(b.idx + 0x20)));
 	}
 
-	// Player list rows: displayPlayerScreen draws row j at (175, 248+22(j+1))
-	// vs FUN_00420d8c (x 185, space +20 not blitted, '#' skipped).
+	// Player list rows: displayPlayerScreen draws row j at (185, 248+22(j+1))
+	// with the player-list renderer, vs FUN_00420d8c.
 	void test_player_list_layout() {
-		if (!_haveSrc) { TS_WARN("menus.cpp not found; skipped"); return; }
 		const char *names[3] = { "Bob", "Al Smith", "New Player" };
 		Common::Array<Common::String> port, orig;
 		for (int j = 0; j < 3; j++)
-			portPlayerText(names[j], 175, 248 + (j + 1) * 22, port);
+			portPlayerText(names[j], 185, 248 + (j + 1) * 22, CryOmni3D::Atlantis::kFontMinPlayerList, port);
 		for (uint i = 0; i < ARRAYSIZE(kUiOrigPlayerList); i++)
 			orig.push_back(Common::String::format("%d,%d,%c", kUiOrigPlayerList[i][0],
 			                                      kUiOrigPlayerList[i][1], kUiOrigPlayerList[i][2]));
@@ -1151,9 +1154,8 @@ public:
 	// Name-entry field: displayPlayerScreen draws it at (160, 190) in FONTMIN2,
 	// like FUN_00420f60 called from FUN_0041dea4 @ 0x41e3df (EAX=0xA0, EDX=0xBE).
 	void test_name_field_layout() {
-		if (!_haveSrc) { TS_WARN("menus.cpp not found; skipped"); return; }
 		Common::Array<Common::String> port;
-		portPlayerText("Ab c....", 160, 190, port);
+		portPlayerText("Ab c....", 160, 190, CryOmni3D::Atlantis::kFontMinNameField, port);
 		TS_ASSERT_EQUALS(port.size(), ARRAYSIZE(kUiOrigNameField));
 		for (uint i = 0; i < port.size() && i < ARRAYSIZE(kUiOrigNameField); i++) {
 			TS_ASSERT_EQUALS(port[i], Common::String::format("%d,%d,%c", kUiOrigNameField[i][0],
@@ -1162,26 +1164,24 @@ public:
 		}
 	}
 
-	// Load list rows: displaySavePicker draws row i at (50, 133 + 20 i) vs
-	// FUN_00420b48 (x 55, baseline 130 + 22 i; spaces blitted, +15).
+	// Load list rows: displaySavePicker draws row i at (55, 130 + 22 i) with
+	// the load-list renderer (spaces blitted, + table), vs FUN_00420b48.
 	void test_load_list_layout() {
-		if (!_haveSrc) { TS_WARN("menus.cpp not found; skipped"); return; }
 		const char *rows[3] = { "First ep", "Second one", "Third" };
 		Common::Array<Common::String> port, orig;
 		for (int i = 0; i < 3; i++)
-			portPlayerText(rows[i], 50, 133 + i * 20, port);
+			portPlayerText(rows[i], 55, 130 + i * 22, CryOmni3D::Atlantis::kFontMinLoadList, port);
 		for (uint i = 0; i < ARRAYSIZE(kUiOrigLoadList); i++)
-			if (kUiOrigLoadList[i][2] != ' ')
-				orig.push_back(Common::String::format("%d,%d,%c", kUiOrigLoadList[i][0],
+			orig.push_back(Common::String::format("%d,%d,%c", kUiOrigLoadList[i][0],
 				                                      kUiOrigLoadList[i][1], kUiOrigLoadList[i][2]));
 		TS_ASSERT_EQUALS(port.size(), orig.size());
 		for (uint i = 0; i < port.size() && i < orig.size(); i++)
 			TS_ASSERT_EQUALS(port[i], orig[i]);
 	}
 
-	// Player list: PORT COPY of displayPlayerScreen's row hit-test
-	// (Rect(175, 248+22j, 495, 248+22(j+1)), j < rows) vs FUN_004211f0 with
-	// the arguments of FUN_0041dea4 @ 0x41e08e (175, 248, 320, 22, 1, rows, 1).
+	// Player list: the port's menuGridHit with the arguments displayPlayerScreen
+	// passes (175, 248, 320, 22, 1 column, rows, column-major) vs FUN_004211f0
+	// with the arguments of FUN_0041dea4 @ 0x41e08e.
 	void test_player_grid_hit() {
 		int mismatches = 0, n = 0;
 		for (uint i = 0; i < ARRAYSIZE(kUiOrigGrid); i++) {
@@ -1189,11 +1189,7 @@ public:
 			if (g[0] != 175)
 				continue;
 			int rows = g[5], mx = g[7], my = g[8], orig = g[9];
-			int port = -1;
-			for (int j = 0; j < rows; j++) {
-				Common::Rect r(175, 248 + j * 22, 495, 248 + (j + 1) * 22);
-				if (r.contains(Common::Point(mx, my))) { port = j; break; }
-			}
+			int port = CryOmni3D::Atlantis::menuGridHit(175, 248, 320, 22, 1, rows, true, mx, my);
 			n++;
 			if (port != orig) {
 				mismatches++;
@@ -1205,10 +1201,9 @@ public:
 		TSM_ASSERT_EQUALS(Common::String::format("mismatching samples of %d", n).c_str(), mismatches, 0);
 	}
 
-	// Load list: PORT COPY of displaySavePicker's row hit-test (rows at
-	// x 50, baseline 133 + 20 i, rect (50, ay-17)-(50+max(w,60), ay+4)), with a
-	// 300 px wide name, vs FUN_004211f0 with the arguments of FUN_0041cf78 @
-	// 0x41d362 (45, 108, 400, 22, 1, 11, 1).
+	// Load list: the port's menuGridHit with the arguments displaySavePicker
+	// passes (45, 108, 400, 22, 1, 11, column-major) vs FUN_004211f0 with the
+	// arguments of FUN_0041cf78 @ 0x41d362.
 	void test_load_list_grid_hit() {
 		int mismatches = 0, n = 0;
 		for (uint i = 0; i < ARRAYSIZE(kUiOrigGrid); i++) {
@@ -1216,11 +1211,7 @@ public:
 			if (g[0] != 45)
 				continue;
 			int mx = g[7], my = g[8], orig = g[9];
-			int port = -1;
-			for (int j = 0; j < 11; j++) {
-				int ay = 133 + j * 20;
-				if (Common::Rect(50, ay - 17, 50 + 300, ay + 4).contains(Common::Point(mx, my))) { port = j; break; }
-			}
+			int port = CryOmni3D::Atlantis::menuGridHit(45, 108, 400, 22, 1, 11, true, mx, my);
 			n++;
 			if (port != orig)
 				mismatches++;

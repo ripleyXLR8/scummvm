@@ -410,7 +410,8 @@ private:
 	                       Common::String &saveName);
 	// Render player/save-row text in FONTMIN with the exe's player width table.
 	void drawPlayerText(Graphics::ManagedSurface &dst, const Common::String &text,
-	                    int anchorX, int anchorY, bool hover) const;
+	                    int anchorX, int anchorY, bool hover,
+	                    FontMinRenderer renderer) const;
 	// Startup player select / create / delete screen (SELEMENU.TXT over the
 	// PREINTRO.TGA title art).  Returns the chosen player id, or -1 to quit.
 	int displayPlayerScreen();

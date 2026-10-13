@@ -85,6 +85,39 @@ struct MenuLayout {
 	bool loadFromStream(Common::ReadStream &s);
 };
 
+// The FONTMIN pen advance table (atlantis.exe 0x00496697), glyph index
+// c - 0x20 (control characters use index 0x20).
+int fontMinAdvance(uint idx);
+
+// One FONTMIN glyph blit: pen x, baseline y, glyph index.
+struct FontMinBlit {
+	int x, y;
+	uint8 idx;
+};
+
+// The three FONTMIN text renderers of atlantis.exe:
+//  - player list (FUN_00420d8c): a space advances 20, not drawn; '#' is
+//    neither drawn nor advanced; other glyphs are drawn and advance by the
+//    table;
+//  - name field (FUN_00420f60): a space advances 20, not drawn; other
+//    glyphs are drawn and advance by the table, glyph 0x2e by 20;
+//  - load list (FUN_00420b48): glyph 0x20 is not drawn and advances 6;
+//    other glyphs (the space included) are drawn and advance by the table.
+enum FontMinRenderer {
+	kFontMinPlayerList,
+	kFontMinNameField,
+	kFontMinLoadList
+};
+void fontMinBlits(FontMinRenderer r, const Common::String &text, int x, int y,
+                  Common::Array<FontMinBlit> &out);
+
+// atlantis.exe FUN_004211f0: the cell under (mx, my) of a cols x rows grid
+// at (x0, y0) with cells cellW x cellH, bounds INCLUSIVE on both sides (so
+// the far edge column / row gives an index past the grid); column-major
+// (index = col * rows + row) or row-major; -1 outside.
+int menuGridHit(int x0, int y0, int cellW, int cellH, int cols, int rows, bool colMajor,
+                int mx, int my);
+
 // atlantis.exe sound menu OK: a knob at x gives the AIL volume
 // (x - 305) / 213 * 127, rounded toward zero (FUN_00451d6e), 0..127.
 int menuVolumeFromKnob(int x);

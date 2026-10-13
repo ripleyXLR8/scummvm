@@ -412,53 +412,43 @@ static int hitTestMenu(const MenuLayout &layout,
 
 static const char *const kOmni3dInvertKey = "atlantis_omni3d_invert";
 
-// FONTMIN per-char advance widths (atlantis.exe @ 0x496697), glyph idx char-0x20.
-static const uint8 kPlayerCharWidths[137] = {
-	15, 8,13, 6,13,20,17, 6,13,20,11, 6, 4,20,15,12,17, 8,16,16,
-	14,13,15,13,16,15, 7, 6, 6, 6, 6,20, 6,17,19,18,19,16,16,19,
-	18,12,12,17,16,24,20,23,17,22,17,15,19,20,17,23,22,18,17, 7,
-	16, 6,10, 6, 7,16,16,15,15,16,12,16,17, 8, 9,16, 7,19,16,17,
-	16,15,13,12,10,17,15,19,17,15,14,16, 6,17,11,16,17,17,15,16,
-	15,16,16,16,15,15,15,11,10,10,18,18,16,17,17,17,17,15,23,19,
-	15,19, 0,21,17,16,10,17,17,10,20,14,14,13, 3, 5, 8
-};
 
 // Player/save-row text in FONTMIN (FONTMIN2 when hover), spaced by the exe's
 // player width table so a hover swap only recolours, never reflows.
 void CryOmni3DEngine_Atlantis::drawPlayerText(Graphics::ManagedSurface &dst,
-        const Common::String &text, int anchorX, int anchorY, bool hover) const {
+        const Common::String &text, int anchorX, int anchorY, bool hover,
+        FontMinRenderer renderer) const {
+	// The pen positions come from the original's renderer (fontMinBlits).
 	const Common::Array<SubjSprite> &glyphs =
 	    (hover && !_fontMin2Sprites.empty()) ? _fontMin2Sprites : _fontMinSprites;
-	int cx = anchorX;
-	for (uint i = 0; i < text.size(); ++i) {
-		int gi = (int)(unsigned char)text[i] - 0x20;
-		if (gi < 0 || gi >= (int)glyphs.size())
+	Common::Array<FontMinBlit> blits;
+	fontMinBlits(renderer, text, anchorX, anchorY, blits);
+	for (const FontMinBlit &b : blits) {
+		if (b.idx >= glyphs.size())
 			continue;
-		const SubjSprite &spr = glyphs[gi];
-		if (!spr.pixels.empty()) {
-			int dx = cx - spr.xoff;
-			int dy = anchorY - spr.yoff;
-			for (int sy = 0; sy < (int)spr.h; ++sy) {
-				int ty = dy + sy;
-				if (ty < 0 || ty >= dst.h)
+		const SubjSprite &spr = glyphs[b.idx];
+		if (spr.pixels.empty())
+			continue;
+		const int dx = b.x - spr.xoff;
+		const int dy = b.y - spr.yoff;
+		for (int sy = 0; sy < (int)spr.h; ++sy) {
+			const int ty = dy + sy;
+			if (ty < 0 || ty >= dst.h)
+				continue;
+			for (int sx = 0; sx < (int)spr.w; ++sx) {
+				const uint sidx = sy * spr.w + sx;
+				uint16 pix = spr.pixels[sidx];
+				if (pix == kSprTransp)
 					continue;
-				for (int sx = 0; sx < (int)spr.w; ++sx) {
-					uint sidx = sy * spr.w + sx;
-					uint16 pix = spr.pixels[sidx];
-					if (pix == kSprTransp)
-						continue;
-					int tx = dx + sx;
-					if (tx < 0 || tx >= dst.w)
-						continue;
-					uint16 *dp = (uint16 *)dst.getBasePtr(tx, ty);
-					if (spr.blend[sidx] != kSprNoBlend)
-						pix = blendSprPixel565(pix, *dp, spr.blend[sidx]);
-					*dp = pix;
-				}
+				const int tx = dx + sx;
+				if (tx < 0 || tx >= dst.w)
+					continue;
+				uint16 *dp = (uint16 *)dst.getBasePtr(tx, ty);
+				if (spr.blend[sidx] != kSprNoBlend)
+					pix = blendSprPixel565(pix, *dp, spr.blend[sidx]);
+				*dp = pix;
 			}
 		}
-		if (gi < (int)ARRAYSIZE(kPlayerCharWidths))
-			cx += kPlayerCharWidths[gi];
 	}
 }
 
@@ -582,13 +572,14 @@ int CryOmni3DEngine_Atlantis::displayPlayerScreen() {
 		// Mouse hover / click.
 		Common::Point mouse = getMousePos();
 		int hovered = -1;
-		for (int j = 0; j < numRows; j++) {
-			Common::Rect r(kGridX0, kGridY0 + j * kGridStep,
-			               kGridX0 + kGridW, kGridY0 + (j + 1) * kGridStep);
-			if (r.contains(mouse)) {
-				hovered = j;
-				break;
-			}
+		// FUN_004211f0 with FUN_0041dea4's arguments (0x0041e08e): cell 320 x 22
+		// at (175, 248), one column, numRows rows; its inclusive far edges give
+		// an index past the list, which selects nothing.
+		{
+			const int g = menuGridHit(kGridX0, kGridY0, kGridW, kGridStep, 1, numRows, true,
+			                          mouse.x, mouse.y);
+			if (g >= 0 && g < numRows)
+				hovered = g;
 		}
 		// Hover state for the interactive SELEMENU labels.
 		bool okHover  = (okIdx  >= 0) && decorRects[okIdx].contains(mouse);
@@ -658,8 +649,9 @@ int CryOmni3DEngine_Atlantis::displayPlayerScreen() {
 			Common::String label = (slot == kRowNew)
 			    ? Common::String("New Player") : _players[slot];
 			bool hot = (j == hovered) || (slot >= 0 && slot == selected);
-			drawPlayerText(surf, label, kGridX0,
-			               kGridY0 + (j + 1) * kGridStep, hot);
+			// FUN_00420d8c: x 185 (0xb9), y 270 + 22 j.
+			drawPlayerText(surf, label, 185,
+			               kGridY0 + (j + 1) * kGridStep, hot, kFontMinPlayerList);
 		}
 		// The name area above the list shows either the new name being typed
 		// (with the dotted placeholder), or — once an existing player has been
@@ -668,9 +660,9 @@ int CryOmni3DEngine_Atlantis::displayPlayerScreen() {
 			Common::String field = editBuf;
 			while (field.size() < kPlayerNameLen)
 				field += '.';
-			drawPlayerText(surf, field, kEditFieldX, kEditFieldY, true);
+			drawPlayerText(surf, field, kEditFieldX, kEditFieldY, true, kFontMinNameField);
 		} else if (selected >= 0) {
-			drawPlayerText(surf, _players[selected], kEditFieldX, kEditFieldY, true);
+			drawPlayerText(surf, _players[selected], kEditFieldX, kEditFieldY, true, kFontMinNameField);
 		}
 
 		g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
@@ -691,7 +683,10 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 	(void)saveMode;
 	(void)outSaveName;
 
-	const int kListX = 50, kListY0 = 133, kRowStep = 20, kVisible = 11;
+	// FUN_00420b48: rows at x 55 (0x37), baseline 130 (0x82) + 22 i; the hit
+	// grid is FUN_004211f0 with FUN_0041cf78's arguments (0x0041d362): cell
+	// 400 x 22 at (45, 108), one column, 11 rows.
+	const int kListX = 55, kListY0 = 130, kRowStep = 22, kVisible = 11;
 	Graphics::PixelFormat fmt = g_system->getScreenFormat();
 
 	Graphics::ManagedSurface bg(640, 480, fmt);
@@ -739,15 +734,6 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 		saves.push_back(e);
 	}
 
-	auto rowWidth = [&](const Common::String &s) {
-		int w = 0;
-		for (uint i = 0; i < s.size(); i++) {
-			int gi = (int)(unsigned char)s[i] - 0x20;
-			if (gi >= 0 && gi < (int)ARRAYSIZE(kPlayerCharWidths))
-				w += kPlayerCharWidths[gi];
-		}
-		return w;
-	};
 
 	const int maxScroll = MAX(0, (int)saves.size() - kVisible);
 	int scroll = (selected >= 0) ? CLIP(selected - kVisible / 2, 0, maxScroll) : 0;
@@ -796,14 +782,10 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 
 		Common::Point mouse = getMousePos();
 		int rowHover = -1;
-		for (int i = 0; i + scroll < (int)saves.size() && i < kVisible; i++) {
-			int entry = scroll + i;
-			int ay = kListY0 + i * kRowStep;
-			int w  = MAX(rowWidth(saves[entry].name), 60);
-			if (Common::Rect(kListX, ay - 17, kListX + w, ay + 4).contains(mouse)) {
-				rowHover = entry;
-				break;
-			}
+		{
+			const int g = menuGridHit(45, 108, 400, 22, 1, kVisible, true, mouse.x, mouse.y);
+			if (g >= 0 && g < kVisible && scroll + g < (int)saves.size())
+				rowHover = scroll + g;
 		}
 		int btnHover = hitRects.empty() ? -1 : hitTestMenu(layout, hitRects, mouse);
 		if (btnHover != restartIdx && btnHover != okIdx && btnHover != cancelIdx)
@@ -846,7 +828,7 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 		for (int i = 0; i + scroll < (int)saves.size() && i < kVisible; i++) {
 			int entry = scroll + i;
 			drawPlayerText(surf, saves[entry].name, kListX, kListY0 + i * kRowStep,
-			               entry == selected);
+			               entry == selected, kFontMinLoadList);
 		}
 		g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
 		musicUpdate();

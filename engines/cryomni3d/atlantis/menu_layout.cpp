@@ -202,5 +202,50 @@ void subtitleToggleClick(bool &on, uint8 &counter) {
 		counter = 0;
 }
 
+static const uint8 kFontMinAdvance[137] = {
+	15, 8,13, 6,13,20,17, 6,13,20,11, 6, 4,20,15,12,17, 8,16,16,
+	14,13,15,13,16,15, 7, 6, 6, 6, 6,20, 6,17,19,18,19,16,16,19,
+	18,12,12,17,16,24,20,23,17,22,17,15,19,20,17,23,22,18,17, 7,
+	16, 6,10, 6, 7,16,16,15,15,16,12,16,17, 8, 9,16, 7,19,16,17,
+	16,15,13,12,10,17,15,19,17,15,14,16, 6,17,11,16,17,17,15,16,
+	15,16,16,16,15,15,15,11,10,10,18,18,16,17,17,17,17,15,23,19,
+	15,19, 0,21,17,16,10,17,17,10,20,14,14,13, 3, 5, 8
+};
+
+int fontMinAdvance(uint idx) {
+	return idx < ARRAYSIZE(kFontMinAdvance) ? kFontMinAdvance[idx] : 0;
+}
+
+void fontMinBlits(FontMinRenderer r, const Common::String &text, int x, int y,
+                  Common::Array<FontMinBlit> &out) {
+	out.clear();
+	int cx = x;
+	for (uint i = 0; i < text.size(); i++) {
+		const byte c = (byte)text[i];
+		if (r != kFontMinLoadList && c == ' ') {
+			cx += 20;
+			continue;
+		}
+		if (r == kFontMinPlayerList && c == '#')
+			continue;
+		const uint8 idx = (c < 0x20) ? 0x20 : (uint8)(c - 0x20);
+		if (r == kFontMinLoadList && idx == 0x20) {
+			cx += 6;
+			continue;
+		}
+		FontMinBlit b = { cx, y, idx };
+		out.push_back(b);
+		cx += (r == kFontMinNameField && idx == 0x2e) ? 20 : fontMinAdvance(idx);
+	}
+}
+
+int menuGridHit(int x0, int y0, int cellW, int cellH, int cols, int rows, bool colMajor,
+                int mx, int my) {
+	if (mx < x0 || mx > x0 + cols * cellW || my < y0 || my > y0 + rows * cellH)
+		return -1;
+	const int col = (mx - x0) / cellW, row = (my - y0) / cellH;
+	return colMajor ? col * rows + row : row * cols + col;
+}
+
 } // namespace Atlantis
 } // namespace CryOmni3D
