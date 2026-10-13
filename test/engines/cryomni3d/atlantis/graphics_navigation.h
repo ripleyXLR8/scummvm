@@ -9,7 +9,7 @@
 //   FUN_00422bb0                                             zone under the mouse
 // on a synthetic 2048x1024 RGB565 panorama (pixel i = (i*2654435761) >> 16).
 //
-// Port code exercised directly (linked): CryOmni3D::Omni3DManager (omni3d.cpp),
+// Port code exercised directly (linked): CryOmni3D::Atlantis::Omni3DManagerAtlantis (atlantis/omni3d.cpp),
 // CryOmni3D::Atlantis::AtlantisPlace::hitTest (wam_parser.cpp) and
 // CryOmni3D::Atlantis::hitTestPoint (wam_parser.h), the flip handleWarp
 // (navigation.cpp) applies to mapMouseCoords().
@@ -22,7 +22,7 @@
 #include "graphics/surface.h"
 
 #include "cryomni3d/omni3d.h"
-#include "cryomni3d/atlantis/omni3d_setup.h"
+#include "cryomni3d/atlantis/omni3d.h"
 #include "cryomni3d/atlantis/bigfile.h"
 #include "cryomni3d/atlantis/npc_click.h"
 #include "cryomni3d/atlantis/sprite_anim.h"
@@ -52,7 +52,6 @@ inline void setupPort(CryOmni3D::Omni3DManager &m, const Graphics::Surface &src,
                       double fovDeg, double alpha, double beta) {
 	// The original receives float arguments; give the port the same values.
 	m.init((double)f32(fovDeg) * M_PI / 180.0);
-	CryOmni3D::Atlantis::configureOmni3D(m);   // as the engine does
 	m.setPixelFormat(kFmt565);
 	m.setSourceSurface(&src);
 	m.setAlpha((double)f32(alpha));
@@ -78,23 +77,23 @@ public:
 	void setUp() override { Common::install_null_g_system(); }
 	void tearDown() override { Common::uninstall_null_g_system(); }
 
-	// Rendered 640x480 view, original FUN_00451d8b vs Omni3DManager::getSurface,
-	// same FOV and angles.  The projection grids agree to <= 15/65536 px; the
-	// difference is the per-row step of the tile interpolation (see REPORT.md).
+	// Rendered 640x480 view, original FUN_0045179a / FUN_00451915 / FUN_00451d8b
+	// vs Omni3DManagerAtlantis, same FOV and angles.  The original digests come
+	// from tools/emu/graphics_omni3d.py with the game's x87 control word 0x127f.
 	void test_projection_same_fov() {
 		using namespace GraphicsNavTest;
 		static const struct { double fov, a, b; const char *orig; } cases[] = {
-			{75.0,   0.0,  0.0,   "60b2357e1eb610337d4b287591c9e4cd"},
-			{75.0,   1.0,  0.25,  "ebbf4f4b3a7c95a51486dd984528da48"},
-			{75.0,   3.0, -0.5,   "7ce1561377468d15b5ede8203137de33"},
-			{75.0,   6.0,  0.75,  "26f5ae0197a016a428e1a79ede138680"},
-			{75.137, 1.0,  0.25,  "f5d6951600c603f690eb823bd7b7eaa9"},
-			{20.68,  2.0,  0.375, "13be1f2d380736c8d8ad4de683ba3f82"},
-			{48.26,  4.5, -0.25,  "e590211931869dad7352261f1711a752"},
+			{75.0,   0.0,  0.0,   "bcbc7625823ab0642a1634bf64e36a8a"},
+			{75.0,   1.0,  0.25,  "793681ba0dc96cab61ab119d17d2aaa4"},
+			{75.0,   3.0, -0.5,   "df5598759f445e4f7b9eb5d852c03b12"},
+			{75.0,   6.0,  0.75,  "f83b989cb75a4db55f610f1b2c795007"},
+			{75.137, 1.0,  0.25,  "80a70639be883a61395deee473d1a0d8"},
+			{20.68,  2.0,  0.375, "0e1a5c2d1147f50a61880fe5a663f905"},
+			{48.26,  4.5, -0.25,  "a010e7d4993c132c5261c37207d7ebec"},
 		};
 		Pano pano;
 		for (uint i = 0; i < ARRAYSIZE(cases); i++) {
-			CryOmni3D::Omni3DManager m;
+			CryOmni3D::Atlantis::Omni3DManagerAtlantis m;
 			setupPort(m, pano.s, cases[i].fov, cases[i].a, cases[i].b);
 			Common::String got = md5Surface(m.getSurface());
 			if (got != cases[i].orig)
@@ -106,13 +105,13 @@ public:
 
 	// The warp FOV: the original passes 75.137 deg (0x42964625, pushed at
 	// atlantis-cd-en-714240 @ 0x0044a701, 0x0043044c, 0x00428abb, 0x00428b48,
-	// 0x00428cbd); the port initialises Omni3DManager with kWarpFovDeg.
+	// 0x00428cbd); the port initialises Omni3DManagerAtlantis with kWarpFovDeg.
 	void test_projection_warp_fov() {
 		using namespace GraphicsNavTest;
 		Pano pano;
-		CryOmni3D::Omni3DManager m;
+		CryOmni3D::Atlantis::Omni3DManagerAtlantis m;
 		setupPort(m, pano.s, CryOmni3D::Atlantis::kWarpFovDeg, 0.0, 0.0);   // what the port renders
-		TS_ASSERT_EQUALS(md5Surface(m.getSurface()), Common::String("7ba99e56c5c021625370e91515570015"));
+		TS_ASSERT_EQUALS(md5Surface(m.getSurface()), Common::String("f7b654b61a06df529a00de37343db613"));
 	}
 
 	// Centre hit point: original FUN_0045166f returns y = 0x2ff - v; the port
@@ -124,7 +123,7 @@ public:
 		};
 		Pano pano;
 		for (uint i = 0; i < ARRAYSIZE(cases); i++) {
-			CryOmni3D::Omni3DManager m;
+			CryOmni3D::Atlantis::Omni3DManagerAtlantis m;
 			setupPort(m, pano.s, 75.137, cases[i].a, cases[i].b);
 			Common::Point pan = CryOmni3D::Atlantis::hitTestPoint(m.mapMouseCoords(Common::Point(320, 240)));
 			TS_ASSERT_EQUALS(pan.x, cases[i].ox);
@@ -154,7 +153,7 @@ public:
 				{"one_below",          1, {{(int16)(X - 5), (int16)(Y + 1), 10, 10, 7}, {0, 0, 0, 0, 0}}, 0},
 				{"one_above",          1, {{(int16)(X - 5), (int16)(Y - 11), 10, 10, 7}, {0, 0, 0, 0, 0}}, 0},
 			};
-			CryOmni3D::Omni3DManager m;
+			CryOmni3D::Atlantis::Omni3DManagerAtlantis m;
 			setupPort(m, pano.s, 75.137, angles[ai].a, angles[ai].b);
 			Common::Point pan = CryOmni3D::Atlantis::hitTestPoint(m.mapMouseCoords(Common::Point(320, 240)));
 			for (uint ci = 0; ci < ARRAYSIZE(cases); ci++) {

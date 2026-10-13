@@ -19,8 +19,8 @@
  *
  */
 
-#ifndef CRYOMNI3D_ATLANTIS_OMNI3D_SETUP_H
-#define CRYOMNI3D_ATLANTIS_OMNI3D_SETUP_H
+#ifndef CRYOMNI3D_ATLANTIS_OMNI3D_H
+#define CRYOMNI3D_ATLANTIS_OMNI3D_H
 
 #include "cryomni3d/omni3d.h"
 
@@ -32,11 +32,29 @@ namespace Atlantis {
 // 0x00428b48 and 0x00428cbd.
 static const float kWarpFovDeg = 75.137f;
 
-// atlantis.exe FUN_00451d8b interpolates each 16 x 16 tile with the row step
-// changes shifted by 4 and 9 (Versailles: 10 and 15).
-inline void configureOmni3D(Omni3DManager &m) {
-	m.setRowStepShifts(4, 9);
-}
+// The projection of atlantis.exe: FUN_0045179a (tables), FUN_00451915 (grid)
+// and FUN_00451d8b (tile steps).  The game runs the x87 at 53-bit precision
+// (control word 0x127f, set at 0x004719a5) and stores most intermediates as
+// floats; the grid is computed in double with a float store at each place
+// the original has one, so the coordinates match the original's exactly.
+class Omni3DManagerAtlantis : public Omni3DManager {
+public:
+	Omni3DManagerAtlantis() : _piF(0), _twoPiF(0), _vfovF(0), _b5c(0), _step(0), _panScale(0) {
+		setRowStepShifts(4, 9);
+	}
+
+	void setHFov(double hfov) override;
+
+protected:
+	void updateImageCoords() override;
+
+private:
+	float _piF, _twoPiF, _vfovF, _b5c, _step, _panScale;
+	float _rowAngle[31];       // 0x00bca9fc
+	float _rowHyp[31];         // 0x00bcaacc
+	float _colOpp[21];         // 0x00bcaa78
+	float _rowColScale[31 * 21]; // 0x00bcab68
+};
 
 } // End of namespace Atlantis
 } // End of namespace CryOmni3D

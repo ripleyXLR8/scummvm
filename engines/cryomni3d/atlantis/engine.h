@@ -42,6 +42,7 @@
 #include "cryomni3d/atlantis/con_script.h"
 #include "cryomni3d/atlantis/menu_layout.h"
 #include "cryomni3d/atlantis/npc_click.h"
+#include "cryomni3d/atlantis/omni3d.h"
 #include "cryomni3d/atlantis/sprite_anim.h"
 #include "cryomni3d/atlantis/toolbar.h"
 #include "cryomni3d/atlantis/wam_parser.h"
@@ -498,7 +499,7 @@ private:
 	AtlantisWAMParser _wam;
 	Common::String _currentWAMName;
 
-	Omni3DManager _omni3dMan;
+	Omni3DManagerAtlantis _omni3dMan;
 
 	// CON scenario-script state.
 	ConScript _conScript;

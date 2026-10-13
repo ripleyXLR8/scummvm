@@ -43,7 +43,7 @@
 #include "cryomni3d/omni3d.h"
 
 #include "cryomni3d/atlantis/engine.h"
-#include "cryomni3d/atlantis/omni3d_setup.h"
+#include "cryomni3d/atlantis/omni3d.h"
 
 #include "graphics/fontman.h"
 #include "graphics/fonts/ttf.h"
@@ -322,7 +322,6 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	SearchMan.add("Atlantis_BigFile", &_bigFile, 0, false);
 
 	_omni3dMan.init((double)kWarpFovDeg / 180. * M_PI);
-	configureOmni3D(_omni3dMan);
 	_mainPalette = new byte[3 * 256]();
 
 	// Atlantis uses HNM6 16-bit true colour panoramas.

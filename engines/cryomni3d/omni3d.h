@@ -41,7 +41,7 @@ public:
 	// Atlantis dialog renderer to apply the per-cam FOV table (cam2..cam5)
 	// extracted from atlantis.exe at VA 0x00496080.  Recomputes the
 	// projection helpers; the next getSurface() call re-renders.
-	void setHFov(double hfov);
+	virtual void setHFov(double hfov);
 	double getHFov() const;
 
 	void setSourceSurface(const Graphics::Surface *surface) { _sourceSurface = surface; _dirty = true; }
@@ -71,8 +71,8 @@ public:
 	bool needsUpdate() { return _dirty || _dirtyCoords; }
 	const Graphics::Surface *getSurface();
 
-private:
-	void updateImageCoords();
+protected:
+	virtual void updateImageCoords();
 
 	double _hfov;  // last hfov passed to init()/setHFov(); needed for FOV save/restore
 	double _vfov;
