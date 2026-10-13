@@ -21,6 +21,7 @@
 #include "common/fs.h"
 
 #include "cryomni3d/atlantis/bigfile.h"
+#include "cryomni3d/atlantis/chapter_start.h"
 #include "cryomni3d/atlantis/wam_parser.h"
 
 class ArchiveChapterStartTestSuite : public CxxTest::TestSuite {
@@ -31,9 +32,7 @@ public:
 		Common::uninstall_null_g_system();
 	}
 
-	// The port's start for chapter 1, COPIED from place.cpp
-	// (CryOmni3DEngine_Atlantis::kChapterInitialStates[0] = { 1, 0.f, 0.f };
-	// the table is a private static member and cannot be referenced here).
+	// The port's start for chapter 1 (kChapterInitialStates, chapter_start.h).
 	// Original: vue = immediate stored in DAT_0049692c by the new-game branch;
 	// camera angles 0x00bcb59c / 0x00bcb598 are not written on that path, so
 	// they keep their .bss value (0.0 in a fresh process).
@@ -44,9 +43,13 @@ public:
 		}
 		AtlantisTest::Golden g;
 		TS_ASSERT(AtlantisTest::loadGolden("archive_chapter.txt", g));
-		const uint portChapter1PlaceId = 1;     // copy of place.cpp
+		const uint portChapter1PlaceId = CryOmni3D::Atlantis::kChapterInitialStates[0].placeId;
 		TS_ASSERT_EQUALS(g["exe|newgame_wam"], Common::String("atlan1.wam"));
 		TS_ASSERT_EQUALS(Common::String::format("%u", portChapter1PlaceId), g["exe|newgame_vue"]);
+		// Each WAM chapter's start place is that WAM's first record.
+		for (int n = 1; n <= 5; n++)
+			TS_ASSERT_EQUALS(Common::String::format("%u", CryOmni3D::Atlantis::kChapterInitialStates[n - 1].placeId),
+			                 g[Common::String::format("ATLAN%d.WAM|record0_id", n)]);
 	}
 
 	// The port's parser resolves the original's start vue to the same record

@@ -37,6 +37,7 @@
 #include "cryomni3d/omni3d.h"
 
 #include "cryomni3d/atlantis/bigfile.h"
+#include "cryomni3d/atlantis/chapter_start.h"
 #include "cryomni3d/atlantis/con_eval.h"
 #include "cryomni3d/atlantis/inventory.h"
 #include "cryomni3d/atlantis/con_script.h"
@@ -76,13 +77,6 @@ enum FileType {
 	kFileTypeSprite2D,     // SPRITE\2D\    — 2D subject/cursor icon sprites (SPR files)
 	kFileTypeImages,       // IMAGES\       — full-screen TGA background images
 	kFileTypePuzzles       // PUZZLES\      — per-minigame sprites + TGAs (eclipse, chess, …)
-};
-
-// The place each chapter starts in (placeId) and the initial camera angles.
-struct LevelInitialState {
-	uint placeId;
-	float alpha;
-	float beta;
 };
 
 // One entry from the WAM's SPF transition-sprite list (e.g. SPFATL1.TXT).
@@ -475,8 +469,6 @@ private:
 	void playTransitionVideo(const Common::String &videoName,
 	                         uint fromPlace = uint(-1),
 	                         uint toPlace   = uint(-1));
-
-	static const LevelInitialState kChapterInitialStates[];
 
 	BigFileArchive _bigFile;
 	AtlantisWAMParser _wam;

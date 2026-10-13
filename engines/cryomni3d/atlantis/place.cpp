@@ -59,15 +59,6 @@ static const char *const kWAMNames[] = {
 	"ATLAN5.WAM",
 };
 
-// Chapter initial states: placeId, alpha (horizontal angle), beta (vertical angle).
-const LevelInitialState CryOmni3DEngine_Atlantis::kChapterInitialStates[] = {
-	{  1,  0.f,  0.f },  // chapter 1 — ATLAN1.WAM, first place id=1
-	{ 22,  0.f,  0.f },  // chapter 2 — ATLAN2.WAM, first place id=22
-	{ 58,  0.f,  0.f },  // chapter 3 — ATLAN3.WAM, first place id=58
-	{  1,  0.f,  0.f },  // chapter 4 — ATLAN4.WAM, first place id unknown
-	{  1,  0.f,  0.f },  // chapter 5 — ATLAN5.WAM, first place id unknown
-};
-
 void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 	if (chapter < 1 || chapter >= (int)ARRAYSIZE(kWAMNames) || !kWAMNames[chapter])
 		error("No WAM for chapter %d", chapter);
