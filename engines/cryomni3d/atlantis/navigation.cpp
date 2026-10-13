@@ -45,11 +45,13 @@
 namespace CryOmni3D {
 namespace Atlantis {
 
-// Sprite ranges of CURSEURS.SPR, for the fallback cursors.
+// The CURSEURS.SPR sprites FUN_00422fcc shows, grouped for the fallback
+// cursors (port-only: drawn only when CURSEURS.SPR is missing).  Sprites
+// 15..17 and 23..25 are never shown.
 enum WarpCursorGroup {
-	kWarpCursorDefault  = 0,  // sprites 0–8   — no interactive zone (static)
-	kWarpCursorNavigate = 1,  // sprites 9–17  — place transition
-	kWarpCursorObject   = 2,  // sprites 18–25 — object interaction
+	kWarpCursorDefault  = 0,  // sprite 5      — no zone, edge-scroll mode
+	kWarpCursorNavigate = 1,  // sprites 9–14  — place transition
+	kWarpCursorObject   = 2,  // sprites 18–22 — object (no fallback shape)
 	kWarpCursorTalk     = 3   // sprites 26–45 — NPC interaction
 };
 
@@ -213,7 +215,7 @@ void CryOmni3DEngine_Atlantis::showWarpCursorSprite(int sprite) {
 	// Fallback: hardcoded bitmask cursors when CURSEURS.SPR is not loaded.
 	uint16 buf[16 * 16];
 	Graphics::PixelFormat fmt(2, 5, 6, 5, 0, 11, 5, 0, 0);
-	const int group = (sprite >= 26) ? kWarpCursorTalk : (sprite >= 9 && sprite < 18) ? kWarpCursorNavigate
+	const int group = (sprite >= 26) ? kWarpCursorTalk : (sprite >= 9 && sprite <= 14) ? kWarpCursorNavigate
 	                : kWarpCursorDefault;
 	switch (group) {
 	case kWarpCursorNavigate:
