@@ -129,30 +129,38 @@ void CryOmni3DEngine_Atlantis::execConInitCommands() {
 }
 
 int CryOmni3DEngine_Atlantis::resolveSpeakerPersoId(const Common::String &speaker) const {
-	if (speaker.empty())
-		return 0;
-	if (_heroPersoId > 0 && scumm_strnicmp(speaker.c_str(), "seth", 4) == 0)
-		return _heroPersoId;
-
-	struct SpeakerEntry { const char *prefix; uint len; int persoId; };
-	static const SpeakerEntry kSpeakerTable[] = {
-		{ "Agat",      4, 520 }, { "Lasc",      4, 521 }, { "Melj",      4, 522 },
-		{ "Sorc",      4, 567 }, { "Gard",      4, 604 }, { "Sold",      4, 604 },
-		{ "Pech",      4, 524 }, { "Acty",      4, 524 }, { "Creo",      4, 525 },
-		{ "Chas",      4, 540 }, { "Passant9",  8, 602 }, { "Carv",      4, 602 },
-		{ "Passant6",  8, 601 }, { "Passante7", 9, 606 }, { "Hect",      4, 543 },
-		{ "Cuis",      4, 551 }, { "Rein",      4, 560 }, { "Reinem",    6, 561 },
-		{ "Reinep",    6, 562 }, { "Garc",      4, 526 }, { "Servan",    6, 609 },
-		{ "Servag",    6, 582 }, { "Chie",      4, 650 }, { "Anna",      4, 663 },
-		{ "Escl",      4, 597 }, { "Enne",      4, 667 }, { "Hona",      4, 682 },
-		{ "Sama",      4, 683 }, { "Naka",      4, 684 }, { "Lona",      4, 576 },
-		{ "JPil",      4, 571 }, { "Gimb",      4, 563 },
+	// atlantis.exe FUN_00428f58: memcmp of the text after '[' against each
+	// literal of the chain below, in code order (case-sensitive); every test
+	// runs and a hit overwrites the previous result, so the LAST match wins
+	// (e.g. "Seth" -> 513 then 514).  The literals contain no ',' or ']', so
+	// comparing the speaker token is the same as comparing the raw text.
+	// Chain listed by atlantis-re tools/emu/video_dialog_speakers.py --table.
+	struct SpeakerEntry { const char *lit; uint len; int persoId; };
+	static const SpeakerEntry kSpeakerChain[] = {
+		{ "Agat", 4, 520 }, { "agat", 4, 520 }, { "Lasc", 4, 521 }, { "lasc", 4, 521 },
+		{ "Melj", 4, 522 }, { "melj", 4, 522 }, { "Sorc", 4, 567 }, { "sorc", 4, 567 },
+		{ "Gard", 4, 604 }, { "gard", 4, 604 }, { "Sold", 4, 604 }, { "Pech", 4, 524 },
+		{ "pech", 4, 524 }, { "Acty", 4, 524 }, { "acty", 4, 524 }, { "Creo", 4, 525 },
+		{ "creo", 4, 525 }, { "Chas", 4, 540 }, { "chas", 4, 540 }, { "Passant9", 8, 602 },
+		{ "passant9", 8, 602 }, { "Carv", 4, 602 }, { "carv", 4, 602 }, { "Passant6", 8, 601 },
+		{ "passant6", 8, 601 }, { "Passante7", 9, 606 }, { "passante7", 9, 606 }, { "Hect", 4, 543 },
+		{ "hect", 4, 543 }, { "Cuis", 4, 551 }, { "cuis", 4, 551 }, { "Seth", 4, 513 },
+		{ "seth", 4, 513 }, { "Seth", 4, 514 }, { "seth", 4, 514 }, { "Rein", 4, 560 },
+		{ "rein", 4, 560 }, { "Reinem", 6, 561 }, { "reinem", 6, 561 }, { "Reinep", 6, 562 },
+		{ "reinep", 6, 562 }, { "Garc", 4, 526 }, { "garc", 4, 526 }, { "Servan", 6, 609 },
+		{ "servan", 6, 609 }, { "Servag", 6, 582 }, { "servag", 6, 582 }, { "Chie", 4, 650 },
+		{ "chie", 4, 650 }, { "Anna", 4, 663 }, { "anna", 4, 663 }, { "Escl", 4, 597 },
+		{ "escl", 4, 597 }, { "Enne", 4, 667 }, { "Enne", 4, 667 }, { "Hona", 4, 682 },
+		{ "hona", 4, 682 }, { "Sama", 4, 683 }, { "sama", 4, 683 }, { "Naka", 4, 684 },
+		{ "naka", 4, 684 }, { "Lona", 4, 576 }, { "lona", 4, 576 }, { "JPil", 4, 571 },
+		{ "jpil", 4, 571 }, { "Gimb", 4, 563 }, { "gimb", 4, 563 },
 	};
-	for (const SpeakerEntry &e : kSpeakerTable) {
-		if (scumm_strnicmp(speaker.c_str(), e.prefix, e.len) == 0)
-			return e.persoId;
+	int persoId = 0;
+	for (const SpeakerEntry &e : kSpeakerChain) {
+		if (speaker.size() >= e.len && memcmp(speaker.c_str(), e.lit, e.len) == 0)
+			persoId = e.persoId;
 	}
-	return 0;
+	return persoId;
 }
 
 void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {

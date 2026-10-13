@@ -131,48 +131,45 @@ void CryOmni3DEngine_Atlantis::loadDialInitData() {
 // An explicit `camN` from a `[Speaker, X, Y, camN]` directive is honoured when
 // it is valid and available; otherwise we fall through to the random pick.
 // Returns 2..5.
-int CryOmni3DEngine_Atlantis::pickDialCam(int persoId, int explicitCam) {
-	bool avail[4] = { false, false, false, false };
-	int availCount = 0;
+int CryOmni3DEngine_Atlantis::pickDialCam(int persoId, int explicitCam, bool sethLine) {
+	// atlantis.exe FUN_0042844c @ 0x004287c8..0x00428949 (off / off0 / off1
+	// lines skip it; the caller handles them):
+	//  - "camN" at the end of the header: cam = N (out of 2..5 -> 2), used
+	//    even when that cam's INITDIAL UBB is "none";
+	//  - otherwise draw (clock & 3) + 2 until the cam differs from the last
+	//    one and its UBB is not "none" (0x004287f6); lines that do not start
+	//    with "Seth" draw a second time against the first draw (0x00428896);
+	//  - persoId 0x230 (560) is then forced to cam 2 (0x0042892e).
+	// The original's draws use the millisecond clock (FUN_00451d0c); the
+	// port uses _dialRng.  With fewer than two usable cams the original
+	// would loop forever; the port stops after 64 draws.
 	Common::HashMap<int, DialInitEntry>::const_iterator it = _dialInitData.find(persoId);
-	if (it != _dialInitData.end()) {
-		for (int i = 0; i < 4; i++) {
-			const Common::String &s = it->_value.camUBB[i];
-			if (!s.empty() && !s.equalsIgnoreCase("none")) {
-				avail[i] = true;
-				availCount++;
-			}
+	auto usable = [&](int cam) {
+		if (it == _dialInitData.end())
+			return true;
+		const Common::String &s = it->_value.camUBB[cam - 2];
+		return !s.empty() && !s.hasPrefix("none");
+	};
+	auto draw = [&](int last) {
+		int cam = 2;
+		for (int tries = 0; tries < 64; tries++) {
+			cam = (int)_dialRng.getRandomNumber(3) + 2;
+			if (cam != last && usable(cam))
+				return cam;
 		}
+		return cam;
+	};
+	int cam;
+	if (explicitCam != 0) {
+		cam = (explicitCam >= 2 && explicitCam <= 5) ? explicitCam : 2;
+	} else {
+		cam = draw(_lastDialCam);
+		if (!sethLine)
+			cam = draw(cam);
 	}
-
-	// Explicit cam: honour it if valid + available (or if we have no data at all).
-	if (explicitCam >= 2 && explicitCam <= 5) {
-		if (availCount == 0 || avail[explicitCam - 2])
-			return explicitCam;
-	}
-
-	// No INITDIAL data → deterministic cam2 close-up.
-	if (availCount == 0)
-		return 2;
-
-	// Random pick — same `(rand & 3) + 2` shape, rejecting the previous cam
-	// and unavailable cams.
-	int cam = 2;
-	for (int tries = 0; tries < 16; tries++) {
-		cam = (int)_dialRng.getRandomNumber(3) + 2;   // 2..5
-		if (cam == _lastDialCam && availCount > 1)
-			continue;
-		if (avail[cam - 2])
-			return cam;
-	}
-	// Fallback: first available cam, preferring one other than the last.
-	for (int c = 2; c <= 5; c++)
-		if (avail[c - 2] && c != _lastDialCam)
-			return c;
-	for (int c = 2; c <= 5; c++)
-		if (avail[c - 2])
-			return c;
-	return 2;
+	if (persoId == 0x230)
+		cam = 2;
+	return cam;
 }
 
 void CryOmni3DEngine_Atlantis::drawGivenObject(Graphics::Surface &dst) const {
@@ -385,19 +382,30 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		// lines from several characters, so only the speaker name identifies
 		// who is talking on this line.
 		int persoId = resolveSpeakerPersoId(item.line.speaker);
+		// The header is tested at its end, just before ']' (FUN_0042844c @
+		// 0x004286a6..0x0042877e), case-sensitively: "off", "off0", "off1"
+		// (no camera choice), "cam"/"Cam" + one character (explicit camera,
+		// atoi of that character, 2 when out of 2..5).  "Seth" at the start
+		// selects the single-draw path (0x00428608).
+		const Common::String &hdrTail = item.line.params.empty() ? item.line.speaker : item.line.params;
+		const uint tl = hdrTail.size();
+		auto tailIs = [&](const char *lit, uint back) {
+			uint n = strlen(lit);
+			return tl >= back && memcmp(hdrTail.c_str() + tl - back, lit, n) == 0;
+		};
 		int explicitCam = 0;
-		{
-			const char *camTag = strstr(item.line.params.c_str(), "cam");
-			if (camTag) sscanf(camTag, "cam%d", &explicitCam);
-			if (explicitCam < 2 || explicitCam > 5) explicitCam = 0;
+		if (tailIs("cam", 4) || tailIs("Cam", 4)) {
+			const char d = hdrTail[tl - 1];
+			explicitCam = (d >= '0' && d <= '9') ? d - '0' : 0;
+			if (explicitCam < 2 || explicitCam > 5)
+				explicitCam = 2;
 		}
-		int camNum = pickDialCam(persoId, explicitCam);
+		const bool sethLine = item.line.speaker.hasPrefix("Seth");
+		int camNum = pickDialCam(persoId, explicitCam, sethLine);
 
 		// Off-camera variants (off / off0 / off1) play as voiceover: no head
 		// shot, no FOV change, view left where the player was facing.
-		const bool isOffCam = item.line.params.equalsIgnoreCase("off")
-		                   || item.line.params.equalsIgnoreCase("off0")
-		                   || item.line.params.equalsIgnoreCase("off1");
+		const bool isOffCam = tailIs("off", 3) || tailIs("off0", 4) || tailIs("off1", 4);
 
 		Common::String vid;
 		Common::String spfBase;
