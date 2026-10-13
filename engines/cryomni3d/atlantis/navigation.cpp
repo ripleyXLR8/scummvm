@@ -383,11 +383,14 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		// warp (run() turns this into a quit for now — the in-game menu lands
 		// with the menus layer).
 		Common::KeyCode kc = getNextKey().keycode;
-		if (!exit && (getCurrentMouseButton() == 2 || kc == Common::KEYCODE_SPACE)) {
-			// Opening the bar in bow mode lowers the bow first (0x0041c6af,
-			// FUN_0042d368).
-			if (_bowMode)
-				lowerBow();
+		bool barRequested = !exit && (getCurrentMouseButton() == 2 || kc == Common::KEYCODE_SPACE);
+		// In bow mode the request only lowers the bow and is dropped
+		// (0x0041c6af..0x0041c6c8: FUN_0042d368, 0x004960c4 = 0).
+		if (barRequested && _bowMode) {
+			lowerBow();
+			barRequested = false;
+		}
+		if (barRequested) {
 			// Show the current view, switch to a normal pointer, run the bar,
 			// then re-arm relative-look mode.
 			if (_warpLoaded) {
