@@ -218,9 +218,9 @@ void CryOmni3DEngine_Atlantis::drawSubjectSprite(Graphics::Surface &dst,
 // FUN_004261a0, hit-test at FUN_004211f0):
 //  - Each subject is two sprites: the border (SUJETS.SPR sprite 0) at the
 //    cell top-left, then the icon (sprite = sujId) at the cell centre.
-//  - Layout and hit test from subject_menu.h (FUN_004261a0, FUN_004211f0),
-//    including the original's one-column shift of the clickable grid with
-//    five or more subjects.  No hover highlight; right-click cancels.
+//  - Layout and hit test from subject_menu.h (FUN_004261a0, FUN_004211f0):
+//    the clickable grid has n / 5 + 1 columns, fewer than the drawn ones
+//    from nine subjects on.  No hover highlight; right-click cancels.
 // Returns the chosen option index, or -1 on cancel.
 int CryOmni3DEngine_Atlantis::showSubjectMenu(const Common::Array<int> &sujIds) {
 	const int kScreenW = 640, kScreenH = 480;
@@ -286,9 +286,9 @@ int CryOmni3DEngine_Atlantis::showSubjectMenu(const Common::Array<int> &sujIds) 
 				pollEvents();
 				g_system->delayMillis(10);
 			}
-			// FUN_004211f0 from the last column's x: with five or more
-			// subjects the clickable grid is one column right of the drawn
-			// one; an index past the subjects reads an empty slot (none).
+			// FUN_004211f0 from x = 450: n / 5 + 1 columns, so from nine
+			// subjects on the last drawn column is not clickable; an index
+			// past the subjects reads an empty slot (none).
 			const int idx = SubjectMenu::hit((int)nOpts, gridX, gridY, click.x, click.y);
 			if (idx >= 0 && idx < (int)nOpts)
 				result = idx;

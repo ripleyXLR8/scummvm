@@ -32,12 +32,11 @@ namespace Atlantis {
 
 // The dialog subject menu of atlantis.exe: FUN_004261a0 draws n subjects
 // in columns of four from x = 450 (the column moves right at subjects 4, 8
-// and 12 only), and FUN_00425828 hit-tests with FUN_004211f0 from the grid
-// origin the draw left in 0x006cd83c / 0x006cd840: the LAST column's x and
-// the first column's y.  With five or more subjects the clickable grid is
-// therefore one column to the right of the drawn one; its columns are
-// n / 5 + 1, its rows min(n, 4), column-major, edges inclusive.  An index
-// at or past n reads an empty slot of the record (subject 0).
+// and 12 only), and FUN_00425828 hit-tests with FUN_004211f0 from x = 450
+// (it sets 0x006cd83c = 0x1c2 at 0x004259d8) and the first column's y the
+// draw left in 0x006cd840.  The grid has n / 5 + 1 columns (fewer than the
+// drawn ones from nine subjects on), min(n, 4) rows, column-major, edges
+// inclusive.  An index at or past n reads an empty slot (subject 0).
 struct SubjectMenu {
 	struct Draw { int x, y, frame; };
 
@@ -59,7 +58,8 @@ struct SubjectMenu {
 			out.push_back(b);
 			out.push_back(c);
 		}
-		gridX = x0;
+		(void)x0;          // the draw leaves the last column's x in 0x006cd83c,
+		gridX = 0x1c2;     // which FUN_00425828 resets to 0x1c2 (0x004259d8)
 		gridY = firstY;
 	}
 

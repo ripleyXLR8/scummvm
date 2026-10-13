@@ -54,7 +54,7 @@ public:
 						c = '.';
 					} else {
 						const int s = SubjectMenu::subject(ids, idx);
-						c = s < 0 ? '?' : "0123456789abcdef"[s & 15];
+						c = (s < 0 || s >= 36) ? '?' : "0123456789abcdefghijklmnopqrstuvwxyz"[s];
 					}
 					listing += c;
 					seen[(byte)c] = true;
