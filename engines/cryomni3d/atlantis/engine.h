@@ -106,7 +106,7 @@ enum AbortCommand {
 	kAbortGameOver    = 7
 };
 
-// Atlantis: The Lost Tale.
+// Atlantis: The Lost Tales.
 //
 // This is the bootable skeleton: it mounts the BigFile archive(s), loads the
 // chapter-1 navigation map (WAM) and displays the first place's panoramic
@@ -562,6 +562,8 @@ private:
 	// atlantis.exe 0x00496188: set while a talking-head line plays; the place
 	// sprites then leave out the persos (id >= 0x200, FUN_00425304).
 	bool _spritesHideNpcs = false;
+	// The options menu's SUBTITLES click counter (DAT_00496098, not saved).
+	uint8 _subtitleToggleCount = 0;
 	// The subtitle font: atlantis.exe FUN_0041ae20 creates GDI Arial, cell
 	// height 16 (CreateFontA(16, ..., FW_DONTCARE, DEFAULT_CHARSET, ...,
 	// "Arial"), called at 0x00418f7e).  The port uses the metric-compatible

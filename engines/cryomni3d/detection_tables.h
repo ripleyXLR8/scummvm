@@ -668,7 +668,7 @@ static const char *const directoryGlobs[] = {
 	/* lien_doc.* */
 	"TEXTES",
 
-	/** Atlantis: The Lost Tale **/
+	/** Atlantis: The Lost Tales **/
 	/* ATL_DOS/ */
 	"ATL_DOS",
 	/* DEMOS1/ */

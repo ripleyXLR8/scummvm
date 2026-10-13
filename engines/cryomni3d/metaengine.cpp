@@ -180,7 +180,7 @@ Common::Error CryOmni3DMetaEngine::createInstance(OSystem *syst, Engine **engine
 		*engine = new Atlantis::CryOmni3DEngine_Atlantis(syst, gd);
 		return Common::kNoError;
 #else
-		return Common::Error(Common::kUnsupportedGameidError, _s("Atlantis: The Lost Tale support is not compiled in"));
+		return Common::Error(Common::kUnsupportedGameidError, _s("Atlantis: The Lost Tales support is not compiled in"));
 #endif
 	default:
 		return Common::kUnsupportedGameidError;

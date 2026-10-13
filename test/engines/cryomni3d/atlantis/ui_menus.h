@@ -1077,9 +1077,7 @@ public:
 	void test_volume_conversion() {
 		int mismatches = 0;
 		for (int x = 306; x <= 517; x++) {
-			double ail = ((double)(x - 305)) / 213.0 * 127.0;
-			int a = (int)(ail + 0.5);
-			a = CLIP(a, 0, 127);
+			int a = CryOmni3D::Atlantis::menuVolumeFromKnob(x);
 			if (a != kUiOrigVolume[x - 306])
 				mismatches++;
 		}
@@ -1099,11 +1097,14 @@ public:
 	// displayOptionsMenu: selected = (selected + 1) % 2, ON <=> selected 0,
 	// starting from the same state (subtitles off).
 	void test_subtitle_toggle_sequence() {
-		int sel = 1;
+		// From the original's initial state (flag 0, counter 0), with the
+		// port's subtitleToggleClick.
+		bool on = false;
+		uint8 counter = 0;
 		for (int k = 0; k < 12; k++) {
-			sel = (sel + 1) % 2;
+			CryOmni3D::Atlantis::subtitleToggleClick(on, counter);
 			TSM_ASSERT_EQUALS(Common::String::format("after click %d", k + 1).c_str(),
-			                  sel == 0 ? 1 : 0, kUiOrigSubtitleClicks[k]);
+			                  on ? 1 : 0, kUiOrigSubtitleClicks[k]);
 		}
 	}
 

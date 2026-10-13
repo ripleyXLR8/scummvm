@@ -22,6 +22,7 @@
 #include "cryomni3d/atlantis/menu_layout.h"
 
 #include "common/textconsole.h"
+#include "common/util.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
@@ -185,6 +186,20 @@ bool MenuLayout::loadFromStream(Common::ReadStream &s) {
 	}
 
 	return true;
+}
+
+int menuVolumeFromKnob(int x) {
+	int a = (int)(((double)(x - 305)) / 213.0 * 127.0);
+	return CLIP(a, 0, 127);
+}
+
+void subtitleToggleClick(bool &on, uint8 &counter) {
+	on = !on;
+	counter++;
+	if (counter == 2)
+		on = false;
+	if (counter == 3)
+		counter = 0;
 }
 
 } // namespace Atlantis

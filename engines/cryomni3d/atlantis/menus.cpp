@@ -928,12 +928,18 @@ void CryOmni3DEngine_Atlantis::displayOptionsMenu(const Graphics::ManagedSurface
 				done = true;
 			} else {
 				MenuItem &tog = layout.items[hovered];
-				if (!tog.options.empty())
-					tog.selected = (tog.selected + 1) % (int)tog.options.size();
-				if (hovered == subIdx)
-					ConfMan.setBool("subtitles", tog.selected == 0);
-				else if (hovered == omniIdx)
-					ConfMan.setBool(kOmni3dInvertKey, tog.selected == 1);
+				if (hovered == subIdx) {
+					// FUN_0041d5f4: the SUBTITLES toggle with its click counter.
+					bool on = showSubtitles();
+					subtitleToggleClick(on, _subtitleToggleCount);
+					ConfMan.setBool("subtitles", on);
+					tog.selected = on ? 0 : 1;
+				} else {
+					if (!tog.options.empty())
+						tog.selected = (tog.selected + 1) % (int)tog.options.size();
+					if (hovered == omniIdx)
+						ConfMan.setBool(kOmni3dInvertKey, tog.selected == 1);
+				}
 			}
 			hovered = -1;
 			surf.blitFrom(bg);
@@ -968,7 +974,7 @@ static const char *const kMasterVolKey = "atlantis_master_volume";
 //  - Knob X positions live in the per-menu record table for the whole
 //    session: first open takes the TXT defaults (460/465/470/490), dragging
 //    updates them, and they are NEVER recomputed from the active volumes.
-//  - OK converts each knob X with round((X - 305) / 213 * 127) (FPU consts
+//  - OK converts each knob X with (X - 305) / 213 * 127 rounded toward zero (FPU consts
 //    @ 0x4bc35b/0x4bc35f/0x4bc363) into the AIL 0..127 volumes, in order
 //    master / music / effects / voices; Cancel applies nothing.
 //  - Left/Right plays WAV\VAGUE_10.APC hard-panned (AIL pan 0 / 0x7f) at the
@@ -1169,13 +1175,12 @@ void CryOmni3DEngine_Atlantis::displaySoundMenu(const Graphics::ManagedSurface &
 	clearKeys();
 
 	if (commit) {
-		// OK applies round((knobX - 305) / 213 * 127) per slider — the AIL
-		// 0..127 volumes — rescaled here to ScummVM's 0..kMaxMixerVolume.
+		// OK applies (knobX - 305) / 213 * 127, rounded toward zero, per
+		// slider (menuVolumeFromKnob) — the AIL 0..127 volumes — rescaled here
+		// to ScummVM's 0..kMaxMixerVolume.
 		int v[4];
 		for (int t = 0; t < 4; t++) {
-			double ail = ((double)(_sonMenuKnobX[t] - 305)) / 213.0 * 127.0;
-			int a = (int)(ail + 0.5);
-			a = CLIP(a, 0, 127);
+			int a = menuVolumeFromKnob(_sonMenuKnobX[t]);
 			v[t] = a * Audio::Mixer::kMaxMixerVolume / 127;
 		}
 		ConfMan.setInt(kMasterVolKey,   v[0]);
@@ -1453,7 +1458,7 @@ uint CryOmni3DEngine_Atlantis::displayOptions() {
 	auto redraw = [&](int hov) {
 		surf.blitFrom(bgSurf);
 		if (font)
-			font->drawString(&surf, "ATLANTIS: The Lost Tale", 0, y - lineH * 2, 640,
+			font->drawString(&surf, "ATLANTIS: The Lost Tales", 0, y - lineH * 2, 640,
 			                 white, Graphics::kTextAlignCenter);
 		for (uint i = 0; i < numEntries; i++) {
 			uint32 col = ((int)i == hov) ? yellow : white;

@@ -85,6 +85,15 @@ struct MenuLayout {
 	bool loadFromStream(Common::ReadStream &s);
 };
 
+// atlantis.exe sound menu OK: a knob at x gives the AIL volume
+// (x - 305) / 213 * 127, rounded toward zero (FUN_00451d6e), 0..127.
+int menuVolumeFromKnob(int x);
+
+// atlantis.exe options menu, SUBTITLES item: on = !on; counter + 1; when
+// the counter is 2, on = 0; when it is 3, it returns to 0 (the byte counter
+// DAT_00496098).  Subtitles are drawn when on is set (FUN_00430178).
+void subtitleToggleClick(bool &on, uint8 &counter);
+
 } // namespace Atlantis
 } // namespace CryOmni3D
 
