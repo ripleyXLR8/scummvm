@@ -703,10 +703,7 @@ void HNMDecoder::HNM5VideoTrack::decodeChunk(byte *data, uint32 size,
 	if (chunkType == MKTAG16('P', 'L')) {
 		decodePalette(data, size);
 	} else if (chunkType == MKTAG16('I', 'V')) {
-		if (_dialogCodec)
-			decodeFrameAtlantisDialog(data, size);
-		else
-			decodeFrame(data, size);
+		decodeFrame(data, size);
 	} else if (chunkType == MKTAG16('I', 'A')) {
 		// IA chunk in Atlantis dialog UBBs carries the FUN_00450b08
 		// compositor opcode stream (SKIP/RUN/RUN-shaded), NOT inline
@@ -726,11 +723,6 @@ void HNMDecoder::HNM5VideoTrack::decodeChunk(byte *data, uint32 size,
 	} else {
 		warning("HNM5: Unknown chunk type 0x%04x: size %d, skipping", chunkType, size);
 	}
-}
-
-void HNMDecoder::setDialogCodec(bool b) {
-	if (HNM5VideoTrack *v5 = dynamic_cast<HNM5VideoTrack *>(_videoTrack))
-		v5->setDialogCodec(b);
 }
 
 void HNMDecoder::setCaptureOpcodeStream(bool b) {
@@ -982,115 +974,6 @@ static const byte HNM5_WIDTHS[3][32] = {
 		17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 30, 32, 34, 36, 38
 	}, /* 4 */
 };
-
-// Atlantis: The Lost Tale dialog video 'IV' codec (FUN_0041101f in atlantis.exe).
-// All non-control tokens are 3 bytes: [count_code, u16lo, u16hi].
-//   count = (count_code & 0x1f) + 1 bytes per row-pair.
-// Mode 0x28 (keyframe): src = dst + u16off - 65536 (backward LZ in output buffer).
-// All other modes: src = prev + (dst - curr) + u16off - 0x8000 (inter-frame ref).
-// Strip control: [0xe0, next_mode] = advance 2 rows; [0xe0, 0x00, cnt, col] = RLE fill.
-// Opcode 0x20: [0x20, count] = copy count+1 bytes from same position in prev frame.
-void HNMDecoder::HNM5VideoTrack::decodeFrameAtlantisDialog(byte *data, uint32 size) {
-	SWAP(_frameBufferC, _frameBufferP);
-
-	if (size < 2) {
-		_surface.setPixels(_frameBufferC);
-		return;
-	}
-
-	int mode = data[1];
-	debug(3, "AtlantisDialog IV: size=%u mode=0x%02x", size, mode);
-
-	if (mode == 1) {
-		_surface.setPixels(_frameBufferC);
-		return;
-	}
-
-	byte *tokens  = data + 2;
-	byte *tokEnd  = data + size;
-	byte *curr    = _frameBufferC;
-	byte *prev    = _frameBufferP;
-	int   pitch   = _surface.pitch;
-	int   frameBytes = pitch * _surface.h;
-	byte *currEnd = curr + frameBytes;
-	byte *prevEnd = prev + frameBytes;
-	ptrdiff_t prevDiff = prev - curr;
-
-	byte *dst       = curr;
-	byte *stripBase = curr;
-	bool  done      = false;
-
-	// Copy n bytes from src rows N and N+1 to dst rows N and N+1.
-	// sBuf/sBufEnd guard source reads; byte-by-byte loop supports LZ self-overlap.
-	auto copy2 = [&](byte *d, byte *s, int n, byte *sBuf, byte *sBufEnd) {
-		for (int i = 0; i < n; i++) {
-			byte *s0 = s + i;
-			byte *s1 = s + pitch + i;
-			byte v0 = (s0 >= sBuf && s0 < sBufEnd) ? *s0 : 0;
-			byte v1 = (s1 >= sBuf && s1 < sBufEnd) ? *s1 : 0;
-			if (d + i < currEnd)         d[i]         = v0;
-			if (d + pitch + i < currEnd) (d + pitch)[i] = v1;
-		}
-	};
-
-	while (!done && tokens < tokEnd) {
-		byte b0 = tokens[0];
-
-		if (b0 == 0xe0) {
-			if (tokens + 2 > tokEnd) break;
-			byte b1 = tokens[1];
-			if (b1 == 0) {
-				if (tokens + 4 > tokEnd) break;
-				int  cnt = tokens[2] + 1;
-				byte col = tokens[3];
-				tokens += 4;
-				byte *d1 = dst + pitch;
-				for (int i = 0; i < cnt; i++, dst++, d1++) {
-					if (dst < currEnd) *dst = col;
-					if (d1  < currEnd) *d1  = col;
-				}
-			} else {
-				tokens    += 2;
-				stripBase += 2 * pitch;
-				dst        = stripBase;
-				if (b1 == 1) done = true; else mode = b1;
-			}
-			continue;
-		}
-
-		if (b0 == 0x20) {
-			if (tokens + 2 > tokEnd) break;
-			int cnt = tokens[1] + 1;
-			tokens += 2;
-			byte *src = dst + prevDiff;
-			copy2(dst, src, cnt, prev, prevEnd);
-			dst += cnt;
-			continue;
-		}
-
-		// 3-byte token: [count_code, u16lo, u16hi]
-		if (tokens + 3 > tokEnd) break;
-		uint16 u16off = READ_LE_UINT16(tokens + 1);
-		int    cnt    = (b0 & 0x1f) + 1;
-		tokens += 3;
-
-		byte *src;
-		byte *sBuf, *sBufEnd;
-		if (mode == 0x28) {
-			src  = dst + ((ptrdiff_t)(uint32)u16off - 65536);
-			sBuf = curr; sBufEnd = currEnd;
-			if (src < curr) src = curr;
-		} else {
-			src  = dst + prevDiff + ((ptrdiff_t)u16off - 0x8000);
-			sBuf = prev; sBufEnd = prevEnd;
-			if (src < prev) src = prev;
-		}
-		copy2(dst, src, cnt, sBuf, sBufEnd);
-		dst += cnt;
-	}
-
-	_surface.setPixels(_frameBufferC);
-}
 
 void HNMDecoder::HNM5VideoTrack::decodeFrame(byte *data, uint32 size) {
 	SWAP(_frameBufferC, _frameBufferP);

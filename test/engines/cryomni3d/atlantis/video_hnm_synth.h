@@ -546,13 +546,11 @@ class VideoHnmSynthTestSuite : public CxxTest::TestSuite {
 		return d;
 	}
 
-	int run(bool dialogCodec) {
+	int run() {
 		uint32 size;
 		byte *d = buildUbb(size);
 		Video::HNMDecoder dec(Graphics::PixelFormat::createFormatCLUT8(), false);
 		TS_ASSERT(dec.loadStream(new Common::MemoryReadStream(d, size, DisposeAfterUse::YES)));
-		if (dialogCodec)
-			dec.setDialogCodec(true);
 		byte *flat = new byte[640 * 480];
 		int bad = 0;
 		for (int i = 0; i < 4; i++) {
@@ -565,8 +563,8 @@ class VideoHnmSynthTestSuite : public CxxTest::TestSuite {
 			Common::String got = AtlantisTest::md5Hex(flat, 640 * 480);
 			if (got != VideoSynth::kSynthIVMd5[i]) {
 				bad++;
-				TS_WARN(Common::String::format("%s frame %d: port %s, original %s",
-				        dialogCodec ? "dialog codec" : "stock HNM5", i, got.c_str(),
+				TS_WARN(Common::String::format("stock HNM5 frame %d: port %s, original %s",
+				        i, got.c_str(),
 				        VideoSynth::kSynthIVMd5[i]).c_str());
 			}
 		}
@@ -575,8 +573,6 @@ class VideoHnmSynthTestSuite : public CxxTest::TestSuite {
 	}
 
 public:
-	// Decoder configuration used by dialog.cpp (setDialogCodec never called).
-	void test_synthetic_iv_stock_hnm5() { TS_ASSERT_EQUALS(run(false), 0); }
-	// HNM5VideoTrack::decodeFrameAtlantisDialog (dead code in the engine).
-	void test_synthetic_iv_dialog_codec() { TS_ASSERT_EQUALS(run(true), 0); }
+	// The decoder configuration dialog.cpp uses (stock HNM5 decodeFrame).
+	void test_synthetic_iv_stock_hnm5() { TS_ASSERT_EQUALS(run(), 0); }
 };

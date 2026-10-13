@@ -6,13 +6,9 @@
 // FUN_0041101f, emulated unmodified by atlantis-re/tools/emu/video_ubb_codec.py
 // (golden file evidence/golden/video_ubb_frames.txt).
 //
-// Two port configurations are checked:
-//  - test_ubb_frames_engine_path: the decoder exactly as dialog.cpp
-//    playSingleConLine() builds it (HNMDecoder(CLUT8, loop=true) +
-//    setCaptureOpcodeStream(true)); setDialogCodec() is never called by the
-//    engine, so the stock HNM5 decodeFrame() is used.
-//  - test_ubb_frames_dialog_codec: the same plus setDialogCodec(true), i.e.
-//    HNM5VideoTrack::decodeFrameAtlantisDialog().
+// The port is checked as dialog.cpp playSingleConLine() builds the decoder
+// (HNMDecoder(CLUT8, loop=true) + setCaptureOpcodeStream(true)): the stock
+// HNM5 decodeFrame() decodes the IV chunks.
 
 #include "atlantis_test_helper.h"
 #include "video_test_big.h"
@@ -26,7 +22,7 @@ class VideoHnmTestSuite : public CxxTest::TestSuite {
 	// Decodes all frames of one UBB; returns the number of frames whose
 	// digest differs from the golden one (or -1 if the file can't be loaded).
 	int checkUbb(const VideoTest::Big &big, const Common::String &path,
-	             const AtlantisTest::Golden &golden, bool dialogCodec,
+	             const AtlantisTest::Golden &golden,
 	             int &framesChecked, Common::String &firstDiff) {
 		uint32 size = 0;
 		byte *data = big.get(path, size);
@@ -51,8 +47,6 @@ class VideoHnmTestSuite : public CxxTest::TestSuite {
 		if (!dec.loadStream(s))
 			return -1;
 		dec.setCaptureOpcodeStream(true);
-		if (dialogCodec)
-			dec.setDialogCodec(true);
 
 		int bad = 0;
 		byte *flat = new byte[640 * 480];
@@ -82,7 +76,7 @@ class VideoHnmTestSuite : public CxxTest::TestSuite {
 		return bad;
 	}
 
-	void runAll(bool dialogCodec) {
+	void runAll() {
 		if (!AtlantisTest::haveData()) {
 			TS_WARN("Atlantis data not configured: UBB frame test skipped");
 			return;
@@ -99,7 +93,7 @@ class VideoHnmTestSuite : public CxxTest::TestSuite {
 		Common::String report;
 		for (uint i = 0; i < ubbs.size(); i++) {
 			Common::String firstDiff;
-			int bad = checkUbb(big, ubbs[i], golden, dialogCodec, framesChecked, firstDiff);
+			int bad = checkUbb(big, ubbs[i], golden, framesChecked, firstDiff);
 			files++;
 			if (bad != 0) {
 				filesBad++;
@@ -110,7 +104,7 @@ class VideoHnmTestSuite : public CxxTest::TestSuite {
 			}
 		}
 		TS_WARN(Common::String::format("%s: %d files, %d frames checked, %d files / %d frames differ from FUN_0041101f.%s",
-		        dialogCodec ? "dialog codec" : "engine path", files, framesChecked,
+		        "engine path", files, framesChecked,
 		        filesBad, framesBad, report.c_str()).c_str());
 		TS_ASSERT_EQUALS(framesBad, 0);
 	}
@@ -120,6 +114,5 @@ public:
 	void setUp() override { Common::install_null_g_system(); }
 	void tearDown() override { Common::uninstall_null_g_system(); }
 
-	void test_ubb_frames_engine_path() { runAll(false); }
-	void test_ubb_frames_dialog_codec() { runAll(true); }
+	void test_ubb_frames_engine_path() { runAll(); }
 };

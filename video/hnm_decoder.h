@@ -63,7 +63,6 @@ public:
 	void close() override;
 
 	void setRegularFrameDelay(uint32 regularFrameDelay) { _regularFrameDelayMs = regularFrameDelay; }
-	void setDialogCodec(bool b);
 	/** Atlantis dialog UBBs interleave the IV (CLUT8 video) chunk with an IA
 	 *  chunk that contains the per-frame compositor opcode stream (3 op
 	 *  types — SKIP / RUN-shaded / RUN-per-pixel-shade — consumed by the
@@ -163,7 +162,7 @@ private:
 		               uint32 regularFrameDelayMs, uint32 audioSampleRate,
 		               const byte *initialPalette = nullptr) :
 			HNM45VideoTrack(width, height, frameSize, frameCount, regularFrameDelayMs, audioSampleRate,
-			                initialPalette), _dialogCodec(false),
+			                initialPalette),
 			_captureOpcodes(false), _opcodes(nullptr), _opcodesSize(0), _opcodesAlloc(0) {}
 		~HNM5VideoTrack() override { delete[] _opcodes; }
 
@@ -171,17 +170,12 @@ private:
 		void decodeChunk(byte *data, uint32 size,
 		                 uint16 chunkType, uint16 flags) override;
 
-		void setDialogCodec(bool b) { _dialogCodec = b; }
 		void setCaptureOpcodes(bool b) { _captureOpcodes = b; }
 		const byte *getOpcodes(uint32 &size) const { size = _opcodesSize; return _opcodes; }
 
 	protected:
 		/** Really decode */
 		void decodeFrame(byte *data, uint32 size);
-		/** Atlantis: The Lost Tale dialog video 'IV' codec (FUN_0041101f) */
-		void decodeFrameAtlantisDialog(byte *data, uint32 size);
-
-		bool _dialogCodec;
 
 		// IA-chunk capture for Atlantis dialog compositor.
 		bool   _captureOpcodes;
