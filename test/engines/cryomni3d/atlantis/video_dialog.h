@@ -36,6 +36,7 @@
 #define VIDEO_ENGINE_PEEK
 #define private public
 #define protected public
+#include "cryomni3d/atlantis/subtitle_layout.h"
 #include "cryomni3d/atlantis/engine.h"
 #undef private
 #undef protected
@@ -296,24 +297,14 @@ public:
 	void tearDown() { Common::uninstall_null_g_system(); }
 
 	// The ORIGINAL breaks subtitles at the last space before character 100
-	// (FUN_0042ffe8), and draws line i of n at y = 462 - (n-i+1)*14 in
-	// 16-px Arial (GDI). The port wraps by pixel width with ScummVM's
-	// kBigGUIFont inside playSingleConLine (not callable: the wrap call
-	// `guiFont->wordWrapText(text, subWidthBudget=630, lines)` is copied here,
-	// it is one statement).
+	// (FUN_0042ffe8, emulated on these inputs by
+	// atlantis-re tools/emu/video_dialog_subtitles.py). Port: splitSubtitle.
 	void test_line_breaks_vs_original() {
-		const Graphics::Font *font = FontMan.getFontByUsage(Graphics::FontManager::kBigGUIFont);
-		if (!font)
-			font = FontMan.getFontByUsage(Graphics::FontManager::kGUIFont);
-		if (!font) {
-			TS_WARN("no built-in GUI font available; skipping");
-			return;
-		}
 		int diffs = 0;
 		for (uint i = 0; i < ARRAYSIZE(VideoDialogTest::kWrapCases); i++) {
 			const VideoDialogTest::WrapCase &c = VideoDialogTest::kWrapCases[i];
 			Common::Array<Common::String> lines;
-			font->wordWrapText(c.input, 640 - 5 - 5, lines);
+			CryOmni3D::Atlantis::splitSubtitle(c.input, lines);
 			bool same = (int)lines.size() == c.n;
 			for (int k = 0; same && k < c.n; k++)
 				same = (lines[k] == c.lines[k]);
@@ -326,17 +317,12 @@ public:
 		TS_ASSERT_EQUALS(diffs, 0);
 	}
 
-	// Vertical position of a one-line subtitle: original y = 0x1ce - 2*14 = 434
-	// (FUN_00430178); port y = 480 - 1*(fontHeight+2) - 6 (playSingleConLine).
+	// Line i of n at y = 0x1ce - (n-i+1)*14 (FUN_00430178): a single line at
+	// 434, lines 14 px apart. Port: subtitleLineY.
 	void test_single_line_y_vs_original() {
-		const Graphics::Font *font = FontMan.getFontByUsage(Graphics::FontManager::kBigGUIFont);
-		if (!font) {
-			TS_WARN("no kBigGUIFont; skipping");
-			return;
-		}
-		int portY = 480 - (font->getFontHeight() + 2) - 6;
-		TS_ASSERT_EQUALS(portY, 0x1ce - 2 * 14);
-		TS_ASSERT_EQUALS(font->getFontHeight() + 2, 14);
+		TS_ASSERT_EQUALS(CryOmni3D::Atlantis::subtitleLineY(0, 1), 0x1ce - 2 * 14);
+		TS_ASSERT_EQUALS(CryOmni3D::Atlantis::subtitleLineY(1, 2) - CryOmni3D::Atlantis::subtitleLineY(0, 2), 14);
+		TS_ASSERT_EQUALS(CryOmni3D::Atlantis::subtitleLineY(1, 2), 0x1ce - 2 * 14);
 	}
 };
 

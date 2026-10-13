@@ -53,6 +53,7 @@ MODULE_OBJS += \
 	atlantis/saveload.o \
 	atlantis/sprite_anim.o \
 	atlantis/sprite_renderer.o \
+	atlantis/subtitle_layout.o \
 	atlantis/toolbar.o \
 	atlantis/wam_parser.o
 endif
