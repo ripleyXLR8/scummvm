@@ -42,6 +42,7 @@
 
 #include "cryomni3d/omni3d.h"
 
+#include "cryomni3d/atlantis/credits_layout.h"
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/omni3d.h"
 
@@ -448,6 +449,13 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 				// the credits are not cut short by shouldAbort().
 				_isPlaying = false;
 				_abortCommand = kAbortNoAbort;
+				// images\end.tga, shown (FUN_0041b654, FUN_004337d4).
+				if (Graphics::Surface *end = loadTGA(kFileTypeImages, "END.TGA")) {
+					g_system->copyRectToScreen(end->getPixels(), end->pitch, 0, 0, end->w, end->h);
+					g_system->updateScreen();
+					end->free();
+					delete end;
+				}
 				uint32 start = g_system->getMillis();
 				while (!shouldQuit() && g_system->getMillis() - start < 0x578 * kSpriteTickMs &&
 				        getCurrentMouseButton() != 1) {
@@ -590,218 +598,94 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 	}
 }
 
-// --- Quit credits slideshow -------------------------------------------------
+// --- Credits ----------------------------------------------------------------
 //
-// Asset notes:
-//   * 04GENERI.APC is present on some disc images (it plays here on the
-//     tested BIGCD1.BIG) but not all single-disc layouts; when it is absent
-//     the slideshow runs in silence, matching the original game there.
-//     END.TGA is skipped entirely.
-//   * CREDIT01..10.TGA are 640×480; profiling the pixels confirms the right
-//     half is uniformly black (intensity 0) starting around x=340.
-//   * SPRLIST\CREDITS.TXT is segmented by `$NN` markers (10 sections);
-//     within each section `<>TEXT` is a credit line and `<>\TEXT` is a
-//     section label (rendered in the blue CREDBLEU bank — the leading `\`
-//     is stripped).  Section NN corresponds to CREDITNN.TGA.
+// SPRLIST\CREDITS.TXT holds 19 `$NN` page markers (some numbers repeat: the
+// same picture with more text) between `<>TEXT` lines, `<>\TEXT` headings
+// and blank lines that space the text; see atlantis-re
+// functions/ui-FUN_0041a72c.md.
 
-namespace {
-
-// One parsed line of credits text.
-struct CreditsLine {
-	Common::String text;
-	bool label;     // true if the original line started with `\`
-};
-
-// Split CREDITS.TXT into 10 sections keyed by `$NN`.  Lines that are not
-// `$NN` or `<>...` are ignored (the file contains blank padding lines).
-struct CreditsScript {
-	Common::Array<CreditsLine> sections[10];
-};
-
-static void parseCreditsScript(Common::ReadStream &stream, CreditsScript &out) {
-	Common::Array<byte> buf;
-	byte chunk[256];
-	while (!stream.eos()) {
-		uint32 got = stream.read(chunk, sizeof(chunk));
-		if (!got) break;
-		for (uint32 i = 0; i < got; i++)
-			buf.push_back(chunk[i]);
-	}
-	buf.push_back(0);
-
-	int section = -1;       // 0..9, set when we see `$NN`
-	const char *cur = (const char *)buf.data();
-	while (*cur) {
-		Common::String line;
-		while (*cur && *cur != '\n' && *cur != '\r') {
-			line += *cur;
-			++cur;
-		}
-		while (*cur == '\n' || *cur == '\r') ++cur;
-
-		if (line.empty())
-			continue;
-
-		// Section marker: `$NN` (one or two digits).
-		if (line[0] == '$' && line.size() >= 2) {
-			int n = 0;
-			for (uint i = 1; i < line.size(); i++) {
-				char c = line[i];
-				if (c < '0' || c > '9') break;
-				n = n * 10 + (c - '0');
-			}
-			if (n >= 1 && n <= 10)
-				section = n - 1;
-			continue;
-		}
-
-		// Body line: `<>TEXT` or `<>\TEXT`.
-		if (section >= 0 && line.size() >= 2 && line[0] == '<' && line[1] == '>') {
-			CreditsLine cl;
-			const char *p = line.c_str() + 2;
-			if (*p == '\\') {
-				cl.label = true;
-				++p;
-			} else {
-				cl.label = false;
-			}
-			cl.text = Common::String(p);
-			out.sections[section].push_back(cl);
-		}
-	}
-}
-
-} // anonymous
-
+// atlantis.exe FUN_0041a72c, the credits (credits_layout.h has the events).
 void CryOmni3DEngine_Atlantis::playQuitOutro() {
-	static const char *const kSlides[10] = {
-		"CREDIT01.TGA", "CREDIT02.TGA", "CREDIT03.TGA", "CREDIT04.TGA",
-		"CREDIT05.TGA", "CREDIT06.TGA", "CREDIT07.TGA", "CREDIT08.TGA",
-		"CREDIT09.TGA", "CREDIT10.TGA",
-	};
-	static const uint32 kSlideDurationMs = 6000;
-	// 04GENERI.APC ("generique" = credits) is the authentic credits music;
-	// discs without it get silent credits.  We DO NOT substitute a different
-	// track: a 33INTRO fallback fights the chapter music and produces an
-	// obviously wrong soundscape.
-	static const char *const kMusicApc = "04GENERI.APC";
+	// OBJETENMAIN = 0 (0x0041a744).
+	_gameVars["objetenmain"] = 0;
+	_inventory.setSelectedObject(nullptr);
 
-	// Silence the chapter music first, regardless of whether the credits
-	// APC loads — the original game's GereGameOver path stops sample
-	// playback (FUN_0042b290 → _AIL_stop_sample_4) before drawing the
-	// first credit slide.
-	musicStop();
+	// Music (0x0041a83e..0x0041a916): only when a track is open and it is not
+	// track 22 (04GENERI.APC, set by CHAPI085 before the end), switch to track
+	// 26 (09VOLTOT.APC, FUN_00432ea8(0x19)); with track 22 it keeps playing;
+	// with none the credits are silent.  [INFERRED] "a track is open" is
+	// taken as a selected track.
+	if (_musicTrackId != 0 && _musicTrackId != 22)
+		musicPlayTrack(26);
 
-	// --- Music (credits track if present) ----------------------------
-	Audio::SoundHandle musicHandle;
-	bool musicPlaying = false;
+	Common::Array<byte> txt;
 	{
-		Common::SeekableReadStream *apcFile =
-		    openBigFileStream(kFileTypeSound, kMusicApc);
-		if (apcFile) {
-			Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*apcFile);
-			if (apc) {
-				int64 remaining = apcFile->size() - apcFile->pos();
-				if (remaining > 0) {
-					byte *buf = new byte[remaining];
-					apcFile->read(buf, (uint32)remaining);
-					apc->queuePacket(new Common::MemoryReadStream(
-					    buf, remaining, DisposeAfterUse::YES));
-				}
-				apc->finish();
-				_mixer->playStream(Audio::Mixer::kMusicSoundType,
-				                   &musicHandle, apc);
-				musicPlaying = true;
-				debugC(1, kDebugScript, "playQuitOutro: %s playing", kMusicApc);
-			}
-			delete apcFile;
-		} else {
-			debugC(1, kDebugScript, "playQuitOutro: %s not on this disc (silent credits)",
-			      kMusicApc);
+		Common::ScopedPtr<Common::SeekableReadStream> f(
+		    openBigFileStream(kFileTypeSprite, "CREDITS.TXT"));
+		if (f) {
+			txt.resize((uint)f->size());
+			f->read(txt.data(), txt.size());
 		}
 	}
-
-	// --- Credits text -------------------------------------------------
-	CreditsScript credits;
-	{
-		Common::ScopedPtr<Common::SeekableReadStream> txt(
-		    openBigFileStream(kFileTypeSprite, "CREDITS.TXT"));
-		if (txt)
-			parseCreditsScript(*txt, credits);
-	}
-
-	// Centering matches FUN_0042073c (atlantis.exe @ 0x42073c):
-	//   x = (0x3c0 - text_pixel_width) / 2
-	// 0x3c0 = 960 is the original engine's text-area virtual width.  In
-	// practice the CRED font lines are short enough that this places them
-	// in the black band on the right of the slide art (artwork ends near
-	// x≈340 per the per-column-brightness profile of CREDIT01.TGA).
-	const int kCenterWidth = 0x3c0;
-
-	// Vertical layout: stack lines with a step that fits the per-section
-	// max line count (≈22 lines for the biggest sections) in 480 px, and
-	// centre the block vertically.  Char height is ~18 in the original
-	// SPR; 22 px step gives a comfortable readable gap.
-	const int kLineStep = 22;
+	Common::Array<CreditsEvent> events;
+	CreditsLayout::build(txt.data(), txt.size(), _creditCharWidths, events);
 
 	showMouse(false);
 	clearKeys();
+	const Graphics::PixelFormat fmt = g_system->getScreenFormat();
+	Graphics::ManagedSurface buffer(640, 480, fmt);   // the work buffer 0x004960d8
+	const uint32 start = g_system->getMillis();
 
-	Graphics::PixelFormat fmt = g_system->getScreenFormat();
-
-	bool skipped = false;
-	for (uint i = 0; i < ARRAYSIZE(kSlides) && !skipped && !shouldAbort();
-	     i++) {
-		Graphics::Surface *slide = loadTGA(kFileTypeImages, kSlides[i]);
-		if (!slide) {
-			warning("playQuitOutro: missing slide '%s'", kSlides[i]);
-			continue;
-		}
-
-		// Build the composite once: slide artwork + credit text overlay.
-		Graphics::ManagedSurface frame;
-		frame.create(slide->w, slide->h, fmt);
-		frame.blitFrom(*slide);
-
-		const Common::Array<CreditsLine> &lines = credits.sections[i];
-		if (!lines.empty() && !_creditBlanSprites.empty()) {
-			int totalH = (int)lines.size() * kLineStep;
-			int y = (480 - totalH) / 2 + kLineStep;   // baseline of first line
-			for (uint l = 0; l < lines.size(); l++) {
-				const CreditsLine &cl = lines[l];
-				int w = creditStringWidth(cl.text);
-				int x = (kCenterWidth - w) / 2;        // authentic formula
-				drawCreditText(frame, cl.text, x, y, cl.label);
-				y += kLineStep;
-				if (y > 478) break;
-			}
-		}
-
-		g_system->copyRectToScreen(frame.getPixels(), frame.pitch,
-		                            0, 0, frame.w, frame.h);
-		g_system->updateScreen();
-
-		slide->free();
-		delete slide;
-
-		// Per-slide wait; any key or mouse button skips the whole outro.
-		// The engine-level queues must be read AFTER pollEvents() has
-		// drained the backend events into them — polling the event manager
-		// directly here would race pollEvents() for the same events.
-		const uint32 deadline = g_system->getMillis() + kSlideDurationMs;
-		while (g_system->getMillis() < deadline && !shouldAbort()) {
+	// Waits until the tick; false when Escape ends the credits (FUN_0041a298
+	// clears 0x00496124 on an Escape edge; a click does nothing here).
+	auto waitUntil = [&](uint32 tick) {
+		while (g_system->getMillis() - start < tick * kSpriteTickMs && !shouldAbort()) {
 			pollEvents();
-			if (checkKeysPressed() || getCurrentMouseButton() != 0) {
-				skipped = true;
-				break;
-			}
-			g_system->updateScreen();
+			if (checkKeysPressed(1, Common::KEYCODE_ESCAPE))
+				return false;
 			g_system->delayMillis(10);
+		}
+		return !shouldAbort();
+	};
+
+	bool running = true;
+	for (uint i = 0; i < events.size() && running; i++) {
+		const CreditsEvent &e = events[i];
+		switch (e.kind) {
+		case CreditsEvent::kImage: {
+			// FUN_0041ad7c: images\creditNN.tga into the work buffer.
+			const Common::String name = Common::String::format("CREDIT%02d.TGA", e.image);
+			Graphics::Surface *pic = loadTGA(kFileTypeImages, name.c_str());
+			if (pic) {
+				buffer.blitFrom(*pic);
+				pic->free();
+				delete pic;
+			}
+			break;
+		}
+		case CreditsEvent::kGlyph:
+			drawCreditText(buffer, Common::String((char)(e.frame + 0x21)), e.x, e.y, e.blue);
+			break;
+		case CreditsEvent::kPresent:
+			running = waitUntil(e.tick);
+			if (running) {
+				g_system->copyRectToScreen(buffer.getPixels(), buffer.pitch, 0, 0, buffer.w, buffer.h);
+				g_system->updateScreen();
+			}
+			break;
+		case CreditsEvent::kClear:
+			running = waitUntil(e.tick);
+			break;
 		}
 	}
 
-	if (musicPlaying)
-		_mixer->stopHandle(musicHandle);
+	// After the loop: the music is faded out and stopped, the screen cleared
+	// (FUN_00450ec0 over 640 x 480 x 2).
+	musicStop();
+	buffer.clear(0);
+	g_system->copyRectToScreen(buffer.getPixels(), buffer.pitch, 0, 0, buffer.w, buffer.h);
+	g_system->updateScreen();
 	clearKeys();
 }
 
