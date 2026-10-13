@@ -557,10 +557,12 @@ int CryOmni3DEngine_Atlantis::displayPlayerScreen() {
 				} else if (k.keycode == Common::KEYCODE_BACKSPACE) {
 					if (!editBuf.empty())
 						editBuf.deleteLastChar();
-				} else if (k.ascii >= 0x20 && k.ascii < 0x7f
+				} else if (k.ascii >= 0x20 && k.ascii <= 0xa7
 				        && editBuf.size() < kPlayerNameLen) {
-					// The original rejects a leading space or period.
-					if (!(editBuf.empty() && (k.ascii == ' ' || k.ascii == '.')))
+					// FUN_0041dea4 @ 0x0041e283: characters 0x20..0xa7 (the
+					// FONTMIN glyphs); a leading space is refused, a leading
+					// '.' is typed (the commit still refuses it).
+					if (!(editBuf.empty() && k.ascii == ' '))
 						editBuf += (char)k.ascii;
 				}
 			} else if (k.keycode == Common::KEYCODE_ESCAPE) {
@@ -648,7 +650,9 @@ int CryOmni3DEngine_Atlantis::displayPlayerScreen() {
 			int slot = rowSlot[j];
 			Common::String label = (slot == kRowNew)
 			    ? Common::String("New Player") : _players[slot];
-			bool hot = (j == hovered) || (slot >= 0 && slot == selected);
+			// FUN_00420d8c highlights the row under the mouse only (the grid
+			// result, FUN_0041dea4 @ 0x0041e096).
+			bool hot = (j == hovered);
 			// FUN_00420d8c: x 185 (0xb9), y 270 + 22 j.
 			drawPlayerText(surf, label, 185,
 			               kGridY0 + (j + 1) * kGridStep, hot, kFontMinPlayerList);
@@ -828,7 +832,7 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 		for (int i = 0; i + scroll < (int)saves.size() && i < kVisible; i++) {
 			int entry = scroll + i;
 			drawPlayerText(surf, saves[entry].name, kListX, kListY0 + i * kRowStep,
-			               entry == selected, kFontMinLoadList);
+			               entry == rowHover, kFontMinLoadList);
 		}
 		g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
 		musicUpdate();
