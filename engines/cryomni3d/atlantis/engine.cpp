@@ -378,6 +378,24 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	// _abortCommand fires; the switch maps that back onto the next step.
 	// If launched directly onto a save slot (ScummVM "play" with a save),
 	// skip the menu and load it.
+	// Testing aid (port-only): the configuration key atlantis_puzzle=<n>
+	// plays StartPuzzle n at once, with the object atlantis_puzzle_object
+	// in hand when set, and reports its FinPuzzle before the game goes on.
+	if (ConfMan.hasKey("atlantis_puzzle")) {
+		const int puzzle = ConfMan.getInt("atlantis_puzzle");
+		if (ConfMan.hasKey("atlantis_puzzle_object")) {
+			const uint id = (uint)ConfMan.getInt("atlantis_puzzle_object");
+			for (Object &o : _objects)
+				if (o.idOBJ() == id) {
+					_inventory.setSelectedObject(&o);
+					break;
+				}
+		}
+		playPuzzle(puzzle);
+		warning("Atlantis: puzzle %d ended with FinPuzzle %d", puzzle,
+		        _gameVars.getValOrDefault("finpuzzle", 0));
+	}
+
 	uint nextStep = 0;
 	int bootSlot = ConfMan.getInt("save_slot");
 	// Cryo logo and pre-intro cinematics before the player screen (skipped

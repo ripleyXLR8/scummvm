@@ -19,6 +19,7 @@
  *
  */
 
+#include "common/debug.h"
 #include "common/util.h"
 
 #include "cryomni3d/atlantis/hexa_game.h"
@@ -194,11 +195,19 @@ void HexaGame::rightButton() {
 void HexaGame::leftClick() {
 	if (held) {
 		const int p = held - 1;
-		if (drop(p, _mx + grabX, _my + grabY)) {
+		const bool ok = drop(p, _mx + grabX, _my + grabY);
+		// Port-only log, to replay a player's game in the emulated original.
+		debug(1, "hexa: drop piece %d orientation %d at %d,%d (mouse %d,%d) %s", p, pieces[p].orient,
+		      _mx + grabX, _my + grabY, _mx, _my, ok ? "accepted" : "refused");
+		if (ok) {
 			held = 0;
 			playSound(2);
-			if (won())
+			if (won()) {
 				result = 1;
+				debug(1, "hexa: won with (%d %d,%d) (%d %d,%d) (%d %d,%d)", pieces[0].orient, pieces[0].x,
+				      pieces[0].y, pieces[1].orient, pieces[1].x, pieces[1].y, pieces[2].orient,
+				      pieces[2].x, pieces[2].y);
+			}
 		} else {
 			refuse();
 		}

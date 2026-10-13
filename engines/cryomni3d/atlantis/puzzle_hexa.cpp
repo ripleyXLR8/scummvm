@@ -54,6 +54,9 @@ HexaPuzzle::HexaPuzzle(CryOmni3DEngine_Atlantis *engine)
 		ok = false;
 	}
 	_loaded = ok;
+	if (!ok)
+		warning("HexaPuzzle: missing assets (sprites %u, picture %u, map %u, coverage %u)", _frames.size(),
+		        _bgPixels.size(), _mapFile.size(), coverage.size());
 }
 
 int HexaPuzzle::play() {
