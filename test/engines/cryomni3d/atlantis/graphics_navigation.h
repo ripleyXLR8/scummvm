@@ -458,14 +458,12 @@ public:
 
 	// Dialog camera FOV table (atlantis-cd-en-714240 @ 0x00496080, 4 floats,
 	// read as [cam*4 + 0x496078] at 0x00428a0e / 0x00428ad4) versus the port's
-	// literal kCamFovDeg in dialog.cpp (FAITHFUL COPY of the literal; the
-	// array is function-local).
+	// kDialogCamFovDeg (atlantis/omni3d.h).
 	void test_camera_fov_table() {
 		if (!AtlantisTest::haveData()) {
 			TS_WARN("graphics_navigation: no atlantis_test.cfg, data test skipped");
 			return;
 		}
-		static const float kCamFovDeg[4] = {20.68f, 30.0f, 48.0f, 48.26f};
 		Common::FSNode node(Common::Path(AtlantisTest::dataDir(), '/').appendComponent("atlantis.exe"));
 		Common::File f;
 		TS_ASSERT(f.open(node));
@@ -476,7 +474,7 @@ public:
 			uint32 bits = f.readUint32LE();
 			float v;
 			memcpy(&v, &bits, 4);
-			TS_ASSERT_EQUALS(v, kCamFovDeg[i]);
+			TS_ASSERT_EQUALS(v, CryOmni3D::Atlantis::kDialogCamFovDeg[i]);
 		}
 	}
 

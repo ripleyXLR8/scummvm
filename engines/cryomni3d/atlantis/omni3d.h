@@ -32,6 +32,10 @@ namespace Atlantis {
 // 0x00428b48 and 0x00428cbd.
 static const float kWarpFovDeg = 75.137f;
 
+// Dialog camera FOVs for cams 2..5: the float table at 0x00496080, read as
+// [cam * 4 + 0x496078] at 0x00428a0e / 0x00428ad4.
+static const float kDialogCamFovDeg[4] = { 20.68f, 30.0f, 48.0f, 48.26f };
+
 // The projection of atlantis.exe: FUN_0045179a (tables), FUN_00451915 (grid)
 // and FUN_00451d8b (tile steps).  The game runs the x87 at 53-bit precision
 // (control word 0x127f, set at 0x004719a5) and stores most intermediates as

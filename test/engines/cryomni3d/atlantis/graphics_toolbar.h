@@ -83,9 +83,8 @@ inline Common::String order(const CryOmni3D::Inventory &inv) {
 }
 
 // Atlantis_Toolbar::init() calls g_system->getScreenFormat(), which the
-// test null OSystem cannot serve (no graphics manager in test mode).  This is
-// a FAITHFUL COPY of init()'s zone set-up (toolbar.cpp) plus the 82-row
-// destination surface hitTestZones() reads; everything else is real code.
+// test null OSystem cannot serve (no graphics manager in test mode).  This
+// sets the members init() sets and calls the real setupZones().
 inline void initToolbarNoGfx(CryOmni3D::Atlantis::Atlantis_Toolbar &tb, CryOmni3D::Inventory *inv) {
 	tb._inventory = inv;
 	tb._engine = nullptr;

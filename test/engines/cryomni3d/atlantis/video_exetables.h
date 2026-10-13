@@ -156,21 +156,19 @@ public:
 		TS_ASSERT_EQUALS(e->creditCharAdvance(' '), 6);
 	}
 
-	// Per-camera FOV. kCamFovDeg is a function-local constant of
-	// playSingleConLine (dialog.cpp); its four values are copied here.
+	// Per-camera FOV: the port's kDialogCamFovDeg (atlantis/omni3d.h).
 	void test_camera_fov_table() {
 		if (!AtlantisTest::haveData()) {
 			TS_WARN("no game data configured; skipping");
 			return;
 		}
-		static const float kPortCamFovDeg[4] = {20.68f, 30.0f, 48.0f, 48.26f};  // copy of dialog.cpp
 		VideoExeTest::Exe exe;
 		TS_ASSERT(exe.open());
 		for (int cam = 2; cam <= 5; cam++) {
 			uint32 bits = exe.u32(0x00496078 + 4 * cam);
 			float v;
 			memcpy(&v, &bits, 4);
-			TS_ASSERT_EQUALS(v, kPortCamFovDeg[cam - 2]);
+			TS_ASSERT_EQUALS(v, CryOmni3D::Atlantis::kDialogCamFovDeg[cam - 2]);
 		}
 	}
 };

@@ -1,6 +1,6 @@
 #include "atlantis_test_helper.h"
 
-#include "cryomni3d/atlantis/puzzle_eclipse.h"
+#include "cryomni3d/atlantis/eclipse_rules.h"
 
 // ui audit — eclipse puzzle (StartPuzzle=0) rules vs the original.
 //
@@ -9,68 +9,17 @@
 // unmodified under Unicorn: atlantis-re/tools/emu/ui_puzzles_eclipse.py,
 // output in atlantis-re/evidence/golden/ui_puzzle_eclipse.txt.
 //
-// FAITHFUL COPY WARNING: the port's rules live in private members and in
-// EclipsePuzzle::run() (engines/cryomni3d/atlantis/puzzle_eclipse.cpp), which
-// need a running engine (sprite/TGA loading, event loop) and cannot be called
-// from a test.  The namespace PortCopy below is a line-for-line copy of the
-// port's hit-zone constants, EclipsePuzzle::tick(),
-// EclipsePuzzle::isWin() and the click branch of EclipsePuzzle::run(), taken
-// from scummvm branch atlantis-v2 as audited on 2026-10-12.  Extraction that
-// would make the real code testable: move tick/isWin/the click classifier
-// into a free function or an engine-independent EclipseRules class.
+// Port code exercised directly: EclipseRules (eclipse_rules.h), the rules
+// EclipsePuzzle runs.
 
 namespace UiEclipse {
 namespace PortCopy {
 
-// The record table is the port's own (puzzle_eclipse.h, header-only).
-static const CryOmni3D::Atlantis::EclipseRecordInit *const kRecordInit = CryOmni3D::Atlantis::kEclipseRecordInit;
-static const int kLever1X0 = 0x78 + 1, kLever1X1 = 0xf0;
-static const int kLever2X0 = 0x1ae + 1, kLever2X1 = 0x226;
-static const int kLeverY0 = 0x172 + 1, kLeverY1 = 0x1e0, kLeverYUp = 0x1a9 + 1;
-static const int kExitLeftX0 = 0, kExitLeftX1 = 0xa0;
-static const int kExitRightX0 = 0x21d, kExitRightX1 = 0x280, kExitY1 = 0xdc;
-static const int kLever1Records[] = { 2, 5, 6 };
-static const int kLever2Records[] = { 3, 4 };
-
-struct Record { int dir, x, y, min, max, curr; };
-
-struct Puzzle {
-	Record r[7];
-	Puzzle() {
-		for (int i = 0; i < 7; i++) {
-			r[i].dir = kRecordInit[i].dir; r[i].x = kRecordInit[i].x; r[i].y = kRecordInit[i].y;
-			r[i].min = kRecordInit[i].min; r[i].max = kRecordInit[i].max;
-			r[i].curr = (i >= 2) ? (r[i].min + 0x25) : r[i].min;
-		}
-	}
-	void tick(int i) {
-		Record &x = r[i];
-		if (x.dir == 0) return;
-		if (x.dir == 1) { x.curr++; if (x.curr > x.max) x.curr = x.min; }
-		else if (x.dir == 2) { x.curr--; if (x.curr < x.min) x.curr = x.max; }
-	}
-	bool isWin() const { return r[4].curr == r[4].min + 1 && r[5].curr == r[5].min; }
-	// Click branch of run(); returns 'E' (exit) or 0.
+// The port's rules (EclipseRules, eclipse_rules.h); click() keeps the
+// tests' 'E' for an exit click.
+struct Puzzle : public CryOmni3D::Atlantis::EclipseRules {
 	char click(int mx, int my) {
-		bool inExitL = (mx >= kExitLeftX0 && mx < kExitLeftX1 && my >= 0 && my < kExitY1);
-		bool inExitR = (mx >= kExitRightX0 && mx < kExitRightX1 && my >= 0 && my < kExitY1);
-		if (inExitL || inExitR)
-			return 'E';
-		if (my >= kLeverY0 && my < kLeverY1) {
-			int dir = (my < kLeverYUp) ? 1 : 2;
-			if (mx >= kLever1X0 && mx < kLever1X1) {
-				for (uint k = 0; k < ARRAYSIZE(kLever1Records); k++) {
-					int idx = kLever1Records[k];
-					r[idx].dir = dir; tick(idx); r[idx].dir = 0;
-				}
-			} else if (mx >= kLever2X0 && mx < kLever2X1) {
-				for (uint k = 0; k < ARRAYSIZE(kLever2Records); k++) {
-					int idx = kLever2Records[k];
-					r[idx].dir = dir; tick(idx); r[idx].dir = 0;
-				}
-			}
-		}
-		return 0;
+		return EclipseRules::click(mx, my) == kClickExit ? 'E' : 0;
 	}
 };
 

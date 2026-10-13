@@ -46,22 +46,6 @@ namespace Atlantis {
 static const int kScreenW = 640;
 static const int kScreenH = 480;
 
-// Click hotspots -- FUN_00441cd8 lines 441daa-441ddb / 441e59-441e8d.
-static const int kLever1X0 = 0x78 + 1;   // 121
-static const int kLever1X1 = 0xf0;       // 240
-static const int kLever2X0 = 0x1ae + 1;  // 431
-static const int kLever2X1 = 0x226;      // 550
-static const int kLeverY0  = 0x172 + 1;  // 371
-static const int kLeverY1  = 0x1e0;      // 480
-static const int kLeverYUp = 0x1a9 + 1;  // 426 -- y < this = step up
-
-// Top-corner exit zones -- FUN_00441cd8 lines 441cf0-441d2a / 441d2f-441d6c.
-static const int kExitLeftX0  = 0;
-static const int kExitLeftX1  = 0xa0;    // 160
-static const int kExitRightX0 = 0x21d;   // 541
-static const int kExitRightX1 = 0x280;   // 640
-static const int kExitY1      = 0xdc;    // 220
-
 // Return codes -- .rdata at 0x496d0c (abort) and 0x496d14 (win).
 static const int kFinPuzzleWin   = 255;
 static const int kFinPuzzleAbort = 1;
@@ -79,10 +63,7 @@ static const int kHighlightFrameMoon = 0xd6;  // 214
 // Win-animation length -- FUN_00441724 lines 441813-441818 (`< 0x50` iterations).
 static const int kWinAnimFrames = 0x50;     // 80
 
-static const EclipseRecordInit *const kRecordInit = kEclipseRecordInit;
 static const bool kRecordUsesPz1l[7] = { false, false, false, false, true, true, true };
-static const int kLever1Records[] = { 2, 5, 6 };
-static const int kLever2Records[] = { 3, 4 };
 
 // ===========================================================================
 EclipsePuzzle::EclipsePuzzle(CryOmni3DEngine_Atlantis *engine)
@@ -91,37 +72,9 @@ EclipsePuzzle::EclipsePuzzle(CryOmni3DEngine_Atlantis *engine)
 	loadPuzzleSpr(engine, "PZ2L.SPR", _pz2lFrames);
 	_bgLoaded = loadPuzzleTGA(engine, "PZLION.TGA", _bgPixels);
 
-	for (int i = 0; i < kNumRecords; i++) {
-		_records[i].dir  = kRecordInit[i].dir;
-		_records[i].x    = kRecordInit[i].x;
-		_records[i].y    = kRecordInit[i].y;
-		_records[i].min  = kRecordInit[i].min;
-		_records[i].max  = kRecordInit[i].max;
-		_records[i].curr = (i >= 2) ? (_records[i].min + 0x25)
-		                            : _records[i].min;
-	}
 }
 
 EclipsePuzzle::~EclipsePuzzle() {
-}
-
-// Mirrors FUN_00441f50.
-void EclipsePuzzle::tick(int recIdx) {
-	Record &r = _records[recIdx];
-	if (r.dir == 0) return;
-	if (r.dir == 1) {
-		r.curr++;
-		if (r.curr > r.max) r.curr = r.min;
-	} else if (r.dir == 2) {
-		r.curr--;
-		if (r.curr < r.min) r.curr = r.max;
-	}
-}
-
-// Mirrors FUN_00441cd8 lines 441f0b-441f32.
-bool EclipsePuzzle::isWin() const {
-	return _records[4].curr == _records[4].min + 1 &&
-	       _records[5].curr == _records[5].min;
 }
 
 // Mirrors FUN_00441828 in full.
@@ -141,32 +94,32 @@ void EclipsePuzzle::renderFrame(Graphics::ManagedSurface &out) {
 
 	// 2. Records 0..3: tick + blit PZ2L (FUN_00441828 lines 38212-38216).
 	for (int i = 0; i < 4; i++) {
-		tick(i);
-		if (_records[i].curr >= 0 && (uint)_records[i].curr < _pz2lFrames.size())
-			blitFrame(out, _pz2lFrames[_records[i].curr],
-			          _records[i].x, _records[i].y);
+		_rules.tick(i);
+		if (_rules.r[i].curr >= 0 && (uint)_rules.r[i].curr < _pz2lFrames.size())
+			blitFrame(out, _pz2lFrames[_rules.r[i].curr],
+			          _rules.r[i].x, _rules.r[i].y);
 	}
 
 	// 3. Records 4..6: tick first (FUN_00441828 lines 38217-38219).
-	tick(4);
-	tick(5);
-	tick(6);
+	_rules.tick(4);
+	_rules.tick(5);
+	_rules.tick(6);
 
 	// 4. Layer-swap: default render order is (record6 back, record4
 	// middle, record5 front).  When record5.CURR is in (96, 131) the
 	// exe swaps records 5 and 6 -- mirrors lines 441948-441974.
 	int backIdx  = 6;
 	int frontIdx = 5;
-	if (_records[5].curr > kLayerSwapLo && _records[5].curr < kLayerSwapHi) {
+	if (_rules.r[5].curr > kLayerSwapLo && _rules.r[5].curr < kLayerSwapHi) {
 		backIdx  = 5;
 		frontIdx = 6;
 	}
 
 	auto blitPz1l = [&](int recIdx, int frameOverride) {
-		int frame = (frameOverride >= 0) ? frameOverride : _records[recIdx].curr;
+		int frame = (frameOverride >= 0) ? frameOverride : _rules.r[recIdx].curr;
 		if (frame >= 0 && (uint)frame < _pz1lFrames.size())
 			blitFrame(out, _pz1lFrames[frame],
-			          _records[recIdx].x, _records[recIdx].y);
+			          _rules.r[recIdx].x, _rules.r[recIdx].y);
 	};
 
 	blitPz1l(backIdx, -1);
@@ -179,7 +132,7 @@ void EclipsePuzzle::renderFrame(Graphics::ManagedSurface &out) {
 	//   - record6 at its current frame (redrawn on top for z-order);
 	//   - PZ1L frame 213 at record 4's position (SUN highlight sprite);
 	//   - PZ1L frame 214 at record 5's position (MOON highlight sprite).
-	if (isWin() && (_frameCounter & 2)) {
+	if (_rules.isWin() && (_frameCounter & 2)) {
 		blitPz1l(6, -1);
 		blitPz1l(4, kHighlightFrameSun);
 		blitPz1l(5, kHighlightFrameMoon);
@@ -242,41 +195,18 @@ int EclipsePuzzle::run() {
 		if (nowButton && !prevButton) {
 			Common::Point m = _engine->getMousePos();
 
-			bool inExitL = (m.x >= kExitLeftX0  && m.x < kExitLeftX1  &&
-			                m.y >= 0            && m.y < kExitY1);
-			bool inExitR = (m.x >= kExitRightX0 && m.x < kExitRightX1 &&
-			                m.y >= 0            && m.y < kExitY1);
-			if (inExitL || inExitR) {
+			const EclipseRules::Click c = _rules.click(m.x, m.y);
+			if (c == EclipseRules::kClickExit) {
 				result = kFinPuzzleAbort;
 				exitLoop = true;
-			} else if (m.y >= kLeverY0 && m.y < kLeverY1) {
-				int dir = (m.y < kLeverYUp) ? 1 : 2;
-				bool clicked = false;
-				if (m.x >= kLever1X0 && m.x < kLever1X1) {
-					for (uint k = 0; k < ARRAYSIZE(kLever1Records); k++) {
-						int idx = kLever1Records[k];
-						_records[idx].dir = dir;
-						tick(idx);
-						_records[idx].dir = 0;
-					}
-					clicked = true;
-				} else if (m.x >= kLever2X0 && m.x < kLever2X1) {
-					for (uint k = 0; k < ARRAYSIZE(kLever2Records); k++) {
-						int idx = kLever2Records[k];
-						_records[idx].dir = dir;
-						tick(idx);
-						_records[idx].dir = 0;
-					}
-					clicked = true;
-				}
+			} else if (c == EclipseRules::kClickLever) {
 				// Click sound -- mirrors FUN_00441cd8 lines 441e43-441e58
 				// (lever 1) and 441edd-441eee (lever 2): both branches
 				// of both levers play LION1.APC unconditionally.
-				if (clicked)
-					playSound("LION1", false);
+				playSound("LION1", false);
 			}
 
-			if (!exitLoop && isWin()) {
+			if (!exitLoop && _rules.isWin()) {
 				// Win path -- mirrors FUN_0044154c lines 38097-38108:
 				// run FUN_00441724 (which plays LION3.APC and renders
 				// 80 more frames) then return DAT_00496d14 = 255.
@@ -309,8 +239,8 @@ int EclipsePuzzle::run() {
 	}
 
 	debugC(1, kDebugScript, "EclipsePuzzle::run: levers L1=(r2=%d,r5=%d,r6=%d) L2=(r3=%d,r4=%d) result=%d",
-	      _records[2].curr, _records[5].curr, _records[6].curr,
-	      _records[3].curr, _records[4].curr, result);
+	      _rules.r[2].curr, _rules.r[5].curr, _rules.r[6].curr,
+	      _rules.r[3].curr, _rules.r[4].curr, result);
 	return result;
 }
 

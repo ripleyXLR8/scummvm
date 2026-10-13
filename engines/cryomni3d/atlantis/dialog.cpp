@@ -569,14 +569,12 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 	const int screenW = (int)g_system->getWidth();
 	const int screenH = (int)g_system->getHeight();
 
-	// Per-cam FOV (zoom).  Source: atlantis.exe DGROUP VA 0x00496080, indexed
-	// cam2..cam5 → table[0..3].  Save the current FOV so the panorama restores
-	// to its navigation default after the line.
-	static const float kCamFovDeg[4] = {20.68f, 30.0f, 48.0f, 48.26f};
+	// Per-cam FOV (zoom, kDialogCamFovDeg).  Save the current FOV so the
+	// panorama restores to its navigation default after the line.
 	const double savedHFov = _omni3dMan.getHFov();
 	bool fovChanged = false;
 	if (_warpLoaded && camNum >= 2 && camNum <= 5) {
-		_omni3dMan.setHFov((double)kCamFovDeg[camNum - 2] * M_PI / 180.0);
+		_omni3dMan.setHFov((double)kDialogCamFovDeg[camNum - 2] * M_PI / 180.0);
 		fovChanged = true;
 	}
 

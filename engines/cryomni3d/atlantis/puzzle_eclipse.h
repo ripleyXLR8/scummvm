@@ -25,6 +25,7 @@
 #include "common/array.h"
 #include "common/scummsys.h"
 
+#include "cryomni3d/atlantis/eclipse_rules.h"
 #include "cryomni3d/atlantis/puzzle_assets.h"
 
 namespace Graphics {
@@ -34,21 +35,6 @@ class ManagedSurface;
 
 namespace CryOmni3D {
 namespace Atlantis {
-
-// Initial record table: .data 0x0049745e, 7 records of 14 bytes (dir, x, y,
-// min, max, curr, pad).  Records 0 and 1 have dir 1 and cycle on their own.
-struct EclipseRecordInit {
-	int dir, x, y, min, max;
-};
-static const EclipseRecordInit kEclipseRecordInit[7] = {
-	{ 1, 215, 308,   0,   7 },   // 0  PZ2L 0..7    -- auto-cycling
-	{ 1, 298, 308,   8,  15 },   // 1  PZ2L 8..15   -- auto-cycling
-	{ 0, 227, 384,  16,  86 },   // 2  PZ2L 16..86  -- lever 1 mechanism
-	{ 0, 443, 373,  87, 157 },   // 3  PZ2L 87..157 -- lever 2 mechanism
-	{ 0, 319, 204,   0,  70 },   // 4  PZ1L 0..70   -- SUN sphere    (lever 2)
-	{ 0, 236, 222,  71, 141 },   // 5  PZ1L 71..141 -- MOON sphere   (lever 1)
-	{ 0, 271, 198, 142, 212 },   // 6  PZ1L 142..212 -- EARTH sphere (lever 1)
-};
 
 class CryOmni3DEngine_Atlantis;
 
@@ -67,14 +53,7 @@ public:
 private:
 	CryOmni3DEngine_Atlantis *_engine;
 
-	struct Record {
-		int dir;        // 0 idle / 1 step-up / 2 step-down (transient on click)
-		int x, y;
-		int min, max;
-		int curr;
-	};
-	enum { kNumRecords = 7 };
-	Record _records[kNumRecords];
+	EclipseRules _rules;
 
 	// Frame counter -- _DAT_007bebf0 in the exe; drives the alternate-
 	// frame test on the win highlight (`(_frameCounter & 2) != 0`).
@@ -85,9 +64,7 @@ private:
 	Common::Array<uint16>    _bgPixels;    // PZLION.TGA
 	bool _bgLoaded;
 
-	void tick(int recIdx);
 	void renderFrame(Graphics::ManagedSurface &out);
-	bool isWin() const;
 
 	// Play one of the eclipse-puzzle APC sounds (synchronous setup,
 	// asynchronous playback).  `name` is "LION1" / "LION2" / "LION3".
