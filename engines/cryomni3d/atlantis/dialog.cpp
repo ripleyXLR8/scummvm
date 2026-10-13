@@ -341,6 +341,11 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 	// chapter so the loop stops the instant that happens.
 	const uint entryChapter = _currentCONChapter;
 	int lineIdx = 0;
+	// FUN_0042844c saves ClicPerso at entry (0x004284c2) and restores it at
+	// the end (0x00428cb2); in between it is cleared after every dialog line
+	// (0x00428b39), so only the first line of a section entered with a
+	// ClicPerso uses it, the others resolve the speaker by name.
+	const int savedClicPerso = _gameVars.getValOrDefault("clicperso", 0);
 	// A /set(gameover=N) with N != 0 ends the section (atlantis.exe FUN_0042844c
 	// breaks the line loop once the GameOver variable goes non-zero); the lines
 	// that follow feed the game-over screen instead of playing as dialog.
@@ -378,10 +383,13 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		}
 
 		// Dialog line — resolve the on-screen speaker and the talking-head shot.
-		// sec.clicPerso is deliberately not used: a dialog freely interleaves
-		// lines from several characters, so only the speaker name identifies
-		// who is talking on this line.
-		int persoId = resolveSpeakerPersoId(item.line.speaker);
+		// FUN_00428f58 runs only when ClicPerso is 0 (0x00428689) and writes
+		// its result there; the camera choice then reads ClicPerso (0x004287bf).
+		int persoId = _gameVars.getValOrDefault("clicperso", 0);
+		if (persoId == 0) {
+			persoId = resolveSpeakerPersoId(item.line.speaker);
+			_gameVars["clicperso"] = persoId;
+		}
 		// The header is tested at its end, just before ']' (FUN_0042844c @
 		// 0x004286a6..0x0042877e), case-sensitively: "off", "off0", "off1"
 		// (no camera choice), "cam"/"Cam" + one character (explicit camera,
@@ -462,7 +470,9 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		                  spfBase,
 		                  effHasAngle, effAngleX, effAngleY, effCamNum,
 		                  /*interactiveDialog=*/sec.isCon);
+		_gameVars["clicperso"] = 0;   // after every line (0x00428b39)
 	}
+	_gameVars["clicperso"] = savedClicPerso;   // 0x00428cb2
 
 	// Game-over screen (GereGameOver): show the verdict image + narrator, then
 	// reload the chapter checkpoint.  Run after the loop so the click/key that
