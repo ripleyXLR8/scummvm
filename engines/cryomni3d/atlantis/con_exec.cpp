@@ -634,6 +634,11 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 		int soundId = value;
 		_gameVars["newsound"] = soundId;
 
+		// FUN_00432a64 returns at once for NEWSOUND == 0, stopping nothing
+		// (the table's entry 0 would be strange.apc).
+		if (soundId == 0)
+			return;
+
 		if (_mixer->isSoundHandleActive(_newSoundHandle))
 			_mixer->stopHandle(_newSoundHandle);
 
