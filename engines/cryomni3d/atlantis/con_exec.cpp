@@ -43,6 +43,7 @@
 #include "cryomni3d/atlantis/puzzle_ogregame.h"
 #include "cryomni3d/atlantis/puzzle_hens.h"
 #include "cryomni3d/atlantis/puzzle_pieces.h"
+#include "cryomni3d/atlantis/puzzle_snakes.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
@@ -227,6 +228,12 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 	case 3: {
 		// Six rotating pieces at CHAPI029 (FUN_004459c0).
 		RotatingPiecesPuzzle puz(this);
+		finPuzzle = puz.run();
+		break;
+	}
+	case 8: {
+		// Four snakes in a maze at CHAPI034 (FUN_0043b0f4).
+		SnakesPuzzle puz(this);
 		finPuzzle = puz.run();
 		break;
 	}
