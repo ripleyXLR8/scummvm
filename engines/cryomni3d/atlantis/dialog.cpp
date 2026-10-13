@@ -49,6 +49,7 @@
 #include "cryomni3d/omni3d.h"
 #include "cryomni3d/atlantis/sprite_decode.h"
 #include "cryomni3d/atlantis/engine.h"
+#include "cryomni3d/atlantis/subject_menu.h"
 #include "cryomni3d/atlantis/subtitle_layout.h"
 #include "cryomni3d/atlantis/sprite_blend.h"
 
@@ -217,9 +218,9 @@ void CryOmni3DEngine_Atlantis::drawSubjectSprite(Graphics::Surface &dst,
 // FUN_004261a0, hit-test at FUN_004211f0):
 //  - Each subject is two sprites: the border (SUJETS.SPR sprite 0) at the
 //    cell top-left, then the icon (sprite = sujId) at the cell centre.
-//  - Cells are 50x50, 4 rows per column, columns step 50px in X from X=450.
-//  - For <=4 subjects the single column is bottom-anchored (startY=330-50*N);
-//    for >=5 the grid starts at Y=180.  No hover highlight; right-click cancels.
+//  - Layout and hit test from subject_menu.h (FUN_004261a0, FUN_004211f0),
+//    including the original's one-column shift of the clickable grid with
+//    five or more subjects.  No hover highlight; right-click cancels.
 // Returns the chosen option index, or -1 on cancel.
 int CryOmni3DEngine_Atlantis::showSubjectMenu(const Common::Array<int> &sujIds) {
 	const int kScreenW = 640, kScreenH = 480;
@@ -227,22 +228,20 @@ int CryOmni3DEngine_Atlantis::showSubjectMenu(const Common::Array<int> &sujIds) 
 	if (nOpts == 0)
 		return -1;
 
-	const int kBorderX  = 450;  // exe 0x1c2 — column-0 cell origin X
-	const int kColStepX = 50;
-	const int kRowStepY = 50;
-	const int kCell     = 50;
 	const int kIconDX   = 25;   // icon anchor = cell top-left + (25,25)
 	const int kIconDY   = 25;
-	const int kPerCol   = 4;
-	const int startY = (nOpts < 5) ? (int)(330 - 50 * nOpts) : 180;
 
+	// FUN_004261a0's layout and FUN_00425828's grid origin (subject_menu.h).
+	Common::Array<int> ids;
+	for (uint i = 0; i < nOpts; i++)
+		ids.push_back(sujIds[i]);
+	Common::Array<SubjectMenu::Draw> draws;
+	int gridX, gridY;
+	SubjectMenu::draws(ids, draws, gridX, gridY);
 	struct IconLayout { int bx, by; uint optIdx; };
 	Common::Array<IconLayout> layout;
-	for (uint i = 0; i < nOpts; i++) {
-		int col = (int)i / kPerCol;
-		int row = (int)i % kPerCol;
-		layout.push_back({kBorderX + col * kColStepX, startY + row * kRowStepY, i});
-	}
+	for (uint i = 0; i < nOpts; i++)
+		layout.push_back({draws[2 * i].x, draws[2 * i].y, i});
 
 	Graphics::PixelFormat fmt = g_system->getScreenFormat();
 	Graphics::ManagedSurface frame(kScreenW, kScreenH, fmt);
@@ -287,13 +286,12 @@ int CryOmni3DEngine_Atlantis::showSubjectMenu(const Common::Array<int> &sujIds) 
 				pollEvents();
 				g_system->delayMillis(10);
 			}
-			for (const IconLayout &il : layout) {
-				if (click.x >= il.bx && click.x < il.bx + kCell &&
-				    click.y >= il.by && click.y < il.by + kCell) {
-					result = (int)il.optIdx;
-					break;
-				}
-			}
+			// FUN_004211f0 from the last column's x: with five or more
+			// subjects the clickable grid is one column right of the drawn
+			// one; an index past the subjects reads an empty slot (none).
+			const int idx = SubjectMenu::hit((int)nOpts, gridX, gridY, click.x, click.y);
+			if (idx >= 0 && idx < (int)nOpts)
+				result = idx;
 			done = true;
 		} else if (getCurrentMouseButton() == 2) {
 			done = true;   // right-click cancels
