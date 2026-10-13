@@ -280,6 +280,12 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 
 	_nextPlaceId = placeId;
 	_arrivalScanPending = false;   // a Vue= of the reloaded /INIT is superseded
+	// FUN_0042de5c sets LastVue and the current place to 1 (0x0042e285,
+	// 0x0042e29e); its chapter change FUN_00427634 copies LastVue into
+	// ArriveeVue (0x0042777d), so the place loop's arrival scan runs with
+	// ArriveeVue = 1 (gameStep passes the current place as the origin).
+	_lastVue = 1;
+	_currentPlaceId = 1;
 	_omni3dMan.setAlpha(alpha);
 	_omni3dMan.setBeta(beta);
 	for (byte &b : _placeVisits)      // visit counters aren't persisted yet
