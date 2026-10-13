@@ -23,6 +23,7 @@ jobs:
       - name: Make the app
         run: |
           cp scummvm scummvm-static
+          make scummvm.docktileplugin
           make bundle-pack
           dylibbundler -od -b -x ScummVM.app/Contents/MacOS/scummvm \
             -d ScummVM.app/Contents/libs/ -p @executable_path/../libs/
