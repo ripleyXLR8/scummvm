@@ -51,6 +51,10 @@ public:
 	// edge table at 0x0049743c, or 99 off the board.
 	static int cellColumn(int mouseX);
 	static int cellRow(int mouseY);
+	// The edge table itself (0x0049743c, 0x0049744c): where cell (x, y) is
+	// drawn by FUN_004432f8 / FUN_00443944.
+	static int colEdge(int x);
+	static int rowEdge(int y);
 
 	// FUN_00443f94, run each frame while the hero is held.  Off the board the
 	// mask and path are left as they are; on an illegal cell only the origin

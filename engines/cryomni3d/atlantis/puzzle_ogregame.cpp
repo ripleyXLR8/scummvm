@@ -61,6 +61,7 @@
 
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/puzzle_ogregame.h"
+#include "cryomni3d/atlantis/sprite_decode.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
@@ -130,11 +131,11 @@ void OgreGamePuzzle::moveOgres(Graphics::ManagedSurface &working, int &result) {
 			// for a zero step, then takes the new cell.
 			const int fromX = ogre.x * kCellSize + kBoardX;
 			const int fromY = ogre.y * kCellSize + kBoardY;
-			ogre.flag = 2;   // port-only marker for the drawing (the exe never writes 2)
+			ogre.flag = 0;   // port-only: hidden from the board while it slides
 			for (int step = 5; step <= kCellSize && !_engine->shouldAbort();
 			     step += 5) {
 				_engine->pollEvents();
-				renderFrame(working, -1, -1);
+				renderBoard(working);
 				if (kFrameOgre < (int)_pieceFrames.size())
 					blitFrame(working, _pieceFrames[kFrameOgre],
 					          fromX + sx * step, fromY + sy * step);
@@ -161,90 +162,72 @@ void OgreGamePuzzle::walkQueen() {
 	_rules.walkQueen(rand32767);
 }
 
-// FUN_004436f4: three visibility flashes -- skipped when the queen shares
-// a cell with an ogre (she would read as a phantom ogre).
-void OgreGamePuzzle::blinkQueen(Graphics::ManagedSurface &working) {
-	for (int o = 2; o < OgreRules::kNumPieces; o++)
-		if (_rules.p[1].x == _rules.p[o].x && _rules.p[1].y == _rules.p[o].y)
-			return;
-	for (int flash = 0; flash < 3 && !_engine->shouldAbort(); flash++) {
-		_rules.p[1].flag = 1;
-		renderFrame(working, -1, -1);
-		presentFrame(working);
-		g_system->delayMillis(200);
-		_rules.p[1].flag = 0;
-		renderFrame(working, -1, -1);
-		presentFrame(working);
-		g_system->delayMillis(200);
-		_engine->pollEvents();
-	}
-}
-
-// Mirrors FUN_00442b88: background, path markers while holding, then the
-// pieces.  The queen only draws when a reveal set her flag.  mouseX < 0
-// suppresses the held-piece overlay (used inside animations).
-void OgreGamePuzzle::renderFrame(Graphics::ManagedSurface &out,
-                                 int mouseX, int mouseY) {
-	const Graphics::PixelFormat fmt = out.format;
-
-	if (_bgLoaded && fmt.bytesPerPixel == 2 &&
-	    _bgPixels.size() == (uint)kScreenW * kScreenH) {
-		for (int y = 0; y < kScreenH; y++)
-			memcpy(out.getBasePtr(0, y),
-			       _bgPixels.begin() + (uint)y * kScreenW, kScreenW * 2);
-	} else {
-		out.fillRect(Common::Rect(0, 0, kScreenW, kScreenH),
-		             fmt.RGBToColor(24, 16, 8));
-	}
-
-	if (_holding && mouseX >= 0) {
-		_rules.buildMoveMask(mouseX, mouseY);
-		// Path markers: the cell's own map tile re-blitted with a small
-		// lift so the legal cells read as raised.
-		for (int cy = 0; cy < 7; cy++)
-			for (int cx = 0; cx < 7; cx++) {
-				if (!_rules.mask[cy * 7 + cx])
-					continue;
-				const int tile = kFrameTiles + cy * 7 + cx;
-				if (tile < (int)_pieceFrames.size())
-					blitFrame(out, _pieceFrames[tile],
-					          cx * kCellSize + kBoardX - 2,
-					          cy * kCellSize + kBoardY - 2);
+// Plays a list of OgreDraw events into the working surface: a background
+// event is the board's background, unless it comes right before a present,
+// where it is the copy of the finished frame to the screen.
+void OgreGamePuzzle::play(Graphics::ManagedSurface &working, const OgreDraw::Events &ev) {
+	static const char *const kSounds[] = { nullptr, "CYCLO1", "CYCLO2", "CYCLO3", "CYCLO4", "CYCLO5" };
+	for (uint i = 0; i < ev.size() && !_engine->shouldAbort(); i++) {
+		const OgreEvent &e = ev[i];
+		switch (e.kind) {
+		case OgreEvent::kBackground:
+			if (i + 1 < ev.size() && ev[i + 1].kind == OgreEvent::kPresent)
+				break;
+			if (_bgLoaded && working.format.bytesPerPixel == 2 && _bgPixels.size() == (uint)kScreenW * kScreenH) {
+				for (int y = 0; y < kScreenH; y++)
+					memcpy(working.getBasePtr(0, y), _bgPixels.begin() + (uint)y * kScreenW, kScreenW * 2);
+			} else {
+				working.fillRect(Common::Rect(0, 0, kScreenW, kScreenH), working.format.RGBToColor(24, 16, 8));
 			}
-	}
-
-	// Hero (hidden while on the cursor -- his record flag is 0 then).
-	if (_rules.p[0].flag == 1 && kFrameHero < (int)_pieceFrames.size())
-		blitFrame(out, _pieceFrames[kFrameHero],
-		          _rules.p[0].x * kCellSize + kBoardX,
-		          _rules.p[0].y * kCellSize + kBoardY);
-
-	// Queen, only during a reveal.
-	if (_rules.p[1].flag == 1 && kFrameQueen < (int)_pieceFrames.size())
-		blitFrame(out, _pieceFrames[kFrameQueen],
-		          _rules.p[1].x * kCellSize + kBoardX,
-		          _rules.p[1].y * kCellSize + kBoardY);
-
-	// Ogres (flag 2 = mid-slide, drawn by the animation instead).
-	for (int o = 2; o < OgreRules::kNumPieces; o++)
-		if (_rules.p[o].flag == 1 && kFrameOgre < (int)_pieceFrames.size())
-			blitFrame(out, _pieceFrames[kFrameOgre],
-			          _rules.p[o].x * kCellSize + kBoardX,
-			          _rules.p[o].y * kCellSize + kBoardY);
-
-	// The held hero rides the cursor, clamped to the board strip the way
-	// FUN_004439c4 clamps the real Windows cursor.
-	if (_holding && mouseX >= 0 && kFrameHero < (int)_pieceFrames.size()) {
-		const int hxp = CLIP(mouseX, 0x5a, 0x1f4 + 0x71);
-		const int hyp = CLIP(mouseY, 0x16, 0x190 + 0x1d);
-		blitFrame(out, _pieceFrames[kFrameHero], hxp, hyp);
+			break;
+		case OgreEvent::kSprite:
+			if (e.set == 'P') {
+				if (e.frame >= 0 && e.frame < (int)_pieceFrames.size())
+					blitFrame(working, _pieceFrames[e.frame], e.x, e.y);
+			} else if (const SprSprite *spr = _engine->cursorSprite((uint)e.frame)) {
+				drawSprSprite(*working.surfacePtr(), *spr, e.x, e.y);
+			}
+			break;
+		case OgreEvent::kStdCursor: {
+			// FUN_0042d558: CURSEURS frame 6 at the mouse.
+			const Common::Point m = _engine->getMousePos();
+			if (const SprSprite *spr = _engine->cursorSprite(6))
+				drawSprSprite(*working.surfacePtr(), *spr, m.x, m.y);
+			break;
+		}
+		case OgreEvent::kSetCursorPos:
+			_engine->setMousePos(Common::Point(e.x, e.y));
+			break;
+		case OgreEvent::kSound:
+			if (e.sound >= 1 && e.sound <= 5)
+				_engine->playPuzzleSound(kSounds[e.sound]);
+			break;
+		case OgreEvent::kPresent:
+			presentFrame(working);
+			break;
+		case OgreEvent::kWait: {
+			// e.frame ticks of the 200 Hz timer 0x006ce118.
+			const uint32 until = g_system->getMillis() + (uint32)e.frame * 5;
+			while (g_system->getMillis() < until && !_engine->shouldAbort()) {
+				_engine->pollEvents();
+				g_system->delayMillis(10);
+			}
+			break;
+		}
+		}
 	}
 }
 
 void OgreGamePuzzle::presentFrame(Graphics::ManagedSurface &working) {
-	g_system->copyRectToScreen(working.getPixels(), working.pitch,
-	                           0, 0, kScreenW, kScreenH);
+	g_system->copyRectToScreen(working.getPixels(), working.pitch, 0, 0, kScreenW, kScreenH);
 	g_system->updateScreen();
+}
+
+// FUN_00442b88 without the held overlay, for the ogres' slide.
+void OgreGamePuzzle::renderBoard(Graphics::ManagedSurface &working) {
+	OgreDraw::Events ev;
+	OgreDraw::board(ev, _rules, false, 0, 0);
+	play(working, ev);
 }
 
 int OgreGamePuzzle::run() {
@@ -253,75 +236,77 @@ int OgreGamePuzzle::run() {
 
 	g_system->lockMouse(false);
 	_engine->setMousePos(Common::Point(kScreenW / 2, kScreenH / 2));
-	_engine->setArrowCursor();
-	_engine->showMouse(true);
+	_engine->showMouse(false);   // FUN_004439c4 draws the cursor into the frame
 
 	int  result = 0;
 	bool prevButton = (_engine->getCurrentMouseButton() != 0);
+	int grabX = 0, grabY = 0;     // 0x007bebe8 / 0x007bebec
 
+	// FUN_0044203c: a click (FUN_00443c3c), the board (FUN_00442b88), the
+	// cursor (FUN_004439c4), the present; it reads no key.
 	while (result == 0 && !_engine->shouldAbort()) {
 		_engine->pollEvents();
+		_engine->getNextKey();
 		Common::Point m = _engine->getMousePos();
 
 		bool nowButton = (_engine->getCurrentMouseButton() == 1);
 		if (nowButton && !prevButton) {
 			if (!_holding) {
-				// Pick-up: the hero piece's inner rect (FUN_00443c3c).
 				if (_rules.pickUp(m.x, m.y)) {
+					// cyclo1; the grab offset is the mouse minus the piece.
+					_engine->playPuzzleSound("CYCLO1");
+					grabX = m.x - OgreDraw::pieceX(_rules.p[0].x);
+					grabY = m.y - OgreDraw::pieceY(_rules.p[0].y);
 					_holding = true;
 					_rules.p[0].flag = 0;
 				}
-			} else {
-				if (_rules.drop(m.x, m.y)) {
-					// Drop accepted: the path arrays describe the last
-					// legal hover (FUN_00443f94 ran on this frame's mouse).
-					_moveCounter++;
-					_holding = false;
-
-					if (_moveCounter == 4) {
-						blinkQueen(working);
-						_moveCounter = 0;
-					}
-
-					// The catch: the queen stands on a cell of the move's
-					// path (FUN_00443c3c's three-record comparison).
-					if (_rules.queenCaught()) {
-						// Win reveal in place of the unreversed
-						// FUN_00443378 celebration: show her and pause.
-						result = kFinWin;
-						_rules.p[1].flag = 1;
-						renderFrame(working, -1, -1);
-						presentFrame(working);
-						g_system->delayMillis(1200);
-					} else {
-						moveOgres(working, result);
-						walkQueen();
-					}
+			} else if (_rules.drop(m.x, m.y)) {
+				_engine->playPuzzleSound("CYCLO2");
+				_moveCounter++;
+				_holding = false;
+				if (_moveCounter == 4) {
+					OgreDraw::Events ev;
+					OgreDraw::reveal(ev, _rules);
+					play(working, ev);
+					_moveCounter = 0;
+				}
+				if (_rules.queenCaught()) {
+					result = kFinWin;
+				} else {
+					moveOgres(working, result);
+					walkQueen();
 				}
 			}
-
-			// Any click outside the board strip aborts (FUN_00443c3c tail).
+			// Any click outside the board strip leaves (FUN_00443c3c tail).
 			if (result == 0 && OgreRules::abortClick(m.x))
 				result = kFinAbort;
 		}
 		prevButton = nowButton;
+		if (result != 0)
+			break;
 
-		if (_engine->getNextKey().keycode == Common::KEYCODE_ESCAPE)
-			result = kFinAbort;
-
-		renderFrame(working, m.x, m.y);
+		OgreDraw::Events ev;
+		OgreDraw::board(ev, _rules, _holding, m.x, m.y);
+		int cmx = m.x, cmy = m.y;
+		OgreDraw::cursor(ev, _holding, grabX, grabY, cmx, cmy);
+		play(working, ev);
 		presentFrame(working);
 		g_system->delayMillis(15);
 	}
 
-	if (result == kFinLose) {
-		// Lose beat in place of the unreversed FUN_00442d78 sequence.
-		renderFrame(working, -1, -1);
-		presentFrame(working);
-		g_system->delayMillis(1200);
+	// FUN_0044203c after the loop: the win (FUN_00443378(0)) or the loss
+	// (FUN_00442d78) sequence.
+	if (result == kFinWin || result == kFinLose) {
+		OgreDraw::Events ev;
+		if (result == kFinWin)
+			OgreDraw::win(ev, _rules);
+		else
+			OgreDraw::lose(ev, _rules);
+		play(working, ev);
 	}
 	if (result == 0)
 		result = kFinAbort;
+	_engine->showMouse(true);
 
 	debugC(1, kDebugScript, "OgreGamePuzzle::run: hero=(%d,%d) queen=(%d,%d) "
 	         "ogres=(%d,%d)/(%d,%d) moves=%d result=%d",

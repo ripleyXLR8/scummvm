@@ -26,6 +26,7 @@
 #include "common/random.h"
 #include "common/scummsys.h"
 
+#include "cryomni3d/atlantis/ogre_draw.h"
 #include "cryomni3d/atlantis/ogre_rules.h"
 #include "cryomni3d/atlantis/puzzle_assets.h"
 
@@ -76,8 +77,8 @@ private:
 	void placeQueen();
 	void moveOgres(Graphics::ManagedSurface &working, int &result);
 	void walkQueen();
-	void blinkQueen(Graphics::ManagedSurface &working);
-	void renderFrame(Graphics::ManagedSurface &out, int mouseX, int mouseY);
+	void play(Graphics::ManagedSurface &working, const OgreDraw::Events &ev);
+	void renderBoard(Graphics::ManagedSurface &working);
 	void presentFrame(Graphics::ManagedSurface &working);
 };
 

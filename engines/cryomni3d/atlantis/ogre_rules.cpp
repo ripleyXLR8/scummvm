@@ -32,6 +32,9 @@ static const int16 kColEdge[8] = { 112, 173, 233, 294, 354, 415, 476, 536 };
 static const int16 kRowEdge[8] = { 27, 88, 148, 209, 269, 330, 390, 451 };
 
 static const int kCellSize = 60;
+
+int OgreRules::colEdge(int x) { return kColEdge[x]; }
+int OgreRules::rowEdge(int y) { return kRowEdge[y]; }
 static const int kBoardX = 0x71, kBoardY = 0x1d;
 static const int kAbortX0 = 0x32, kAbortX1 = 0x24e;
 
