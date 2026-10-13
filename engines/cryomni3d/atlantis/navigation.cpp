@@ -268,6 +268,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 	// carrying an object the item cursor replaces it.
 	_warpCursorShown = kWarpCursorUnset;
 	const Object *curHeldObj = nullptr;
+	int curHeldOverlay = -1;
 	// The arrow frame starts at 0 on every warp entry (0x0041c017).
 	_arrowFrame = 0;
 	bool bowButtonHeld = (getCurrentMouseButton() == 1);
@@ -313,10 +314,26 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		// what the crosshair is over — talk (NPC) > navigate (zone) > default.
 		const Object *heldObj = _inventory.selectedObject();
 		if (heldObj) {
-			if (heldObj != curHeldObj) {
-				showMouse(true);
-				setItemCursor(heldObj);
-				curHeldObj = heldObj;
+			// atlantis.exe draws the icon at the mouse (0x0041c45a), then
+			// FUN_00422fcc draws its animation on top of it (step 10 of
+			// FUN_0041bfa0 does not test OBJETENMAIN): over a drop zone or a
+			// character the overlay animates, over nothing the icon is alone.
+			const uint32 now = g_system->getMillis();
+			if (heldObj != curHeldObj || now >= _warpCursorNextMs) {
+				_warpCursorNextMs = now + 80;
+				WarpCursorInput in;
+				in.zone = actionId;
+				in.id = (uint)MAX(centrePerso, 0);
+				in.held = heldObj->idOBJ();
+				in.hidden = false;
+				in.edgeScroll = false;
+				const int overlay = warpCursorStep(_warpCursor, in).sprite;
+				if (heldObj != curHeldObj || overlay != curHeldOverlay) {
+					showMouse(true);
+					setItemCursor(heldObj, overlay);
+					curHeldObj = heldObj;
+					curHeldOverlay = overlay;
+				}
 				_warpCursorShown = kWarpCursorUnset;   // re-apply once dropped
 			}
 		} else {
