@@ -671,7 +671,6 @@ private:
 	AbortCommand _abortCommand;
 	uint _loadedSave;          // 1-based slot a kAbortLoadGame should re-enter
 	bool _conInitRunning;      // a CON /INIT block runs (0x00496168): no checkpoint
-	bool _autosavePending;     // a chapter change armed the checkpoint write
 	Common::String _players[kMaxPlayers];   // named player profiles (empty = unused)
 	int            _currentPlayer;          // owning player for autosave slots
 	int            _playerChapter[kMaxPlayers];  // per-player resume chapter

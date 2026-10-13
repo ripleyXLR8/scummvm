@@ -131,9 +131,9 @@ void CryOmni3DEngine_Atlantis::changeChapter(int chapter) {
 	// /INIT block establishes the initial set.  In-game /set(chapter=N)
 	// switches deliberately do NOT clear this list (see loadConScript).
 	_hiddenPersos.clear();
-	// Arm the chapter checkpoint; doPlaceChange writes it once the start place
-	// is entered (the original autosaves as it enters a new chapter's place).
-	_autosavePending = true;
+	// No checkpoint: the new-game start FUN_00423760 sets the loading flag
+	// 0x00496168 (0x00423778) before its chapter change FUN_00427634, whose
+	// write is skipped when the flag is set (0x00427656).
 
 	// setupChapterWAM loads the CON and runs its /INIT block, which may set the
 	// start place via /set(vue=N) (e.g. chapter 1 opens on the place-450
@@ -169,12 +169,6 @@ void CryOmni3DEngine_Atlantis::doPlaceChange() {
 		setupPalette(_mainPalette, 0, 256);
 		// Composite the place's standing NPCs / props onto the warp surface.
 		compositeNPCSprites();
-	}
-
-	// Write the chapter checkpoint once, on entering the chapter's first place.
-	if (_autosavePending) {
-		_autosavePending = false;
-		autosave();
 	}
 
 	// Full 360-degree horizontal rotation; vertical tilt limited to +/-45 degrees.

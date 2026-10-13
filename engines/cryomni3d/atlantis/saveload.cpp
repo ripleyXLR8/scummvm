@@ -330,7 +330,6 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	// Saves written before the inventory became a compact list can have holes.
 	inventoryCompact(_inventory);
 
-	_autosavePending = false;   // a load is not itself a chapter transition
 	_inventory.deselectObject();
 
 	// Point the player's resume pointer at the loaded episode, so a relaunch
