@@ -430,25 +430,19 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	}
 	delete in;
 
-	// Restore.  setupChapterWAM() loads the chapter WAM + CON and runs INIT
-	// (establishing a baseline the extended block then overrides).
+	// Restore in FUN_0042de5c's order: the checkpoint's state is read first
+	// (steps 1-3), then the saved WAM and place are set up (step 6), then
+	// the chapter change FUN_00427634 runs (step 7): the transient variables
+	// are zeroed, the subject table cleared, the CON loaded and its /INIT run
+	// on top of the loaded state.  The original never goes through chapter
+	// 1's WAM or CON here.
 	_currentChapter = chapter;
-	setupChapterWAM((int)chapter);
-
 	Common::String wamName(wamNameC);
-	if (!wamName.empty() && !wamName.equalsIgnoreCase(_currentWAMName))
-		setupWAMByName(wamName);
+	if (!wamName.empty())
+		setupWAMByName(wamName);   // FUN_00421ebc on the saved WAM name
+	if (wamName.empty() || !wamName.equalsIgnoreCase(_currentWAMName))
+		setupChapterWAM((int)chapter);   // saves without a WAM name
 
-	// Reload the active CON script (its chapter is independent of the WAM
-	// chapter, and loadConScript() clears the transient half of _gameVars —
-	// essential for a game-over reload of the current chapter).
-	if (savedCONChapter >= 1) {
-		_currentCONChapter = savedCONChapter;
-		loadConScript((int)savedCONChapter);
-	}
-
-	_nextPlaceId = placeId;
-	_arrivalScanPending = false;   // a Vue= of the reloaded /INIT is superseded
 	// FUN_0042de5c restores LastVue from the checkpoint (a successful load
 	// jumps over the stores of 1 at 0x0042e285 / 0x0042e29e, which are for a
 	// missing file: @ 0x0042e247); its chapter change FUN_00427634 copies
@@ -482,22 +476,19 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	_guestsShown = hasGuests ? savedGuestsShown : true;
 	_incPersoCount = savedIncPerso;
 
+	// The saved subjects are not used: the original does not save the table
+	// and its chapter change clears it before /INIT (memset 0x00602f10).
+	(void)savedSubjects;
+	(void)keepInitSubjects;
+	_hiddenPersos.clear();
 	if (hasExt) {
 		_hiddenPersos = savedHiddenPersos;
-		if (!keepInitSubjects)
-			_subjects = savedSubjects;
 		for (const auto &kv : savedGameVars)
 			if (isPersistentGameVar(kv._key))
 				_gameVars[kv._key] = kv._value;
 	}
 
-	// Restore the music selection last: setupChapterWAM() / loadConScript()
-	// above may have run musicStop(); musicUpdate() picks the saved track
-	// back up on the next frame.
-	_musicTrackId = savedMusicTrack;
-
-	// Apply the saved inventory now that setupChapterWAM/loadConScript (which
-	// can clear or repopulate it) have run.
+	// The saved inventory, before /INIT (which may change it).
 	for (uint i = 0; i < _inventory.size(); i++) {
 		uint objId = i < savedInv.size() ? savedInv[i] : uint(-1);   // older saves: 20 slots
 		if (objId >= _objects.size())
@@ -506,6 +497,22 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	}
 	// Saves written before the inventory became a compact list can have holes.
 	inventoryCompact(_inventory);
+
+	// FUN_00427634: the CON of the saved chapter, its /INIT on the loaded
+	// state (loadConScript keeps the persistent variables and clears the
+	// transient ones and the subjects).
+	if (savedCONChapter >= 1) {
+		_currentCONChapter = savedCONChapter;
+		loadConScript((int)savedCONChapter);
+	}
+
+	_nextPlaceId = placeId;
+	_arrivalScanPending = false;   // VUE = the loaded place (0x0042777d area)
+
+	// Restore the music selection last: loadConScript above may have run
+	// musicStop(); musicUpdate() picks the saved track back up on the next
+	// frame.
+	_musicTrackId = savedMusicTrack;
 
 	_inventory.deselectObject();
 
