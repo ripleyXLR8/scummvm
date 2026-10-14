@@ -488,11 +488,13 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 		return;
 	}
 
-	// loadmusik=N / delmusik=N — the original pre-loads/frees the track's
-	// sample memory; our tracks load on demand, so both are no-ops.
-	// startmusik / stopmusik do the actual playback control.
-	if (key == "loadmusik" || key == "delmusik")
+	// loadmusik=N,... / delmusik=N,... — the original copies the tracks to its
+	// install folder (through the first IX video buffer) or deletes them;
+	// playback itself reads the archive (decisions/0014-music-copy-model.md).
+	if (key == "loadmusik" || key == "delmusik") {
+		execMusicList(key == "loadmusik", *setText, set.valuePos);
 		return;
+	}
 
 	// cinema=N — play the CINEM<NNN>.HNM cinematic full-screen (skippable).
 	if (key == "cinema") {

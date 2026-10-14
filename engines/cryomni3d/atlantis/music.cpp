@@ -23,6 +23,7 @@
 #include "audio/decoders/apc.h"
 #include "audio/decoders/raw.h"
 #include "audio/mixer.h"
+#include "common/config-manager.h"
 #include "common/memstream.h"
 #include "common/scummsys.h"
 #include "common/system.h"
@@ -212,6 +213,47 @@ void CryOmni3DEngine_Atlantis::musicUpdate() {
 	if (_mixer->isSoundHandleActive(_musicHandle))
 		return;                // selected track already looping
 	musicPlayTrack(_musicTrackId);  // first play, or resume after a mute
+}
+
+// The tracks the original would find in its install folder, as a bit set
+// in the configuration (it outlives the session, like the folder).
+static const char *const kMusicOnDiskKey = "atlantis_music_on_disk";
+
+uint32 CryOmni3DEngine_Atlantis::musicOnDisk() const {
+	return ConfMan.hasKey(kMusicOnDiskKey)
+	       ? (uint32)strtoul(ConfMan.get(kMusicOnDiskKey).c_str(), nullptr, 16) : 0;
+}
+
+void CryOmni3DEngine_Atlantis::setMusicOnDisk(uint32 bits) {
+	if (ConfMan.hasKey(kMusicOnDiskKey) && musicOnDisk() == bits)
+		return;
+	ConfMan.set(kMusicOnDiskKey, Common::String::format("%x", bits));
+	ConfMan.flushToDisk();
+}
+
+// FUN_0041f380: the track is copied in 0x80000-byte reads through the first
+// IX buffer until a read returns nothing, so the buffer ends with the file's
+// last chunk at its start, then the rest of the chunk before.
+void CryOmni3DEngine_Atlantis::musicCopyThroughScreenBuffer(uint idx) {
+	if (idx + 1 >= ARRAYSIZE(kMusicTrackNames) || !kMusicTrackNames[idx + 1])
+		return;
+	Common::ScopedPtr<Common::SeekableReadStream> f(openBigFileStream(kFileTypeSound, kMusicTrackNames[idx + 1]));
+	if (!f)
+		return;
+	while (f->read(_ixVideoBuffers, 0x80000) != 0) {
+	}
+	debugC(1, kDebugMusic, "loadmusik: track %u '%s' copied", idx + 1, kMusicTrackNames[idx + 1]);
+}
+
+// FUN_0041f1d0 (load) / FUN_0041faa0 (del), without the WAIT menu a copy
+// shows (decisions/0014-music-copy-model.md).
+void CryOmni3DEngine_Atlantis::execMusicList(bool load, const Common::Array<char> &text, uint32 pos) {
+	uint32 onDisk = musicOnDisk();
+	Common::Array<uint8> copies;
+	conMusicApply(load, conMusicList(text, pos), _musicTrackId, onDisk, copies);
+	for (uint i = 0; i < copies.size(); i++)
+		musicCopyThroughScreenBuffer(copies[i]);
+	setMusicOnDisk(onDisk);
 }
 
 } // namespace Atlantis

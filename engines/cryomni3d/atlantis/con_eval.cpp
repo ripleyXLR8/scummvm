@@ -270,6 +270,43 @@ void ConSubjects::setSubjects(int persoId, const Common::Array<uint8> &list) {
 		_records[record] = list;
 }
 
+Common::Array<uint8> conMusicList(const Common::Array<char> &text, uint32 pos) {
+	const TextCursor t(text);
+	Common::Array<uint8> out;
+	uint8 idx = (uint8)(atoiAt(t, pos) - 1);
+	uint32 p = pos;
+	while (t.at(p - 1) != ')' && idx != 0xff && p <= text.size()) {
+		out.push_back(idx);
+		p += 2;
+		if (idx > 9)
+			p++;
+		if (idx > 99)
+			p++;
+		idx = (uint8)(atoiAt(t, p) - 1);
+	}
+	return out;
+}
+
+void conMusicApply(bool load, const Common::Array<uint8> &list, int current, uint32 &onDisk,
+                   Common::Array<uint8> &copies) {
+	if (list.empty() || (load && list[0] >= 0x20))
+		return;
+	for (uint i = 0; i < list.size(); i++) {
+		const uint idx = list[i];
+		if ((int)idx + 1 == current || idx >= 32)
+			continue;
+		const uint32 bit = 1u << idx;
+		if (load) {
+			if (!(onDisk & bit)) {
+				copies.push_back((uint8)idx);
+				onDisk |= bit;
+			}
+		} else {
+			onDisk &= ~bit;
+		}
+	}
+}
+
 float conAngleRadians(int32 value) {
 	const float pi = 3.14159265358979323846f;
 	return (float)((double)value * (double)pi / 180.0);

@@ -694,6 +694,19 @@ private:
 	// The per-NPC subject table (atlantis.exe 0x00602f10).
 	ConSubjects _subjects;
 
+	// The two IX video buffers, one block allocated once and never cleared
+	// (atlantis.exe @ 0x00418f83, [0x004960d4]): every UBB_VUE video starts
+	// on what the previous one, or the last music copy, left there.
+	byte *_ixVideoBuffers;
+	// LoadMusik / DelMusik (FUN_0041f1d0 / FUN_0041faa0): the original copies
+	// the tracks to its install folder, through the first IX buffer
+	// (FUN_0041f380), when they are not there, and deletes them.  The set of
+	// tracks "on disk" is kept in the configuration, as the folder is.
+	uint32 musicOnDisk() const;
+	void setMusicOnDisk(uint32 bits);
+	void musicCopyThroughScreenBuffer(uint idx);
+	void execMusicList(bool load, const Common::Array<char> &text, uint32 pos);
+
 	// Panorama alpha captured when an NPC interaction starts (the direction
 	// the player faced on the click); the baseline for a line's default
 	// angle.  Set true only during an NPC interaction — the sprite/NPC layer

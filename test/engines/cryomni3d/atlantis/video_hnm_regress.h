@@ -217,6 +217,57 @@ public:
 	// decoder FUN_004506ec, run under emulation with the buffers swapped after
 	// each frame as its caller does (atlantis-re tools/emu/video_ix.py; golden
 	// video_ix_frames.txt: the first frames of every file).
+	// The IX buffers kept from one video to the next (setHNM6VideoBuffers):
+	// CINEM005 frames 0..3, then CINEM006 frames 0..3 in the same block, as
+	// the game's never-cleared buffers [0x004960d4] (atlantis-re
+	// experiments/2026-10-14-11); md5s from tools/emu/video_ix.py's decoder
+	// run on one block without clearing it.
+	void test_ubb_vue_ix_persistent_buffers() {
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("Atlantis data not configured: IX persistence test skipped");
+			return;
+		}
+		static const char *const kWant[] = {
+			"a950f43cca589dd51a63086590f648d2", "1aa0981d0d9c57f1104f073b7c58964f",
+			"5fdea6775495fe0cd80b5aa7ab442075", "d44c3013dd5acaf9d0137d1f1c762835",
+			"03a30e3b414e5ca08aa40046e0598373", "02c124b4fce69daaa16016939d9d4cbd",
+			"245ab618e95664c0edbbd3a791e849cc", "389e8ddb627b2f81c7b0d62278ebb3eb"
+		};
+		static const char *const kFiles[] = { "CINEM005.HNM", "CINEM006.HNM" };
+		VideoTest::Big big;
+		const Graphics::PixelFormat fmt(2, 5, 6, 5, 0, 11, 5, 0, 0);
+		Common::Array<byte> block(2 * 640 * 480 * 2, 0);
+		uint n = 0;
+		for (uint v = 0; v < ARRAYSIZE(kFiles); v++) {
+			uint32 size;
+			byte *d = big.get(Common::String("UBB_VUE\\") + kFiles[v], size);
+			TS_ASSERT(d != nullptr);
+			if (!d)
+				return;
+			d[6] = 0;   // audioflags: no APC track
+			Video::HNMDecoder dec(fmt);
+			dec.setHNM6VideoBuffers(block.data());
+			TS_ASSERT(dec.loadStream(new Common::MemoryReadStream(d, size, DisposeAfterUse::YES)));
+			dec.start();
+			for (uint k = 0; k < 4; k++, n++) {
+				const Graphics::Surface *f = dec.decodeNextFrame();
+				TS_ASSERT(f != nullptr);
+				if (!f)
+					return;
+				Common::Array<byte> le(f->w * f->h * 2);
+				for (int y = 0; y < f->h; y++) {
+					const uint16 *row = (const uint16 *)f->getBasePtr(0, y);
+					for (int x = 0; x < f->w; x++) {
+						le[(y * f->w + x) * 2] = row[x] & 0xff;
+						le[(y * f->w + x) * 2 + 1] = row[x] >> 8;
+					}
+				}
+				TSM_ASSERT_EQUALS(Common::String::format("%s frame %u", kFiles[v], k).c_str(),
+				                  AtlantisTest::md5Hex(le.data(), le.size()), Common::String(kWant[n]));
+			}
+		}
+	}
+
 	void test_ubb_vue_ix_vs_original() {
 		if (!AtlantisTest::haveData()) {
 			TS_WARN("Atlantis data not configured: IX test skipped");

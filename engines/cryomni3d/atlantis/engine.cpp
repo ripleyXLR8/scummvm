@@ -108,6 +108,8 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_spriteAnimCurrent.resize(512, 0);
 	_placeVisits.resize(1500, 0);
 	_conPlayCounters.resize(kConPlayCounterCount, 0);
+	// malloc(0x12c000) @ 0x00418f83: both IX buffers, RGB565 640 x 480.
+	_ixVideoBuffers = new byte[2 * 640 * 480 * 2]();
 	for (int i = 0; i < 4; i++)
 		_sonMenuKnobX[i] = 0;
 }
@@ -129,6 +131,7 @@ const Graphics::Font *CryOmni3DEngine_Atlantis::subtitleFont() {
 }
 
 CryOmni3DEngine_Atlantis::~CryOmni3DEngine_Atlantis() {
+	delete[] _ixVideoBuffers;
 	delete _subtitleTTF;
 	stopAmbient();   // 0x004197a0, on the way out
 	delete _ambientOut;

@@ -337,6 +337,10 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 	// this delay (it must be set before loadStream).
 	if (frameMs)
 		decoder->setRegularFrameDelay(frameMs);
+	// The game's IX buffers, kept from video to video (RGB565 only: their
+	// content is the original's 16-bit pixels).
+	if (fmt.bytesPerPixel == 2)
+		decoder->setHNM6VideoBuffers(_ixVideoBuffers);
 	if (!decoder->loadStream(stream)) {
 		delete decoder;
 		return;

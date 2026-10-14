@@ -101,6 +101,21 @@ private:
 	Common::Array<uint8> _none;
 };
 
+// The track list of LoadMusik / DelMusik (atlantis.exe FUN_0041f1d0 /
+// FUN_0041faa0) from pos, the first digit after the key: track indexes
+// (value - 1, a byte) while the byte before the pointer is not ')' and the
+// index is not 0xff; the pointer steps 2, + 1 above 9, + 1 above 99 on the
+// INDEX, so a value of 10 or 100 desynchronises the walk (CHAPI072).
+Common::Array<uint8> conMusicList(const Common::Array<char> &text, uint32 pos);
+
+// LoadMusik / DelMusik on the set of tracks in the install folder (bit i =
+// track index i): LoadMusik acts only when the first index is below 0x20,
+// skips the playing track (current = index + 1, 0x00772915) and copies a
+// track that is not there (its index goes to `copies`); DelMusik removes
+// every listed track but the playing one.
+void conMusicApply(bool load, const Common::Array<uint8> &list, int current, uint32 &onDisk,
+                   Common::Array<uint8> &copies);
+
 // FUN_0042a100, AngleWarpX= / AngleWarpY=: the view angle in radians,
 // value * pi / 180 computed on the x87 and stored as a float (pi is the
 // float FUN_0045179a keeps at 0x00bcb594).
