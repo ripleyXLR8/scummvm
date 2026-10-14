@@ -658,6 +658,8 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 	Common::SeekableReadStream *spfStream = nullptr;
 	uint spfFrameCount = 0;
 	uint spfFrameIdx = 0;
+	// UBB frames shown so far (the voice starts after the second one)
+	uint ubbFramesShown = 0;
 	// SPF screen bbox — the rectangle the overlay actually paints into on
 	// screen.  The dialog SPF frame headers we sampled (BAPAN1K3.SPF,
 	// GRDAN1C5.SPF) have ZEROED (x1, y_bot, x2, y_top) fields, unlike
@@ -859,7 +861,11 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 					}
 					if (headEnded)
 						head->neutral();
-					else if (head->lipsync((int32)(now - headTime0)) < 0)
+					// 0x006ce0e0 is a millisecond clock advanced by 5 at
+					// 200 Hz (FUN_00431150, AIL_register_timer /
+					// AIL_set_timer_frequency(200) in FUN_004310ac): the
+					// elapsed time is a multiple of 5
+					else if (head->lipsync((int32)((now - headTime0) / 5 * 5)) < 0)
 						headEnded = true;
 					head->transform();
 					head->render((uint16 *)ubbConvFrame.getPixels(), ubbConvFrame.pitch / 2);
@@ -891,6 +897,7 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 				// the same one-to-one mapping the original engine uses
 				// (FUN_0042ff90).
 				++spfFrameIdx;
+				++ubbFramesShown;
 			}
 		} else
 #endif
@@ -1009,20 +1016,43 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 			}
 			apc->finish();
 			Audio::SoundHandle handle;
-			_mixer->playStream(Audio::Mixer::kSpeechSoundType, &handle, apc);
-			debugC(1, kDebugScript, "playSingleConLine: %s", apcName.c_str());
+			// With a talking head (FUN_0042ee88's loop) the voice starts at
+			// the end of the iteration whose frame index, once incremented,
+			// is above 1: after the second UBB frame shown (0x0042f678..
+			// 0x0042f6a7; every shipped UBB has 10 frames or more, so the
+			// index gets there before a rewind).  The voice-only players
+			// start it at once.
+			bool voiceStarted = false;
+			auto startVoice = [&]() {
+				_mixer->playStream(Audio::Mixer::kSpeechSoundType, &handle, apc);
+				voiceStarted = true;
+				debugC(1, kDebugScript, "playSingleConLine: %s", apcName.c_str());
+			};
+#ifdef USE_HNM
+			const bool delayVoice = bgDecoder && talkingHead;
+#else
+			const bool delayVoice = false;
+#endif
+			if (!delayVoice)
+				startVoice();
 
-			while (!shouldAbort() && _mixer->isSoundHandleActive(handle)) {
+			while (!shouldAbort() && (!voiceStarted || _mixer->isSoundHandleActive(handle))) {
 				drawFrame();
+				if (!voiceStarted && ubbFramesShown >= 2)
+					startVoice();
 				pollEvents();
 				if (getCurrentMouseButton() == 1 ||
 				        (escapeSkips && checkKeysPressed(1, Common::KEYCODE_ESCAPE))) {
-					_mixer->stopHandle(handle);
+					if (voiceStarted)
+						_mixer->stopHandle(handle);
 					break;
 				}
 				g_system->delayMillis(10);
 			}
-			_mixer->stopHandle(handle);
+			if (voiceStarted)
+				_mixer->stopHandle(handle);
+			else
+				delete apc;   // never handed to the mixer
 		}
 		delete apcFile;
 	}
