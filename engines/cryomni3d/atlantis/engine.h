@@ -643,6 +643,8 @@ private:
 	uint _arrowFrame = 0;
 	void drawSprite(Graphics::ManagedSurface &dst, const SubjSprite &spr, int x, int y);
 	void drawGuests(Graphics::ManagedSurface &dst, int movingSprite = -1, int movingX = 0);
+	// The view as rendered now (after animateSprites), for the bar loops.
+	const Graphics::Surface *currentViewSurface() { return _warpLoaded ? _omni3dMan.getSurface() : nullptr; }
 	void slideGuest(byte sprite, int fromX, int toX, int step);
 	void addGuest(int32 guestId);
 	int32 guestAt(int x, int y) const { return _guestsShown ? _guests.at(x, y) : 0; }

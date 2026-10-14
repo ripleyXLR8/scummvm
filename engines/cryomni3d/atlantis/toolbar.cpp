@@ -310,6 +310,24 @@ bool Atlantis_Toolbar::slideOut(const Graphics::Surface *original) {
 	return false;
 }
 
+void Atlantis_Toolbar::presentBarFrame(const Graphics::Surface *original) {
+	_engine->animateSprites();   // FUN_00425304
+	const Graphics::Surface *view = _engine->currentViewSurface();   // FUN_00451d8b
+	if (!view || !original) {
+		drawToolbar(original);
+		const int barY = original ? original->h - _destSurface.h : (480 - 82);
+		g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0, barY,
+		                           _destSurface.w, _destSurface.h);
+		return;
+	}
+	Graphics::ManagedSurface frame(view->w, view->h, view->format);
+	frame.blitFrom(*view);
+	drawToolbar(&frame.rawSurface());
+	frame.blitFrom(_destSurface, Common::Point(0, frame.h - _destSurface.h));
+	_engine->drawGuests(frame);   // FUN_0042bc58, after the bar
+	g_system->copyRectToScreen(frame.getPixels(), frame.pitch, 0, 0, frame.w, frame.h);
+}
+
 bool Atlantis_Toolbar::barTick(const Graphics::Surface *original) {
 	bool played = false;
 	bool close = _engine->barFrameTick(played);
@@ -334,7 +352,6 @@ bool Atlantis_Toolbar::displayPickup(const Graphics::Surface *original, Object *
 	_engine->setItemCursor(obj);
 	updateZones();
 
-	const int barY = original ? original->h - _destSurface.h : (480 - 82);
 	slideIn(original);
 
 	// The loop ends on the press edge of either button (FUN_0041a298 sets
@@ -358,8 +375,7 @@ bool Atlantis_Toolbar::displayPickup(const Graphics::Surface *original, Object *
 		}
 		prevButton = button;
 		// FUN_0042cc98 animates the place sprites (0x0042cd1c) but runs no
-		// timers.
-		_engine->animateSprites();
+		// timers; the frame is drawn below, like the bar loop's.
 		// FUN_0042cc98 edge scrolling: x > 0x276 or x < 5 with y > 400; it
 		// scrolls right only while more than 9 records exist and the first
 		// shown is below count - 7.  The port throttles it as in the bar loop.
@@ -373,9 +389,7 @@ bool Atlantis_Toolbar::displayPickup(const Graphics::Surface *original, Object *
 				nextScrollMs = g_system->getMillis() + kScrollIntervalMs;
 			}
 		}
-		drawToolbar(original);
-		g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0, barY,
-		                           _destSurface.w, _destSurface.h);
+		presentBarFrame(original);
 		g_system->updateScreen();
 		g_system->delayMillis(10);
 	}
@@ -441,7 +455,6 @@ bool Atlantis_Toolbar::handleToolbarEvents(const Graphics::Surface *original) {
 		if (_engine->checkKeysPressed(2, Common::KEYCODE_ESCAPE, Common::KEYCODE_SPACE))
 			break;
 
-		bool redrawToolbar = false;
 		// Scroll (0x0042cb83): x > 630 with y > 400, more than 9 records and
 		// first < count - 7; x < 5 with y > 400 and first > 0.
 		const Common::Point ms = _engine->getMousePos();
@@ -450,15 +463,12 @@ bool Atlantis_Toolbar::handleToolbarEvents(const Graphics::Surface *original) {
 			if (step != 0) {
 				_inventoryOffset += step;
 				nextScrollMs = g_system->getMillis() + kScrollIntervalMs;
-				redrawToolbar = true;
 			}
 		}
 
-		if (redrawToolbar) {
-			drawToolbar(original);
-			g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0, barY,
-			                           _destSurface.w, _destSurface.h);
-		}
+		// Every frame: the place sprites and the view are redrawn behind the
+		// bar (FUN_0042c8ac step 2), not only when it scrolls.
+		presentBarFrame(original);
 		g_system->updateScreen();
 		_engine->ambientFrame();   // FUN_00432178 ends each bar frame (FUN_0042c8ac step 5)
 		g_system->delayMillis(10);

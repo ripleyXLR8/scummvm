@@ -64,6 +64,9 @@ public:
 	bool displayPickup(const Graphics::Surface *original, Object *obj);
 	// One frame of the bar loops' engine work (barFrameTick); true when the
 	// bar must close.  Redraws the view and the bar after a timer section.
+	// One frame of the bar loops (FUN_0042c8ac step 2): the place sprites,
+	// the view, the bar, the guests, presented whole.
+	void presentBarFrame(const Graphics::Surface *original);
 	bool barTick(const Graphics::Surface *original);
 	// One frame of a bar slide: the view, the guest portraits, the bar at
 	// _position (82 = not drawn), on the whole screen.
