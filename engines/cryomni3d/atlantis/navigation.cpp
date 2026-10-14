@@ -273,6 +273,9 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 	_arrowFrame = 0;
 	bool bowButtonHeld = (getCurrentMouseButton() == 1);
 
+	// FUN_00431a1c at 0x0041c012: the place's ambient sounds.
+	ambientEnterPlace();
+
 	while (!leftButtonPressed && !exit) {
 		pollEvents();
 		updateConClocks();   // atlantis.exe FUN_0041bfa0 @ 0x0041c086
@@ -566,6 +569,8 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			bowFrameStep(_bowMode, bowClick, _gameVars.getValOrDefault("anglewarpy", 0), tir, _arrowFrame);
 			_gameVars["tirfleche"] = tir;
 		}
+		// FUN_00432178, the last call of the frame.
+		ambientFrame();
 		g_system->delayMillis(10);
 	}
 

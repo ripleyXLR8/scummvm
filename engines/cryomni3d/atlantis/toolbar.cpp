@@ -460,6 +460,7 @@ bool Atlantis_Toolbar::handleToolbarEvents(const Graphics::Surface *original) {
 			                           _destSurface.w, _destSurface.h);
 		}
 		g_system->updateScreen();
+		_engine->ambientFrame();   // FUN_00432178 ends each bar frame (FUN_0042c8ac step 5)
 		g_system->delayMillis(10);
 	}
 	if (_engine->shouldAbort())

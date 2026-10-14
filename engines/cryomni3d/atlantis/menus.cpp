@@ -184,6 +184,7 @@ void CryOmni3DEngine_Atlantis::drawCreditText(Graphics::ManagedSurface &dst,
 // variable, so resuming in place would loop straight back into it).
 void CryOmni3DEngine_Atlantis::showGameOver(int sectionId, int n,
         const Common::String &narratorText, char narratorTrack) {
+	stopAmbient();   // FUN_00426590 @ 0x004265d5
 	Common::String name = Common::String::format("GOVER%02d.TGA", n);
 	Graphics::Surface *raw = loadTGA(kFileTypeImages, name.c_str());
 	if (!raw) {

@@ -34,6 +34,7 @@
 #include "common/util.h"
 
 #include "audio/mixer.h"
+#include "cryomni3d/atlantis/ambient_output.h"
 #include "audio/decoders/apc.h"
 #include "graphics/paletteman.h"
 
@@ -72,6 +73,7 @@ void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 
 	_wam.loadStream(*s);
 	_currentWAMName = kWAMNames[chapter];
+	loadAmbientCentres();   // FUN_00431580, last step of the WAM loader
 	debugC(1, kDebugScript, "Loaded WAM for chapter %d: %u places", chapter, _wam.getPlaces().size());
 
 	// Per-chapter NPC / prop scene-sprite list (SPW) and the transition
@@ -116,6 +118,7 @@ void CryOmni3DEngine_Atlantis::setupWAMByName(const Common::String &wamName) {
 	}
 	_wam.loadStream(*s);
 	_currentWAMName = wamName;
+	loadAmbientCentres();   // FUN_00431580, last step of the WAM loader
 	// Each WAM references its own SPW/SPF lists; reload them so the new
 	// area's NPCs composite.  (Inventory and CON script are untouched by a
 	// sub-WAM swap.)
@@ -418,6 +421,85 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 #else
 	debugC(1, kDebugScript, "playTransitionVideo: %s (HNM not compiled)", videoName.c_str());
 #endif
+}
+
+// FUN_004315b4: the WAM's file reference 2 (by position) names the centre
+// table, `sprlist\` + name; entries are added to the table, never cleared.
+void CryOmni3DEngine_Atlantis::loadAmbientCentres() {
+	const Common::Array<Common::String> &refs = _wam.getFileRefs();
+	if (refs.size() < 3 || refs[2].empty())
+		return;
+	Common::ScopedPtr<Common::SeekableReadStream> f(openBigFileStream(kFileTypeSprite, refs[2]));
+	if (!f) {
+		warning("Atlantis: cannot open SPRLIST\\%s", refs[2].c_str());
+		return;
+	}
+	Common::Array<byte> buf((uint)f->size());
+	f->read(buf.data(), buf.size());
+	parseCentreVue(buf.data(), buf.size(), _ambientCentres);
+}
+
+namespace {
+
+uint32 ambientClock(void *) {
+	return g_system->getMillis();   // timeGetTime - 0x00bcb5b8 (FUN_00451d0c)
+}
+
+struct AmbientLoadCtx {
+	CryOmni3DEngine_Atlantis *engine;
+	AtlantisAmbientOutput *out;
+	const Common::Array<AtlantisAmbientObject> *objects;
+};
+
+} // End of anonymous namespace
+
+bool CryOmni3DEngine_Atlantis::ambientLoadVariant(void *ctx, uint object, uint variant) {
+	AmbientLoadCtx *c = (AmbientLoadCtx *)ctx;
+	const Common::String &name = (*c->objects)[object].variants[variant];
+	Common::ScopedPtr<Common::SeekableReadStream> f(c->engine->openBigFileStream(kFileTypeSound, name));
+	if (!f || !c->out->load(object, variant, *f)) {
+		warning("Atlantis: cannot load the ambient sound WAV\\%s", name.c_str());
+		return false;
+	}
+	return true;
+}
+
+// FUN_00431a1c, at the start of the warp loop FUN_0041bfa0 (0x0041c012).
+void CryOmni3DEngine_Atlantis::ambientEnterPlace() {
+	const AtlantisPlace *place = _wam.findPlaceById((uint16)_currentPlaceId);
+	if (!place)
+		return;
+	if (!_ambientOut) {
+		_ambientOut = new AtlantisAmbientOutput(_mixer);
+		_ambient.setClock(&ambientClock, nullptr);
+	}
+	AmbientLoadCtx ctx = { this, _ambientOut, &_wam.getAmbientObjects() };
+	_ambient.enterPlace(*_ambientOut, *place, _wam.getAmbientObjects(), &ambientLoadVariant, &ctx);
+}
+
+// FUN_00432178's ambient part, at the end of a warp or bar frame.
+void CryOmni3DEngine_Atlantis::ambientFrame() {
+	if (!_ambientOut || !_ambient.active())
+		return;
+	const AtlantisPlace *place = _wam.findPlaceById((uint16)_currentPlaceId);
+	if (!place)
+		return;
+	// 0x00554510 + 12 * place id: zero when the table has no entry
+	AtlantisCentrePos cam = { 0.0f, 0.0f, 0.0f };
+	if (_ambientCentres.contains((int32)_currentPlaceId))
+		cam = _ambientCentres[(int32)_currentPlaceId];
+	_ambient.frame(*_ambientOut, *place, _wam.getAmbientObjects(), cam,
+	               (float)_omni3dMan.getAlpha(), (float)_omni3dMan.getBeta(),
+	               _conClocks.chapterTime(g_system->getMillis()));
+}
+
+// FUN_00431e98.
+void CryOmni3DEngine_Atlantis::stopAmbient() {
+	if (!_ambientOut)
+		return;
+	if (_ambient.active())
+		_ambient.stopAll(*_ambientOut);
+	_ambientOut->stopAll();
 }
 
 } // End of namespace Atlantis

@@ -153,6 +153,8 @@ void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &save
 }
 
 bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
+	// FUN_0042de5c @ 0x0042e309: the ambient sounds stop before the WAM loads.
+	stopAmbient();
 	Common::String saveFileName = getSaveStateName((int)saveNum - 1);
 	Common::InSaveFile *in = _saveFileMan->openForLoading(saveFileName);
 	if (!in) {

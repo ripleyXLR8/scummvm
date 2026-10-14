@@ -36,6 +36,7 @@
 #include "cryomni3d/cryomni3d.h"
 #include "cryomni3d/omni3d.h"
 
+#include "cryomni3d/atlantis/ambient_sounds.h"
 #include "cryomni3d/atlantis/bigfile.h"
 #include "cryomni3d/atlantis/chapter_start.h"
 #include "cryomni3d/atlantis/con_eval.h"
@@ -146,6 +147,8 @@ public:
 	// Play WAV\<name>.APC once (puzzle sound effects).
 	// Plays WAV\<name>.APC once; the handle answers "still playing".
 	Audio::SoundHandle playPuzzleSound(const char *name);
+	// FUN_00432178's ambient part (place.cpp), at the end of a warp or bar frame.
+	void ambientFrame();
 	// The puzzle-cursor animation 0x00496ea8 (mode), 0x00496eaa (frame),
 	// 0x00496eac (step): globals of the original, started by the puzzles'
 	// click handlers (FUN_004462b0, FUN_00448a80, ...) and stepped by
@@ -518,6 +521,18 @@ private:
 
 	BigFileArchive _bigFile;
 	AtlantisWAMParser _wam;
+	// The places' ambient sounds (atlantis-re task 20): FUN_00431580 /
+	// FUN_004315b4 after a WAM load (the centre table, never cleared),
+	// FUN_00431a1c on entering the warp loop of a place, FUN_00432178 at the
+	// end of each warp and bar frame, FUN_00431e98 on the puzzle, game-over,
+	// credits, load and quit paths.
+	AmbientSounds _ambient;
+	class AtlantisAmbientOutput *_ambientOut = nullptr;
+	Common::HashMap<int32, AtlantisCentrePos> _ambientCentres;
+	void loadAmbientCentres();
+	void ambientEnterPlace();
+	void stopAmbient();
+	static bool ambientLoadVariant(void *ctx, uint object, uint variant);
 	Common::String _currentWAMName;
 
 	Omni3DManagerAtlantis _omni3dMan;

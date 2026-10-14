@@ -43,6 +43,7 @@
 
 #include "cryomni3d/omni3d.h"
 
+#include "cryomni3d/atlantis/ambient_output.h"
 #include "cryomni3d/atlantis/credits_layout.h"
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/omni3d.h"
@@ -129,6 +130,8 @@ const Graphics::Font *CryOmni3DEngine_Atlantis::subtitleFont() {
 
 CryOmni3DEngine_Atlantis::~CryOmni3DEngine_Atlantis() {
 	delete _subtitleTTF;
+	stopAmbient();   // 0x004197a0, on the way out
+	delete _ambientOut;
 	_mixer->stopHandle(_musicHandle);
 	delete[] _musicRawData;
 	_cycloSurface.free();
@@ -558,6 +561,7 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 			// 200 Hz timer (7 s) or a left click, then the credits
 			// (FUN_0041a72c, playQuitOutro), then the program ends.
 			if (_gameVars.getValOrDefault("exit", 0) == 86) {
+				stopAmbient();   // FUN_0041a66c @ 0x0041a692
 				// The game is over: nothing is pending any more, so the wait and
 				// the credits are not cut short by shouldAbort().
 				_isPlaying = false;
@@ -749,8 +753,10 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 
 // atlantis.exe FUN_0041a72c, the credits (credits_layout.h has the events).
 void CryOmni3DEngine_Atlantis::playQuitOutro() {
-	// OBJETENMAIN = 0 (0x0041a744).
+	// OBJETENMAIN = 0 (0x0041a744); the ambient sounds stop (FUN_00431e98
+	// @ 0x0041a85e, when 0x00496980 == 1).
 	_gameVars["objetenmain"] = 0;
+	stopAmbient();
 	_inventory.setSelectedObject(nullptr);
 
 	// Music (0x0041a83e..0x0041a916): only when a track is open and it is not

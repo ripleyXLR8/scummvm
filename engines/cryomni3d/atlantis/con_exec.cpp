@@ -310,7 +310,9 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 
 void CryOmni3DEngine_Atlantis::runPuzzleZone(int puzzleId) {
 	// atlantis.exe FUN_004240fc: FinPuzzle = the puzzle's result, the view is
-	// reloaded, StartPuzzle = 0, one /sel scan, then FinPuzzle = 0.
+	// reloaded, StartPuzzle = 0, one /sel scan, then FinPuzzle = 0.  It
+	// first stops the ambient sounds (FUN_00431e98 @ 0x0042417e).
+	stopAmbient();
 	playPuzzle(puzzleId);
 	if (shouldAbort())
 		return;
