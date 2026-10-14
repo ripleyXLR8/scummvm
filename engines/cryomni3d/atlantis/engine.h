@@ -701,6 +701,8 @@ private:
 	uint _inputScriptPos, _pollCount;
 	int _scriptPendingUp;
 	void loadInputScript(const Common::String &path);
+	bool _testDialogLineDone;   // port-only: atlantis_dialog_line played
+	void playTestDialogLine();
 	AbortCommand _abortCommand;
 	uint _loadedSave;          // 1-based slot a kAbortLoadGame should re-enter
 	bool _conInitRunning;      // a CON /INIT block runs (0x00496168): no checkpoint

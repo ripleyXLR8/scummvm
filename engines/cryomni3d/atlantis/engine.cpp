@@ -83,6 +83,7 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_nextPlaceId(uint(-1)),
 	_currentPlace(nullptr),
 	_isPlaying(false), _shotCountdown(0), _inputScriptPos(0), _pollCount(0), _scriptPendingUp(0),
+	_testDialogLineDone(false),
 	_abortCommand(kAbortQuit),
 	_loadedSave(0),
 	_conInitRunning(false),
@@ -592,6 +593,32 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	return Common::kNoError;
 }
 
+// Testing aid (port-only): atlantis_dialog_line="<section> <letter> <perso>
+// <cam>" plays that dialog line once (wav\ata<section><letter>, the perso's
+// UBB for the camera and its 3D head) over the first place entered, with the
+// screenshot keys of the puzzle aid, then the game goes on.
+void CryOmni3DEngine_Atlantis::playTestDialogLine() {
+	_testDialogLineDone = true;
+	int section = 0, perso = 0, cam = 0;
+	char letter = 'A';
+	if (sscanf(ConfMan.get("atlantis_dialog_line").c_str(), "%d %c %d %d", &section, &letter, &perso, &cam) != 4 ||
+	        cam < 2 || cam > 5 || !_dialInitData.contains(perso)) {
+		warning("Atlantis: atlantis_dialog_line '%s' not understood", ConfMan.get("atlantis_dialog_line").c_str());
+		return;
+	}
+	const DialInitEntry &entry = _dialInitData[perso];
+	Common::String ubb = entry.camUBB[cam - 2];
+	ubb.toUppercase();
+	if (ConfMan.hasKey("atlantis_puzzle_shot"))
+		_shotCountdown = ConfMan.getInt("atlantis_puzzle_shot");
+	if (ConfMan.hasKey("atlantis_input_script"))
+		loadInputScript(ConfMan.get("atlantis_input_script"));
+	_pollCount = 0;
+	playSingleConLine(section, letter, "", "PERSO\\" + ubb + ".UBB", entry.camSPF[cam - 2],
+	                  false, 0, 0, cam, true, perso);
+	warning("Atlantis: dialog line %d%c played", section, letter);
+}
+
 void CryOmni3DEngine_Atlantis::gameStep() {
 	while (!_abortCommand) {
 		// The place loop FUN_00423ad8 returns as soon as Exit is set
@@ -624,6 +651,9 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 		}
 		if (_nextPlaceId != uint(-1) || _arrivalScanPending)
 			continue;
+
+		if (!_testDialogLineDone && _warpLoaded && ConfMan.hasKey("atlantis_dialog_line"))
+			playTestDialogLine();
 
 		uint actionId = handleWarp();
 		musicUpdate();
