@@ -370,6 +370,45 @@ public:
 		TS_ASSERT_EQUALS(diffs, 0u);
 	}
 
+	// FUN_0042c098 @ 0x0042c0ff: the record a left click takes after the bar
+	// loop, the port's clickedRecord, over the whole screen and two scroll
+	// positions (cell = x / 70 by signed IDIV, cell + 1 <= first + 9,
+	// y > 0x198).
+	void test_clicked_record() {
+		typedef CryOmni3D::Atlantis::Atlantis_Toolbar TB;
+		static const uint firsts[] = {0, 1, 5};
+		uint diffs = 0;
+		for (uint fi = 0; fi < ARRAYSIZE(firsts); fi++)
+			for (int y = 0; y < 480; y++)
+				for (int x = 0; x < 640; x++) {
+					const int cell = x / 70;
+					const int orig = (cell + 1 <= (int)firsts[fi] + 9 && y > 0x198) ? cell + (int)firsts[fi] : -1;
+					if (TB::clickedRecord(x, y, firsts[fi]) != orig)
+						diffs++;
+				}
+		TS_ASSERT_EQUALS(diffs, 0u);
+		// first == 0: the 630..639 column is not a cell; first >= 1 it takes first + 9
+		TS_ASSERT_EQUALS(TB::clickedRecord(635, 450, 0), -1);
+		TS_ASSERT_EQUALS(TB::clickedRecord(635, 450, 1), 10);
+		TS_ASSERT_EQUALS(TB::clickedRecord(100, 408, 0), -1);
+		TS_ASSERT_EQUALS(TB::clickedRecord(100, 409, 0), 1);
+	}
+
+	// FUN_0042c8ac @ 0x0042cb83: the scroll step, the port's scrollStep.
+	void test_scroll_step() {
+		typedef CryOmni3D::Atlantis::Atlantis_Toolbar TB;
+		TS_ASSERT_EQUALS(TB::scrollStep(631, 401, 10, 0), 1);
+		TS_ASSERT_EQUALS(TB::scrollStep(630, 401, 10, 0), 0);    // x > 0x276
+		TS_ASSERT_EQUALS(TB::scrollStep(631, 400, 10, 0), 0);    // y > 400
+		TS_ASSERT_EQUALS(TB::scrollStep(631, 401, 9, 0), 0);     // count > 9
+		TS_ASSERT_EQUALS(TB::scrollStep(631, 401, 10, 2), 1);    // first < count - 7
+		TS_ASSERT_EQUALS(TB::scrollStep(631, 401, 10, 3), 0);
+		TS_ASSERT_EQUALS(TB::scrollStep(4, 401, 10, 1), -1);
+		TS_ASSERT_EQUALS(TB::scrollStep(5, 401, 10, 1), 0);      // x < 5
+		TS_ASSERT_EQUALS(TB::scrollStep(4, 401, 10, 0), 0);      // first > 0
+		TS_ASSERT_EQUALS(TB::scrollStep(4, 380, 10, 1), 0);      // the port used y > 366
+	}
+
 	// Taking an item: the original click takes the record's object
 	// (FUN_0042c098 writes it to the held-object slot 0x611210[...]).  The
 	// port's callbackInventory refuses objects whose valid() is false, so

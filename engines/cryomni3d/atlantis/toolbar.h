@@ -131,6 +131,29 @@ private:
 	// an inventory item was taken (the caller then skips the slide-down so the
 	// carried object reaches navigation immediately).
 	bool handleToolbarEvents(const Graphics::Surface *original);
+	// The record count 0x006cd7bc: one past the last record in the list.
+	uint recordCount() const;
+
+	// FUN_0042c098 @ 0x0042c0ff: the record a left click takes, first + cell
+	// with cell = x / 70, when cell + 1 <= first + 9 and y >= 409; else -1.
+	static int clickedRecord(int x, int y, uint first) {
+		const int cell = x / 70;
+		if (cell + 1 <= (int)first + 9 && y >= 409)
+			return cell + (int)first;
+		return -1;
+	}
+	// FUN_0042c8ac @ 0x0042cb83: +1 for x > 630 with y > 400, more than 9
+	// records and first < count - 7; -1 for x < 5 with y > 400 and
+	// first > 0; else 0.
+	static int scrollStep(int x, int y, uint count, uint first) {
+		if (y <= 400)
+			return 0;
+		if (x > 630 && count > 9 && first + 7 < count)
+			return 1;
+		if (x < 5 && first > 0)
+			return -1;
+		return 0;
+	}
 
 	template<uint N>
 	uint callbackInventory(uint dragStatus) { return callbackInventory(N, dragStatus); }

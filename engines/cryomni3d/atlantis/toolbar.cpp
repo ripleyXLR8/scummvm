@@ -389,164 +389,125 @@ bool Atlantis_Toolbar::displayPickup(const Graphics::Surface *original, Object *
 	return right;
 }
 
+// One opening of the bar after its slide-in: the bar loop FUN_0042c8ac, then
+// the item click of FUN_0042c098.  The loop ends on a left-button edge
+// (0x0049611c), a right-button edge (the 0x004960c4 toggle of FUN_0041a298)
+// or GameOver / Exit set by a timer (0x0042cb67); it does not end when the
+// pointer leaves the bar.  On every exit the guest portrait under the
+// pointer, other than 592, starts a conversation (0x0042cbfe, FUN_0042bdb8).
+// Then, unless GameOver is set (0x0042c0ed): a left click with the pointer
+// on an item cell (cell = x / 70, cell + 1 <= first + 9, y >= 409) takes the
+// record first + cell, or puts it back when it is the one in hand
+// (0x0042c161, 0x0042c1a1); any other left or right click empties the hand
+// (0x0042c1c9).  Returns true when an item was taken.
 bool Atlantis_Toolbar::handleToolbarEvents(const Graphics::Surface *original) {
 	_inventoryHovered  = uint(-1);
 	_inventorySelected = uint(-1);
 	_inventoryButtonDragging = false;
-	// The in-hand object is deliberately NOT cleared: reopening the bar keeps
-	// what you carry; it is put back only by an explicit action.
 
 	updateZones();
 	drawToolbar(original);
-	g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0,
-	                           original ? original->h - _destSurface.h : (480 - 82),
+	const int barY = original ? original->h - _destSurface.h : (480 - 82);
+	g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0, barY,
 	                           _destSurface.w, _destSurface.h);
 	g_system->updateScreen();
 
-	// Toolbar covers screen.h-82 .. screen.h, plus a 32px hover buffer above.
-	const int kInsideY = 480 - (int)_destSurface.h - 32;
-	bool mouseInsideToolbar = (_engine->getMousePos().y > kInsideY);
-	bool exitToolbar = false;
-	bool itemTaken = false;
-	bool rightReleasedSinceOpen = false;
-
+	// [UNKNOWN] pace: FUN_0042c8ac scrolls once per frame and the loop has
+	// no timer (FUN_00432178 at its end manages the ambient sounds), so the
+	// original's speed was the machine's; the port steps every 110 ms
+	// (decisions/0013-unpaced-loops.md).
 	const uint32 kScrollIntervalMs = 110;
 	uint32 nextScrollMs = 0;
 
-	while (!exitToolbar) {
+	uint prevButton = _engine->getCurrentMouseButton();
+	bool leftClick = false, gameOver = false;
+	while (!_engine->shouldAbort()) {
 		_engine->pollEvents();
-		if (_engine->shouldAbort()) {
-			exitToolbar = true;
+		const uint button = _engine->getCurrentMouseButton();
+		if (button != prevButton && button == 1) {
+			leftClick = true;
 			break;
 		}
+		if (button != prevButton && button == 2)
+			break;   // the right button empties the hand below
+		prevButton = button;
 		// FUN_0042c8ac: the timers each frame (0x0042cb2c); GameOver or Exit
 		// closes the bar (0x0042cb67).
 		if (barTick(original)) {
-			exitToolbar = true;
+			gameOver = true;
 			break;
 		}
-
-		// A right-click is acted on only after the button has been released
-		// once, so the click that OPENED the bar isn't consumed as the close.
-		if (_engine->getCurrentMouseButton() != 2)
-			rightReleasedSinceOpen = true;
-
-		if (_engine->checkKeysPressed(2, Common::KEYCODE_ESCAPE, Common::KEYCODE_SPACE)) {
-			exitToolbar = true;
+		// Port-only: Escape or Space closes the bar like the right button.
+		if (_engine->checkKeysPressed(2, Common::KEYCODE_ESCAPE, Common::KEYCODE_SPACE))
 			break;
-		}
-		// Right-click: drop any carried item back, then close.
-		if (_engine->getCurrentMouseButton() == 2 && rightReleasedSinceOpen) {
-			_engine->waitMouseRelease();
-			if (_inventory->selectedObject() != nullptr) {
-				_inventory->setSelectedObject(nullptr);
-				_engine->setArrowCursor();
-				updateZones();
-			}
-			exitToolbar = true;
-			break;
-		}
 
-		Common::Point mousePosInToolbar = _engine->getMousePos();
-		mousePosInToolbar -= Common::Point(0, 480 - _destSurface.h);
-
-		DragStatus drag = _engine->getDragStatus();
-		// A click on a guest portrait (other than 592) closes the bar for a
-		// conversation with that guest (atlantis.exe FUN_0042c8ac @ 0x0042cbfe,
-		// FUN_0042bdb8; the portrait test comes before the item click).
-		if (drag == kDragStatus_Pressed) {
-			const Common::Point ms = _engine->getMousePos();
-			int32 g = _engine->guestAt(ms.x, ms.y);
-			if (g != 0 && g != 592) {
-				_engine->waitMouseRelease();
-				_guestClicked = g;
-				exitToolbar = true;
-				break;
-			}
-		}
 		bool redrawToolbar = false;
-		bool tookItem = false;
-		if (captureEvent(mousePosInToolbar, drag)) {
-			updateZones();
-			redrawToolbar = true;
-			if (drag == kDragStatus_Finished && _inventory->selectedObject() != nullptr)
-				tookItem = true;
-		} else if (drag == kDragStatus_Pressed) {
-			// Left-click on an empty part of the bar: put any in-hand item back.
-			_inventorySelected = uint(-1);
-			_inventory->setSelectedObject(nullptr);
-			_engine->setArrowCursor();
-			updateZones();
-			redrawToolbar = true;
-		}
-
-		// Taking an item closes the bar at once and recentres the cursor (now
-		// carrying the item); the caller skips the slide-down.
-		if (tookItem) {
-			_engine->setMousePos(Common::Point(g_system->getWidth() / 2, 240));
-			itemTaken = true;
-			exitToolbar = true;
-			break;
-		}
-
-		// Edge-hover scrolling (atlantis.exe FUN_0042c8ac), throttled.
-		{
-			Common::Point ms = _engine->getMousePos();
-			if (ms.y > kInsideY && g_system->getMillis() >= nextScrollMs) {
-				if (ms.x > 630 && _inventoryOffset < _inventoryMaxOffset) {
-					_inventoryOffset++;
-					nextScrollMs = g_system->getMillis() + kScrollIntervalMs;
-					redrawToolbar = true;
-				} else if (ms.x < 5 && _inventoryOffset > 0) {
-					_inventoryOffset--;
-					nextScrollMs = g_system->getMillis() + kScrollIntervalMs;
-					redrawToolbar = true;
-				}
-			}
-		}
-
-		// Exit when the mouse leaves the toolbar area.
-		if (!mouseInsideToolbar) {
-			mouseInsideToolbar = (_engine->getMousePos().y > kInsideY);
-		} else if (_engine->getMousePos().y <= kInsideY) {
-			exitToolbar = true;
-			break;
-		}
-
-		// Hover inventory items.
-		if (_inventory->selectedObject() == nullptr) {
-			Common::Array<Zone>::const_iterator zoneIt = hitTestZones(mousePosInToolbar);
-			uint zoneId = (uint)(zoneIt - _zones.begin());
-			uint invIdx = zoneId + _inventoryOffset;
-			bool shouldHover = (zoneId < kInventorySlots &&
-			                    invIdx < _inventory->size() &&
-			                    (*_inventory)[invIdx] != nullptr);
-			if (shouldHover) {
-				if (_inventoryHovered != invIdx && (*_inventory)[invIdx]->valid()) {
-					_inventoryHovered = invIdx;
-					redrawToolbar = true;
-				}
-			} else if (_inventoryHovered != uint(-1)) {
-				_inventoryHovered  = uint(-1);
-				_inventorySelected = uint(-1);
-				updateZones();
-				_engine->setArrowCursor();
+		// Scroll (0x0042cb83): x > 630 with y > 400, more than 9 records and
+		// first < count - 7; x < 5 with y > 400 and first > 0.
+		const Common::Point ms = _engine->getMousePos();
+		if (g_system->getMillis() >= nextScrollMs) {
+			const int step = scrollStep(ms.x, ms.y, recordCount(), _inventoryOffset);
+			if (step != 0) {
+				_inventoryOffset += step;
+				nextScrollMs = g_system->getMillis() + kScrollIntervalMs;
 				redrawToolbar = true;
 			}
-			_inventoryButtonDragging = false;
 		}
 
 		if (redrawToolbar) {
 			drawToolbar(original);
-			g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0,
-			                           original ? original->h - _destSurface.h : (480 - 82),
+			g_system->copyRectToScreen(_destSurface.getPixels(), _destSurface.pitch, 0, barY,
 			                           _destSurface.w, _destSurface.h);
 		}
-
 		g_system->updateScreen();
 		g_system->delayMillis(10);
 	}
-	return itemTaken;
+	if (_engine->shouldAbort())
+		return false;
+
+	// The exit test of FUN_0042c8ac (0x0042cbfe): the guest portrait under
+	// the pointer.  The conversation then runs from the caller after the
+	// slide-out, as FUN_0042c59c comes before FUN_00425828.
+	const Common::Point at = _engine->getMousePos();
+	const int32 guest = _engine->guestAt(at.x, at.y);
+	if (guest != 0 && guest != 592)
+		_guestClicked = guest;
+	_engine->waitMouseRelease();
+
+	if (gameOver)
+		return false;
+	// The conversation clears 0x004960c4, so the item click is skipped; the
+	// hand is left as it is [INFERRED: the dialog clears the click flags
+	// 0x0049611c / 0x00496120 that would empty it].
+	if (_guestClicked != 0)
+		return false;
+
+	const int rec = leftClick ? clickedRecord(at.x, at.y, _inventoryOffset) : -1;
+	if (rec >= 0) {
+		const uint r = (uint)rec;
+		Object *obj = (r < _inventory->size()) ? (*_inventory)[r] : nullptr;
+		Object *held = _inventory->selectedObject();
+		// FUN_0042c098 compares ids (duplicates are allowed); a cell past the
+		// last record reads id 0, which empties the hand.
+		if (obj && obj->valid() && !(held && held->idOBJ() == obj->idOBJ())) {
+			_inventory->setSelectedObject(obj);
+			_engine->setItemCursor(obj);   // the taken item rides the cursor
+			updateZones();
+			return true;
+		}
+	}
+	_inventory->setSelectedObject(nullptr);
+	_engine->setArrowCursor();
+	updateZones();
+	return false;
+}
+
+uint Atlantis_Toolbar::recordCount() const {
+	uint count = 0;
+	for (uint i = 0; i < _inventory->size(); i++)
+		if ((*_inventory)[i] != nullptr)
+			count = i + 1;
+	return count;
 }
 
 uint Atlantis_Toolbar::callbackInventory(uint invId, uint dragStatus) {
