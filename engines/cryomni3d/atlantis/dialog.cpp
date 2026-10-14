@@ -336,6 +336,9 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 	// (0x00428b39), so only the first line of a section entered with a
 	// ClicPerso uses it, the others resolve the speaker by name.
 	const int savedClicPerso = _gameVars.getValOrDefault("clicperso", 0);
+	// ... and the view angles (0x00428483 / 0x0042848b), set back at the end.
+	double entryAlpha = _omni3dMan.getAlpha();
+	double entryBeta  = _omni3dMan.getBeta();
 	// A /set(gameover=N) with N != 0 ends the section (atlantis.exe FUN_0042844c
 	// breaks the line loop once the GameOver variable goes non-zero); the lines
 	// that follow feed the game-over screen instead of playing as dialog.
@@ -493,6 +496,21 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		_gameVars["clicperso"] = 0;   // after every line (0x00428b39)
 	}
 	_gameVars["clicperso"] = savedClicPerso;   // 0x00428cb2
+	// The view goes back to the entry angles, except an axis whose
+	// ANGLEWARPX / ANGLEWARPY is non-zero: that one keeps the current angle
+	// and the variable is cleared (0x00428ccc..0x00428d68).  The warp loop
+	// stores the angles there every frame, so a line's explicit angles stay
+	// unless the player's own angle truncates to 0 degrees.
+	if (_gameVars.getValOrDefault("anglewarpx", 0) != 0) {
+		entryAlpha = _omni3dMan.getAlpha();
+		_gameVars["anglewarpx"] = 0;
+	}
+	if (_gameVars.getValOrDefault("anglewarpy", 0) != 0) {
+		entryBeta = _omni3dMan.getBeta();
+		_gameVars["anglewarpy"] = 0;
+	}
+	_omni3dMan.setAlpha(entryAlpha);
+	_omni3dMan.setBeta(entryBeta);
 	musicUnduck();   // 0x00428d8b
 
 	// Game-over screen (GereGameOver): show the verdict image + narrator, then
@@ -608,8 +626,6 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 	if (_warpLoaded && hasAngle) {
 		_omni3dMan.setAlpha(((double)angleX) * M_PI / 180.0);
 		_omni3dMan.setBeta(((double)angleY) * M_PI / 180.0);
-		_gameVars["anglewarpx"] = (int)(_omni3dMan.getAlpha() * 180.0 / M_PI);
-		_gameVars["anglewarpy"] = (int)(_omni3dMan.getBeta()  * 180.0 / M_PI);
 	}
 
 #ifdef USE_HNM

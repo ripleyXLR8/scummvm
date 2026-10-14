@@ -197,7 +197,9 @@ Common::SeekableReadStream *CryOmni3DEngine_Atlantis::openBigFileStream(FileType
 	// Convert to uppercase to match archive entries.
 	fullName.toUppercase();
 
-	return _bigFile.createReadStreamForMember(fullName);
+	Common::SeekableReadStream *s = _bigFile.createReadStreamForMember(fullName);
+	debugC(1, kDebugFile, "openBigFileStream: %s%s", fullName.c_str(), s ? "" : " (missing)");
+	return s;
 }
 
 void CryOmni3DEngine_Atlantis::setupPalette(const byte *colors, uint start, uint num) {
