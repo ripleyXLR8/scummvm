@@ -182,7 +182,10 @@ public:
 	// The engine mounts BIGCD1..4 into one index (first mounted wins).  The
 	// original only ever has the inserted disc's BIG open, so a name present on
 	// several discs is read from the current disc.  This checks, for every
-	// name on disc d, that the merged index returns disc d's bytes.
+	// name on disc d, that the merged index returns disc d's bytes.  The menu
+	// files (SPRLIST\*MENU.TXT, WAIT, ERROR*) are the exception: FUN_00426f20
+	// reads them once, at start-up (call @ 0x00419439), from the boot disc,
+	// which is disc 1 when every disc is present, as in the port.
 	void test_data_merged_index_vs_per_disc() {
 		if (!AtlantisTest::haveData()) {
 			TS_WARN("archive: no game data configured, skipping merged BIG test");
@@ -220,6 +223,13 @@ public:
 				Common::String name = rest.substr(0, rest.substr(0, rest.findLastOf('|')).findLastOf('|'));
 				if (!varies.contains(name))
 					continue;
+				Common::String upper(name);
+				upper.toUppercase();
+				const bool bootOnly = upper.hasPrefix("SPRLIST\\") &&
+				                      (upper.hasSuffix("MENU.TXT") || upper == "SPRLIST\\WAIT.TXT" ||
+				                       upper.hasPrefix("SPRLIST\\ERROR"));
+				if (bootOnly && d != 1)
+					continue;   // read at start-up from the boot disc only
 				Common::SeekableReadStream *s = big.createReadStreamForMember(name);
 				Common::String md5 = s ? Common::computeStreamMD5AsString(*s) : Common::String("<absent>");
 				delete s;
