@@ -85,6 +85,10 @@ int RotatingPiecesPuzzle::run() {
 	g_system->lockMouse(false);
 	_engine->showMouse(false);   // the cursor is drawn into the frame
 
+	// the shared cursor animation (engine.h PuzzleCursorState)
+	_rules.cursorMode = _engine->_puzzleCursor.mode;
+	_rules.cursorFrame = _engine->_puzzleCursor.frame;
+	_rules.cursorStep = _engine->_puzzleCursor.step;
 	int result = 0;
 	bool prevButton = (_engine->getCurrentMouseButton() != 0);
 	while (result == 0 && !_engine->shouldAbort()) {
@@ -118,6 +122,9 @@ int RotatingPiecesPuzzle::run() {
 		g_system->updateScreen();
 		g_system->delayMillis(15);
 	}
+	_engine->_puzzleCursor.mode = _rules.cursorMode;
+	_engine->_puzzleCursor.frame = _rules.cursorFrame;
+	_engine->_puzzleCursor.step = _rules.cursorStep;
 	_engine->showMouse(true);
 	return result;
 }

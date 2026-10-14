@@ -70,7 +70,14 @@ int CrabPuzzle::play() {
 	_prevButton = (_engine->getCurrentMouseButton() != 0);
 	// FUN_0043a1e0 seeds the puzzle LCG from the clock.
 	lcgSeed = (uint16)_rng.getRandomNumber(0xffff);
+	// the shared cursor animation (engine.h PuzzleCursorState)
+	cursorMode = _engine->_puzzleCursor.mode;
+	cursorFrame = _engine->_puzzleCursor.frame;
+	cursorStep = _engine->_puzzleCursor.step;
 	const int r = run();
+	_engine->_puzzleCursor.mode = cursorMode;
+	_engine->_puzzleCursor.frame = cursorFrame;
+	_engine->_puzzleCursor.step = cursorStep;
 	memcpy(g_crabMemory.crabs, crabs, sizeof(crabs));
 	g_crabMemory.valid = true;
 	_engine->showMouse(true);

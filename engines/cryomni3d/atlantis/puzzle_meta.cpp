@@ -34,15 +34,15 @@ static const int kScreenW = 640;
 static const int kScreenH = 480;
 
 // The state atlantis.exe keeps in its memory between the stages: the
-// pieces, their count, the picture, the hand and the cursor animation.
+// pieces, their count, the picture and the hand (the cursor animation is
+// shared by every puzzle: engine.h PuzzleCursorState).
 struct MetaMemory {
 	bool valid;
 	MetaGame::Piece pieces[MetaGame::kNumPieces];
 	int16 count, picture;
 	int32 grabX, grabY, repeat, unkF4, held;
-	int16 cursorMode, cursorFrame, cursorStep;
 };
-static MetaMemory g_metaMemory = { false, {}, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+static MetaMemory g_metaMemory = { false, {}, 0, 0, 0, 0, 0, 0, 0 };
 
 MetaPuzzle::MetaPuzzle(CryOmni3DEngine_Atlantis *engine, int stage)
 	: _engine(engine), _loaded(false), _prevButton(false), _bgDone(false), _variant(stage),
@@ -74,9 +74,6 @@ MetaPuzzle::MetaPuzzle(CryOmni3DEngine_Atlantis *engine, int stage)
 		repeat = g_metaMemory.repeat;
 		unkF4 = g_metaMemory.unkF4;
 		held = g_metaMemory.held;
-		cursorMode = g_metaMemory.cursorMode;
-		cursorFrame = g_metaMemory.cursorFrame;
-		cursorStep = g_metaMemory.cursorStep;
 	}
 	_loaded = ok;
 }
@@ -91,9 +88,6 @@ MetaPuzzle::~MetaPuzzle() {
 	g_metaMemory.repeat = repeat;
 	g_metaMemory.unkF4 = unkF4;
 	g_metaMemory.held = held;
-	g_metaMemory.cursorMode = cursorMode;
-	g_metaMemory.cursorFrame = cursorFrame;
-	g_metaMemory.cursorStep = cursorStep;
 }
 
 int MetaPuzzle::play() {
@@ -106,7 +100,14 @@ int MetaPuzzle::play() {
 	_engine->showMouse(false);   // FUN_00447e40 draws the cursor into the frame
 	_prevButton = (_engine->getCurrentMouseButton() != 0);
 	_prevRight = false;
+	// the shared cursor animation (engine.h PuzzleCursorState)
+	cursorMode = _engine->_puzzleCursor.mode;
+	cursorFrame = _engine->_puzzleCursor.frame;
+	cursorStep = _engine->_puzzleCursor.step;
 	const int r = run(_variant);
+	_engine->_puzzleCursor.mode = cursorMode;
+	_engine->_puzzleCursor.frame = cursorFrame;
+	_engine->_puzzleCursor.step = cursorStep;
 	// FUN_004478d4 emptied the hand and may have set FlagTemp6.
 	_engine->clearHeldObject();
 	if (broughtFlag)

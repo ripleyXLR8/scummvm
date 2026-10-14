@@ -67,7 +67,14 @@ int HexaPuzzle::play() {
 	_engine->showMouse(false);   // FUN_00440cb8 draws the cursor into the frame
 	_prevButton = (_engine->getCurrentMouseButton() != 0);
 	_prevRight = false;
+	// the shared cursor animation (engine.h PuzzleCursorState)
+	cursorMode = _engine->_puzzleCursor.mode;
+	cursorFrame = _engine->_puzzleCursor.frame;
+	cursorStep = _engine->_puzzleCursor.step;
 	const int r = run();
+	_engine->_puzzleCursor.mode = cursorMode;
+	_engine->_puzzleCursor.frame = cursorFrame;
+	_engine->_puzzleCursor.step = cursorStep;
 	// FUN_004406fc set OBJETENMAIN to 0 and FlagTemp6 to 1.
 	_engine->clearHeldObject();
 	_engine->setGameVar("flagtemp6", flagTemp6);

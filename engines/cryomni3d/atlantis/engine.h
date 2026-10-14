@@ -146,6 +146,14 @@ public:
 	// Play WAV\<name>.APC once (puzzle sound effects).
 	// Plays WAV\<name>.APC once; the handle answers "still playing".
 	Audio::SoundHandle playPuzzleSound(const char *name);
+	// The puzzle-cursor animation 0x00496ea8 (mode), 0x00496eaa (frame),
+	// 0x00496eac (step): globals of the original, started by the puzzles'
+	// click handlers (FUN_004462b0, FUN_00448a80, ...) and stepped by
+	// FUN_00448958, never reset when a puzzle starts; a puzzle left during
+	// the animation starts the next one with it running.  Zero at start.
+	struct PuzzleCursorState {
+		int16 mode, frame, step;
+	} _puzzleCursor;
 	// The held object (the OBJETENMAIN variable), and emptying the hand.
 	const Object *heldObject() const { return _inventory.selectedObject(); }
 	uint currentPlaceId() const { return _currentPlaceId; }
