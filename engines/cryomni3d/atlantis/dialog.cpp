@@ -412,7 +412,20 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		// lines, 512 + the IncPerso count for lines starting with "Seth"
 		// (FUN_0042844c @ 0x004284d2 / 0x00428924; FUN_0042ee88).
 		const int dialRow = sethLine ? 0x200 + _incPersoCount : persoId;
+		// FUN_0042ee88 step 3: a line whose wav\ata<NNNN><letter>.syc is
+		// missing (FUN_0042f9e8 fails) is played voice-only by FUN_00430258,
+		// as an `off` line: FOV 75.137 and the view redrawn at the angles left
+		// in 0x00bcb59c / 0x00bcb598, which FUN_0042844c has set back to the
+		// player's own unless the header gives explicit angles
+		// (0x00428aec..0x00428b0e); no UBB, no head, persos shown.
+		bool noSyc = false;
 		if (persoId > 0 && !isOffCam) {
+			Common::ScopedPtr<Common::SeekableReadStream> syc(openBigFileStream(kFileTypeSound,
+			    Common::String::format("ATA%04d%c.SYC", sec.id, (char)('A' + lineIdx))));
+			noSyc = !syc;
+		}
+		const bool voiceOnly = isOffCam || noSyc;
+		if (persoId > 0 && !voiceOnly) {
 			Common::HashMap<int, DialInitEntry>::const_iterator it =
 			    _dialInitData.find(dialRow);
 			if (it != _dialInitData.end()) {
@@ -445,7 +458,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		// view alone otherwise; explicit X, Y angles in the header win
 		// (0x00428afc).  The player's own angle is kept (restored at 0x00428a7a).
 		const bool isHero = sethLine;
-		if (!effHasAngle && _warpLoaded && !isOffCam && (isHero || persoId >= 0x200)) {
+		if (!effHasAngle && _warpLoaded && !voiceOnly && (isHero || persoId >= 0x200)) {
 			// _dialBaseAlpha is the click-time facing during an NPC interaction
 			// (set by the NPC layer that lands later); /sel-triggered dialog
 			// falls back to the live alpha.
@@ -461,7 +474,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		}
 		// camNum=0 lands outside playSingleConLine's 2..5 range, so the FOV
 		// change is skipped while the line still plays as voiceover.
-		const int effCamNum = isOffCam ? 0 : camNum;
+		const int effCamNum = voiceOnly ? 0 : camNum;
 		debugC(2, kDebugScript, "playConSection: speaker='%s' params='%s' persoId=%d "
 		         "cam=%d vid='%s' spf='%s' angle=(%d,%d)%s",
 		      item.line.speaker.c_str(), item.line.params.c_str(), persoId,
@@ -471,7 +484,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		                  spfBase,
 		                  effHasAngle, effAngleX, effAngleY, effCamNum,
 		                  /*interactiveDialog=*/sec.isCon,
-		                  (persoId > 0 && !isOffCam && !vid.empty()) ? dialRow : -1);
+		                  (persoId > 0 && !voiceOnly && !vid.empty()) ? dialRow : -1);
 		_gameVars["clicperso"] = 0;   // after every line (0x00428b39)
 	}
 	_gameVars["clicperso"] = savedClicPerso;   // 0x00428cb2
@@ -742,8 +755,8 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 			const Common::String syc = Common::String::format("ATA%04d%c.SYC", sectionId, track);
 			if (!head->load(src, it->_value.s3dBase, it->_value.anim3DCBase, it->_value.anim3DABase,
 			                it->_value.animMBase, camNum, syc)) {
-				// No .SYC: the original plays the line voice-only
-				// (FUN_0042ee88 step 3); the port still shows the UBB.
+				// A head file is missing (lines without a .SYC never get
+				// here: playConSection plays them voice-only).
 				debugC(1, kDebugScript, "playSingleConLine: no head for row %d (%s)", dialRow, syc.c_str());
 				head.reset();
 			}
