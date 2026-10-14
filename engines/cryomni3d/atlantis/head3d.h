@@ -76,7 +76,44 @@ public:
 	};
 	const Common::Array<ProjectedVertex> &projected() const;
 
+	// FUN_0044c9c0 after transform(): the head drawn over a 640x480 RGB565
+	// buffer (pitch in pixels); pixels outside the faces are left alone.
+	void render(uint16 *dst, int pitch);
+
+	DialogHead(const DialogHead &) = delete;
+	DialogHead &operator=(const DialogHead &) = delete;
+	~DialogHead();
+
 private:
+	struct Entry;
+	// An edge record of the original (0x58 / 0x64 bytes, kept in the loaded
+	// block between frames): one per face corner, shared by the two faces
+	// of an edge.
+	struct Edge {
+		uint32 id;
+		int va, vb, node;
+		uint32 flags;
+		int32 x, dx;
+		float iz, diz, dizdx;
+		Edge *next, *pred;
+		int shade, tex;
+		int32 u, v, du, dv, dudx, dvdx;            // group type 2 (16.16)
+		float U, V, dU, dV, dUdx, dVdx, A58, A5c, A60;   // group type 9 (u / z, v / z)
+		uint32 gtype;
+		uint16 colour;                             // group type 1
+		Entry *entry;
+	};
+	struct Entry {
+		uint32 type;
+		int32 xl, xr;
+		Edge *first, *cur;
+		Entry *behind, *next, *prev;
+	};
+	struct Texture {
+		Common::Array<uint32> table;   // 32 shades x 256 colours, RGB565 << 16
+		Common::Array<byte> image;     // 256 x 256
+	};
+
 	struct Face {
 		uint32 flags;
 		int vi[3];
@@ -104,6 +141,7 @@ private:
 		int32 W[9];
 		int32 wp[3];
 		Common::Array<ProjectedVertex> proj;
+		Common::Array<Common::Array<uint> > faceEdges;   // per face, the three _edges indices
 		bool drawn;
 	};
 	struct Key {
@@ -131,6 +169,14 @@ private:
 	void visit(int n, const int32 *W, const int32 *wp);
 	bool nodeCulled(const Node &n) const;
 	void draw(Node &n);
+	void setupGroup(Node &n, int group);
+	void buildLists();
+	void rasterise(uint16 *dst, int pitch);
+	Entry *depthInsert(Entry *top, Entry *nw, int32 x);
+	void buildSpans(Entry *head, Entry *tail);
+	void fillSpan(uint16 *dst, int pitch, int row, int32 xs, int32 xe, const Edge &e, uint32 type);
+	Entry *newEntry(uint32 type);
+	bool loadTexture(HeadFileSource &src, const Common::String &name);
 
 	Common::Array<Node> _nodes;
 	Common::Array<Track> _tracks;
@@ -149,6 +195,21 @@ private:
 	int32 _fx, _fy, _cx, _cy, _near, _far, _kx, _ky;
 	int32 _planes[4][3];
 	int _drawnNode;
+
+	Common::Array<Edge> _edges;                        // sorted by record id
+	Common::HashMap<uint32, uint> _edgeIndex;
+	Common::Array<Texture> _textureData;
+	Common::HashMap<Common::String, int> _textureIndex;   // material -> _textureData
+	// FUN_004567b4's row lists (0x00be473c start, 0x00be373c end, 0x00be573c replacements)
+	Common::Array<Common::Array<Edge *> > _startRows, _endRows, _replRows;
+	Common::Array<Entry *> _entryPool;
+	uint _entryUsed;
+	struct Span {
+		int32 xs, xe;
+		Edge *e;
+		uint32 type;
+	};
+	Common::Array<Span> _spans;
 };
 
 } // End of namespace Atlantis

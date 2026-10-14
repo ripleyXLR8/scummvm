@@ -126,4 +126,41 @@ public:
 			}
 		}
 	}
+
+	// The rasteriser (set-ups FUN_00456d88 / FUN_004582f8 / FUN_00455cc0,
+	// FUN_004567b4, FUN_0045c104, FUN_0045baa4, the fills of 0x004bad3c):
+	// the head drawn into a zeroed 640x480 buffer, every traced frame.
+	void test_pixels_vs_original() {
+		using namespace VideoMouth;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("Atlantis data not configured: dialog head test skipped");
+			return;
+		}
+		AtlantisTest::Golden golden;
+		if (!AtlantisTest::loadGolden("video_mouth.txt", golden)) {
+			TS_WARN("video_mouth.txt missing: dialog head test skipped");
+			return;
+		}
+		VideoTest::Big big;
+		BigSource src(big);
+		Common::Array<uint16> buf(640 * 480);
+		Common::Array<byte> le(640 * 480 * 2);
+		for (uint h = 0; h < ARRAYSIZE(kHeads); h++) {
+			Common::String names[4];
+			TS_ASSERT(initdialNames(big, kHeads[h][0], names));
+			CryOmni3D::Atlantis::DialogHead head;
+			TS_ASSERT(head.load(src, names[0], names[1], names[2], names[3], kHeads[h][1], "ATA0001A.SYC"));
+			for (uint f = 0; f < ARRAYSIZE(kFrames); f++) {
+				head.setFrame(kFrames[f][0]);
+				head.lipsync(kFrames[f][1]);
+				head.transform();
+				memset(buf.data(), 0, buf.size() * 2);
+				head.render(buf.data(), 640);
+				for (uint i = 0; i < buf.size(); i++)
+					WRITE_LE_UINT16(&le[2 * i], buf[i]);
+				const Common::String key = Common::String::format("%d %d %d %d", kHeads[h][0], kHeads[h][1], kFrames[f][0], kFrames[f][1]);
+				TSM_ASSERT_EQUALS(key.c_str(), AtlantisTest::md5Hex(le.data(), le.size()), golden[key + " pixels"]);
+			}
+		}
+	}
 };

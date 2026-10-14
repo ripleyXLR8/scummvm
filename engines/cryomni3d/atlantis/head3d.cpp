@@ -21,6 +21,7 @@
 
 #include "cryomni3d/atlantis/head3d.h"
 
+#include "common/algorithm.h"
 #include "common/endian.h"
 #include "common/textconsole.h"
 
@@ -30,6 +31,13 @@
 // arithmetic right shifts, truncating divisions and conversions, and the
 // x87 at 53-bit precision (control word 0x127f), which is IEEE double
 // arithmetic; a float32 store of the original is a (float) cast here.
+// No fused multiply-add: the original rounds every product (arm64 and
+// x86 builds with FMA would otherwise contract a * b + c).
+#if defined(__clang__)
+#pragma clang fp contract(off)
+#elif defined(__GNUC__)
+#pragma GCC optimize("fp-contract=off")
+#endif
 
 namespace CryOmni3D {
 namespace Atlantis {
@@ -193,11 +201,37 @@ bool sections(const Common::Array<byte> &f, Common::Array<uint32> &out) {
 } // End of anonymous namespace
 
 DialogHead::DialogHead() : _frames(0), _frame(0), _idx(1), _next(0), _prev(0), _blend(0),
-	_fx(0), _fy(0), _cx(320), _cy(240), _near(0x80), _far(65000), _kx(0), _ky(0), _drawnNode(-1) {
+	_fx(0), _fy(0), _cx(320), _cy(240), _near(0x80), _far(65000), _kx(0), _ky(0), _drawnNode(-1),
+	_entryUsed(0) {
 	memset(_phon, 0, sizeof(_phon));
 	memset(_rootW, 0, sizeof(_rootW));
 	memset(_rootP, 0, sizeof(_rootP));
 	memset(_planes, 0, sizeof(_planes));
+}
+
+DialogHead::~DialogHead() {
+	for (uint i = 0; i < _entryPool.size(); i++)
+		delete _entryPool[i];
+}
+
+bool DialogHead::loadTexture(HeadFileSource &src, const Common::String &name) {
+	// .3DM: the shade table (32 x 256 dwords) at 0x1c, the 256 x 256 image after it
+	if (_textureIndex.contains(name))
+		return true;
+	Common::String path = "DIALOG\\MAPS\\" + _textures[name] + ".3DM";
+	path.toUppercase();
+	Common::Array<byte> f;
+	if (!src.readFile(path, f) || f.size() < 0x1801c)
+		return false;
+	Texture t;
+	t.table.resize(0x2000);
+	for (uint i = 0; i < 0x2000; i++)
+		t.table[i] = READ_LE_UINT32(&f[0x1c + 4 * i]);
+	t.image.resize(0x10000);
+	memcpy(t.image.data(), &f[0x801c], 0x10000);
+	_textureIndex[name] = _textureData.size();
+	_textureData.push_back(t);
+	return true;
 }
 
 bool DialogHead::load3dc(const Common::Array<byte> &f) {
@@ -401,6 +435,46 @@ bool DialogHead::load(HeadFileSource &src, const Common::String &s3d, const Comm
 		_nodes[i].flags |= 4;
 	for (uint i = 0; i < _meshes.size(); i++)
 		_nodes[_meshes[i]].flags &= ~4u;
+	// The edge records, in block order (the order FUN_004567b4 walks them).
+	Common::Array<uint32> ids;
+	for (uint ni = 0; ni < _nodes.size(); ni++)
+		for (uint fi = 0; fi < _nodes[ni].faces.size(); fi++)
+			for (int k = 0; k < 3; k++)
+				ids.push_back(_nodes[ni].faces[fi].recs[k]);
+	Common::sort(ids.begin(), ids.end());
+	_edges.clear();
+	_edgeIndex.clear();
+	for (uint i = 0; i < ids.size(); i++) {
+		if (i > 0 && ids[i] == ids[i - 1])
+			continue;
+		Edge e;
+		memset(&e, 0, sizeof(e));
+		e.id = ids[i];
+		e.va = e.vb = e.node = -1;
+		e.gtype = 2;
+		_edgeIndex[ids[i]] = _edges.size();
+		_edges.push_back(e);
+	}
+	for (uint ni = 0; ni < _nodes.size(); ni++) {
+		Node &n = _nodes[ni];
+		n.faceEdges.resize(n.faces.size());
+		for (uint fi = 0; fi < n.faces.size(); fi++) {
+			n.faceEdges[fi].resize(3);
+			for (int k = 0; k < 3; k++) {
+				const uint ei = _edgeIndex[n.faces[fi].recs[k]];
+				n.faceEdges[fi][k] = ei;
+				if (_edges[ei].va < 0) {   // the corners of the first face that names the record
+					_edges[ei].va = n.faces[fi].vi[k];
+					_edges[ei].vb = n.faces[fi].vi[(k + 1) % 3];
+					_edges[ei].node = ni;
+				}
+			}
+		}
+		for (uint g = 0; g < n.groups.size(); g++)
+			if ((n.groups[g].type == 2 || n.groups[g].type == 9) && !_textures[n.groups[g].material].empty() &&
+			        !loadTexture(src, n.groups[g].material))
+				return false;
+	}
 	_frames = _tracks[0].last + 1;   // FUN_0044da90: FUN_00468534(...) + 1
 	_idx = 1; _next = 0; _prev = 0; _blend = 0; _frame = 0;
 	camera(cam - 2);
@@ -672,6 +746,10 @@ void DialogHead::draw(Node &n) {
 		}
 	}
 	n.drawn = true;
+	// FUN_00459fd0: one set-up per group, in list order
+	for (uint g = 0; g < n.groups.size(); g++)
+		if (n.groups[g].type == 1 || n.groups[g].type == 2 || n.groups[g].type == 9)
+			setupGroup(n, g);
 }
 
 void DialogHead::visit(int ni, const int32 *W, const int32 *wp) {
@@ -704,6 +782,542 @@ void DialogHead::transform() {
 const Common::Array<DialogHead::ProjectedVertex> &DialogHead::projected() const {
 	static const Common::Array<ProjectedVertex> empty;
 	return _drawnNode >= 0 ? _nodes[_drawnNode].proj : empty;
+}
+
+// ---- The rasteriser ----
+
+namespace {
+
+inline double f32(double x) {
+	return (double)(float)x;
+}
+
+const double kEps = 100.0;                       // float 0x004bf044
+const double kMagic = 6755399441055744.0;        // float 0x004baee0 = 1.5 * 2^52
+
+// x + 1.5 * 2^52 stored as a double, low dword read back: x rounded to nearest.
+inline int32 rndMagic(double x) {
+	volatile double y = x + kMagic;
+	return wrap32((int64)(y - kMagic));
+}
+
+} // End of anonymous namespace
+
+// FUN_00456d88 (type 2), FUN_004582f8 (type 9), FUN_00455cc0 (type 1)
+void DialogHead::setupGroup(Node &n, int group) {
+	const uint32 gtype = n.groups[group].type;
+	const int tex = _textureIndex.contains(n.groups[group].material) ? _textureIndex[n.groups[group].material] : -1;
+	const int shade = 15;   // FUN_0044c1a0(3dc, 15) from FUN_00418b68
+	// FUN_00455cc0 @ 0x00455ccc / 0x00455cda: the group's +8 word (the material
+	// record's +0x20), plus 0x1388 per face, culled faces included
+	uint32 colour = (_colours.contains(n.groups[group].material) ? _colours[n.groups[group].material] : 0) & 0xffff;
+	for (uint fi = 0; fi < n.faces.size(); fi++) {
+		const Face &fc = n.faces[fi];
+		if (fc.group != group)
+			continue;
+		colour = (colour + 0x1388) & 0xffff;
+		if (fc.flags & 1)
+			continue;
+		if (fc.flags & 2)
+			continue;   // +0x34 of the three records cleared (not used by the heads)
+		Edge &r01 = _edges[n.faceEdges[fi][0]], &r12 = _edges[n.faceEdges[fi][1]], &r20 = _edges[n.faceEdges[fi][2]];
+		int32 X[3], Y[3];
+		double IZ[3];
+		uint32 CF[3];
+		for (int k = 0; k < 3; k++) {
+			const ProjectedVertex &pv = n.proj[fc.vi[k]];
+			X[k] = pv.x;
+			Y[k] = pv.y;
+			IZ[k] = pv.iz;
+			CF[k] = pv.flags & 0xc;
+		}
+		const int32 dx01 = X[1] - X[0], dx12 = X[2] - X[1], dy01 = Y[1] - Y[0], dy12 = Y[2] - Y[1];
+		const int32 dy02 = Y[2] - Y[0];
+		const double area = f32((double)(dx01 * dy12 - dx12 * dy01));
+		if (!(area < 0.0))
+			continue;
+		const double inva = gtype == 1 ? 1.0 / area : f32(1.0 / area);
+		const double a = IZ[2] - IZ[1], b = IZ[1] - IZ[0];
+		const double dizdx = f32((b * dy12 - a * dy01) * inva);
+		const double dizdy = f32(-((b * dx12 - a * dx01) * inva));
+		int32 U[3] = { 0, 0, 0 }, V[3] = { 0, 0, 0 };
+		if (gtype != 1)
+			for (int k = 0; k < 3; k++) {
+				U[k] = fc.uv[k][0];
+				V[k] = fc.uv[k][1];
+			}
+		const double du01 = f32((double)(U[1] - U[0])), du12 = f32((double)(U[2] - U[1]));
+		const double dv01 = f32((double)(V[1] - V[0])), dv12 = f32((double)(V[2] - V[1]));
+		const int32 dudx = truncd(f32((du01 * dy12 - du12 * dy01) * inva));
+		const int32 dvdx = truncd(f32((dv01 * dy12 - dv12 * dy01) * inva));
+		// FUN_004582f8 @ 0x00458526..0x004587a9: u * iz, v * iz per corner, as float
+		double PU[3] = { 0, 0, 0 }, PV[3] = { 0, 0, 0 };
+		double dPU[3] = { 0, 0, 0 }, dPV[3] = { 0, 0, 0 };   // (0, 1), (1, 2), (0, 2)
+		double dUdx = 0.0, dVdx = 0.0;
+		if (gtype == 9) {
+			for (int k = 0; k < 3; k++) {
+				PU[k] = f32((double)U[k] * IZ[k]);
+				PV[k] = f32((double)V[k] * IZ[k]);
+			}
+			dPU[0] = f32(PU[1] - PU[0]); dPU[1] = f32(PU[2] - PU[1]); dPU[2] = f32(PU[2] - PU[0]);
+			dPV[0] = f32(PV[1] - PV[0]); dPV[1] = f32(PV[2] - PV[1]); dPV[2] = f32(PV[2] - PV[0]);
+			dUdx = f32((dPU[0] * dy12 - dPU[1] * dy01) * inva);
+			dVdx = f32((dy12 * (PV[1] - PV[0]) - dy01 * dPV[1]) * inva);   // V1 - V0 kept unrounded (FST)
+		}
+		// x, dx, 1/z and its step of a record set up for the first time this frame
+		auto geom = [&](Edge &e, int p, double sl, uint32 cf) {
+			if (e.flags != 0)
+				return;
+			e.dx = truncd(sl * 65536.0);
+			e.x = truncd((double)((int64)X[p] << 16) - e.dx * 0.5);
+			e.flags |= cf;
+			e.gtype = gtype;
+			e.diz = (float)(sl * dizdx + dizdy);
+			e.iz = (float)(IZ[p] - 0.5 * (double)e.diz);
+		};
+		// a left edge from its top corner p (inverse slope; type 1 divides)
+		auto left = [&](Edge &e, int p, int q, double inv) {
+			const int32 dxe = X[q] - X[p];
+			geom(e, p, gtype == 1 ? (double)dxe / (double)(Y[q] - Y[p]) : dxe * inv, CF[p] | (CF[q] << 2));
+			e.gtype = gtype;
+			if (gtype == 1) {   // @ 0x00455ef4
+				e.colour = (uint16)colour;
+				e.flags |= 2;
+				e.dizdx = (float)dizdx;
+				return;
+			}
+			e.tex = tex;
+			e.shade = shade;
+			if (gtype == 9) {   // @ 0x00458a07; the stored corner differences, sign-symmetric under rounding
+				const double sg = p < q ? 1.0 : -1.0;
+				const int lo = MIN(p, q), hi = MAX(p, q);
+				const int k = (lo == 0 && hi == 1) ? 0 : (lo == 1 && hi == 2) ? 1 : 2;
+				e.A58 = (float)(16.0 * dizdx);
+				e.dU = (float)(sg * dPU[k] * inv);
+				e.dV = (float)(sg * dPV[k] * inv);
+				e.U = (float)(PU[p] - (double)e.dU * 0.5);
+				e.V = (float)(PV[p] - (double)e.dV * 0.5);
+				e.dUdx = (float)dUdx;
+				e.dVdx = (float)dVdx;
+				e.A5c = (float)(16.0 * dUdx);
+				e.A60 = (float)(16.0 * dVdx);
+				e.flags |= 2;
+				e.dizdx = (float)dizdx;
+				return;
+			}
+			e.du = truncd(f32((double)(U[q] - U[p])) * inv);
+			e.dv = truncd(f32((double)(V[q] - V[p])) * inv);
+			e.u = truncd((double)U[p] - e.du * 0.5);
+			e.v = truncd((double)V[p] - e.dv * 0.5);
+			e.flags |= 2;
+			e.dizdx = (float)dizdx;
+			e.dudx = dudx;
+			e.dvdx = dvdx;
+		};
+		// a right edge from its top corner p (direct division)
+		auto right = [&](Edge &e, int p, int q, uint32 bits) {
+			geom(e, p, (double)(X[q] - X[p]) / (double)(Y[q] - Y[p]), CF[p] | (CF[q] << 2));
+			e.flags |= bits;
+		};
+		if (Y[0] < Y[1]) {
+			if (Y[0] > Y[2]) {          // V2 top, V0 mid, V1 bottom (short edges left)
+				left(r01, 0, 1, f32(1.0 / dy01)); r01.next = &r12;
+				right(r12, 2, 1, 1);
+				left(r20, 2, 0, f32(1.0 / -dy02)); r20.next = &r12;
+			} else if (Y[1] < Y[2]) {   // V0 top, V1 mid, V2 bottom (short edges left)
+				left(r01, 0, 1, f32(1.0 / dy01)); r01.next = &r20;
+				left(r12, 1, 2, f32(1.0 / dy12)); r12.next = &r20;
+				right(r20, 0, 2, 1);
+			} else {                    // V0 top, V2 mid, V1 bottom (short edges right)
+				left(r01, 0, 1, f32(1.0 / dy01)); r01.next = &r20;   // written even when r20 is horizontal
+				if (dy12 != 0) {
+					right(r12, 2, 1, 0x41); r12.pred = &r01;
+				}
+				if (dy02 != 0)
+					right(r20, 0, 2, 1);
+			}
+		} else {
+			if (Y[1] > Y[2]) {          // V2 top, V1 mid, V0 bottom (short edges right)
+				if (dy01 != 0) {
+					right(r01, 1, 0, 0x41); r01.pred = &r20;
+				}
+				right(r12, 2, 1, 1);
+				left(r20, 2, 0, f32(1.0 / -dy02)); r20.next = &r12;
+			} else if (Y[0] < Y[2]) {   // V1 top, V0 mid, V2 bottom (short edges right)
+				if (dy01 != 0)
+					right(r01, 1, 0, 1);
+				left(r12, 1, 2, f32(1.0 / dy12)); r12.next = &r01;   // written even when r01 is horizontal
+				right(r20, 0, 2, 0x41); r20.pred = &r12;
+			} else {                    // V1 top, V2 mid, V0 bottom (short edges left)
+				if (dy01 != 0)
+					right(r01, 1, 0, 1);
+				if (dy12 != 0) {
+					left(r12, 1, 2, f32(1.0 / dy12)); r12.next = &r01;
+				}
+				if (dy02 != 0) {
+					left(r20, 2, 0, f32(1.0 / -dy02)); r20.next = &r01;
+				}
+			}
+		}
+	}
+}
+
+// FUN_004567b4: the row lists, walking the records in block order (dispatch at 0x004567ca).
+// Kind bits 4 / 8: top corner above / below the screen; 0x10 / 0x20: bottom corner above / below.
+void DialogHead::buildLists() {
+	const int H = 480;
+	_startRows.resize(H);
+	_endRows.resize(H);
+	_replRows.resize(H);
+	for (int r = 0; r < H; r++) {
+		_startRows[r].clear();
+		_endRows[r].clear();
+		_replRows[r].clear();
+	}
+	bool warned = false;
+	for (uint i = 0; i < _edges.size(); i++) {
+		Edge &e = _edges[i];
+		const uint32 k = e.flags;
+		if (k == 0)
+			continue;
+		const Common::Array<ProjectedVertex> &pv = _nodes[e.node].proj;
+		const int32 ya = pv[e.va].y, yb = pv[e.vb].y;
+		const int32 ymin = MIN(ya, yb), ymax = MAX(ya, yb);
+		auto push = [&](Common::Array<Common::Array<Edge *> > &rows, int32 y) {
+			// prepended, as the original links them; rows off the screen are never reached
+			if (y >= 0 && y < H)
+				rows[y].insert_at(0, &e);
+		};
+		switch (k) {
+		case 1: case 9: case 0x21:                    // 0x00456b8a
+			e.next = nullptr;
+			break;
+		case 2:                                       // 0x00456951
+			e.pred = nullptr;
+			push(_startRows, ymin);
+			push(_endRows, ymax);
+			break;
+		case 0xa: case 0x22:                          // 0x00456a72: runs off the bottom
+			e.pred = nullptr;
+			push(_startRows, ymin);
+			break;
+		case 0x41: case 0x49: case 0x61:              // 0x00456b67
+			push(_replRows, ymin);
+			e.next = nullptr;
+			break;
+		case 0x43: case 0x4b: case 0x63:              // 0x00456d48
+			push(_replRows, ymin);
+			break;
+		case 5: case 6: case 7: case 0x11: case 0x12: case 0x13: case 0x19: case 0x1a: case 0x1b:
+		case 0x25: case 0x26: case 0x27: case 0x45: case 0x47: case 0x51: case 0x53: case 0x59:
+		case 0x5b: case 0x65: case 0x67:
+			// Top clipping (0x004569bd, 0x00456ac9, 0x00456b96, 0x00456c0b,
+			// 0x00456c80, 0x00456cee) is not ported: no shipped head and
+			// camera reaches it (atlantis-re experiments/2026-10-14-04).
+			if (!warned)
+				warning("Atlantis head: top-clipped edge kind 0x%x not ported; edge dropped", k);
+			warned = true;
+			break;
+		default:                                      // 0x00456d6b (3 and the rest)
+			break;
+		}
+		e.flags = 0;
+	}
+}
+
+DialogHead::Entry *DialogHead::newEntry(uint32 type) {
+	if (_entryUsed == _entryPool.size())
+		_entryPool.push_back(new Entry());
+	Entry *en = _entryPool[_entryUsed++];
+	memset(en, 0, sizeof(*en));
+	en->type = type;
+	return en;
+}
+
+// FUN_0045b824: insert an entry in the front-to-back stack at x.
+DialogHead::Entry *DialogHead::depthInsert(Entry *top, Entry *nw, int32 x) {
+	Edge *edge = top->cur;
+	const double ztop = f32((double)(((int64)x - edge->x) >> 16) * (double)edge->dizdx + (double)edge->iz);
+	const double znew = nw->first->iz, dznew = nw->first->dizdx;
+	const double lim = f32(znew + kEps);
+	if (ztop < znew || (ztop < lim && (double)edge->dizdx < dznew)) {
+		Entry *e = top;
+		while (e->xr <= nw->xr)
+			e = e->behind;
+		nw->behind = e;
+		return nw;
+	}
+	if (!top->behind)
+		return top;
+	Entry *e6 = top;
+	for (;;) {
+		Entry *e7 = e6->behind;
+		if (e6->xr < nw->xr) {
+			if (x < e7->xr) {
+				Edge *e3 = e7->cur;
+				while (x > e3->next->x) {
+					e7->cur = e3->next;
+					e3 = e7->cur;
+				}
+				const double z7 = f32((double)(((int64)x - e3->x) >> 16) * (double)e3->dizdx + (double)e3->iz);
+				if (z7 < znew || (z7 < lim && (double)e3->dizdx < dznew)) {
+					e6->behind = nw;
+					nw->behind = e7;
+					return top;
+				}
+			} else {
+				e6->behind = e7->behind;
+				e7 = e6;
+			}
+		}
+		e6 = e7;
+		if (!e7->behind)
+			break;
+	}
+	return top;
+}
+
+// FUN_0045baa4: the visible spans of a row, left to right.
+void DialogHead::buildSpans(Entry *head, Entry *tail) {
+	_spans.clear();
+	Entry *esi = head->next;
+	int32 edi = head->xr >> 16;
+	Edge *ecx = head->cur;
+	Entry *top = head;
+	while (esi->xl < head->xr) {
+		top = depthInsert(top, esi, esi->xl);
+		esi = esi->next;
+	}
+	while (top != tail) {
+		const int32 nx = ecx->next->x;
+		if ((((int64)nx - esi->xl) >> 16) <= 0) {
+			top->cur = ecx;
+			Span sp = { edi, nx >> 16, ecx, top->type };
+			_spans.push_back(sp);
+			ecx = ecx->next;
+			edi = ecx->x >> 16;
+			if (!ecx->next) {
+				Entry *old = top;
+				const int64 ebx = (int64)edi << 16;
+				Entry *e = top->behind;
+				while (ebx > e->xr)
+					e = e->behind;
+				old->behind = e->behind;
+				top = e;
+				Edge *c = top->cur;
+				while (ebx > c->next->x)
+					c = c->next;
+				top->cur = ecx = c;
+			}
+		} else {
+			top->cur = ecx;
+			Entry *newtop = depthInsert(top, esi, esi->xl);
+			if (newtop != top) {
+				Span sp = { edi, esi->xl >> 16, ecx, top->type };
+				_spans.push_back(sp);
+				edi = esi->xl >> 16;
+			}
+			top = newtop;
+			esi = esi->next;
+			ecx = top->cur;
+		}
+	}
+}
+
+// The span fills of the table 0x004bad3c, called by FUN_00472ad0 (ebx = xs, ecx = n).
+void DialogHead::fillSpan(uint16 *dst, int pitch, int row, int32 xs, int32 xe, const Edge &e, uint32 type) {
+	uint16 *out = dst + row * pitch + xs;
+	const int32 n = xe - xs;
+	if (type == 1) {   // 0x00474380: flat colour
+		for (int32 i = 0; i < n; i++)
+			out[i] = e.colour;
+		return;
+	}
+	if (e.tex < 0)
+		return;
+	const Texture &T = _textureData[e.tex];
+	const uint32 shade = (uint32)e.shade << 8;
+	if (type == 2) {   // 0x004743c0: affine
+		const int32 k = xs - (e.x >> 16);
+		int32 u = e.u, v = e.v;
+		if (k > 0) {
+			u = wrap32((int64)e.u + (int64)k * e.dudx);
+			v = wrap32((int64)e.v + (int64)k * e.dvdx);
+		}
+		for (int32 i = 0; i < n; i++) {
+			const uint32 idx = (uint32)(((int64)(v >> 16) * 256 + (u >> 16)) & 0xffffffff);
+			// the original reads past the image for an index >= 0x10000; never seen [UNKNOWN]
+			const byte texel = idx < 0x10000 ? T.image[idx] : 0;
+			out[i] = (uint16)(T.table[shade | texel] >> 16);
+			u = wrap32((int64)u + e.dudx);
+			v = wrap32((int64)v + e.dvdx);
+		}
+		return;
+	}
+	// 0x00475680: perspective, one division every 16 pixels (K = 1.0 at
+	// 0x004baee4); the last r pixels end on a point (r - 1) / 16 of a block
+	// further with a step of 1 / r of the way (tables 0x004baf04, 0x004baf4c)
+	int32 i = 0;
+	auto run = [&](int32 pu, int32 pv, int32 su, int32 sv, int32 cnt) {
+		int32 cu = pu >> 8, cv = pv >> 8;
+		for (int32 c = 0; c < cnt; c++, i++) {
+			const uint32 t = (((uint32)(cv >> 8) & 0xff) << 8) | ((uint32)(cu >> 8) & 0xff);
+			out[i] = (uint16)(T.table[shade | T.image[t]] >> 16);
+			cu = wrap32((int64)cu + su);
+			cv = wrap32((int64)cv + sv);
+		}
+	};
+	const double T1[17] = { 0.0, 0.0, 0.0625, 0.125, 0.1875, 0.25, 0.3125, 0.375, 0.4375, 0.5, 0.5625,
+	                        0.625, 0.6875, 0.75, 0.8125, 0.875, 0.9375 };
+	double T2[17];
+	T2[0] = 0.0;
+	for (int r = 1; r <= 16; r++)
+		T2[r] = f32(1.0 / r);
+	const double f = (double)wrap32((((int64)xs + 1) << 16) - e.x) * (1.0 / 65536);   // float 0x004baef0 = 2^-16
+	double IZ = (double)e.dizdx * f + (double)e.iz;
+	double U = (double)e.dUdx * f + (double)e.U;
+	double V = (double)e.dVdx * f + (double)e.V;
+	if (n == 1) {                                     // @ 0x00475ece
+		const double w = 1.0 / IZ;
+		run(rndMagic(U * w), rndMagic(V * w), 0, 0, 1);
+		return;
+	}
+	if (n == 2) {                                     // @ 0x00475e21
+		double w = 1.0 / IZ;
+		run(rndMagic(U * w), rndMagic(V * w), 0, 0, 1);
+		V += (double)e.dVdx;
+		IZ += (double)e.dizdx;
+		U += (double)e.dUdx;
+		w = 1.0 / IZ;
+		run(rndMagic(U * w), rndMagic(V * w), 0, 0, 1);
+		return;
+	}
+	if (n <= 16) {                                    // @ 0x00475d56: the start point kept as float
+		double w = 1.0 / IZ;
+		const double a = U * w, b = V * w;
+		const int32 pu = rndMagic(a), pv = rndMagic(b);
+		IZ += (double)e.A58 * T1[n];
+		U += (double)e.A5c * T1[n];
+		V += (double)e.A60 * T1[n];
+		w = 1.0 / IZ;
+		run(pu, pv, rndMagic((U * w - f32(a)) * T2[n]) >> 8, rndMagic((V * w - f32(b)) * T2[n]) >> 8, n);
+		return;
+	}
+	double w = 1.0 / IZ;
+	int32 P0 = rndMagic(U * w), P1 = rndMagic(V * w);
+	int32 rem = n - 16;
+	for (;;) {                                        // @ 0x0047577c
+		IZ += (double)e.A58;
+		U += (double)e.A5c;
+		V += (double)e.A60;
+		w = 1.0 / IZ;
+		const int32 Q0 = rndMagic(U * w), Q1 = rndMagic(V * w);
+		run(P0, P1, wrap32((int64)Q0 - P0) >> 12, wrap32((int64)Q1 - P1) >> 12, 16);
+		P0 = Q0;
+		P1 = Q1;
+		if (rem - 16 > 0) {
+			rem -= 16;
+			continue;
+		}
+		const int32 r = rem;                          // @ 0x004759e1
+		IZ += (double)e.A58 * T1[r];
+		U += (double)e.A5c * T1[r];
+		V += (double)e.A60 * T1[r];
+		w = 1.0 / IZ;
+		run(P0, P1, rndMagic((U * w - P0) * T2[r]) >> 8, rndMagic((V * w - P1) * T2[r]) >> 8, r);
+		return;
+	}
+}
+
+// FUN_0045c104: the row loop.
+void DialogHead::rasterise(uint16 *dst, int pitch) {
+	const int W = 640, H = 480, L = 0;
+	_entryUsed = 0;
+	Edge sentinels[6];
+	memset(sentinels, 0, sizeof(sentinels));
+	auto sentinel = [&](int k, uint32 type, int32 x0, int32 x1, float iz, int32 xl, int32 xr) {
+		Entry *en = newEntry(type);
+		Edge *a = &sentinels[2 * k], *b = &sentinels[2 * k + 1];
+		a->x = x0; a->iz = iz; b->x = x1; b->iz = iz; a->next = b;
+		en->first = en->cur = a;
+		en->xl = xl;
+		en->xr = xr;
+		return en;
+	};
+	Entry *head = sentinel(0, 4, -0x7fffffff, L << 16, 2147483648.0f, -0x7fffffff, L << 16);
+	Entry *tail = sentinel(1, 4, (L + W) << 16, 0x7ffffffe, 2147483648.0f, (L + W) << 16, 0x7ffffffe);
+	Entry *bottom = sentinel(2, 0, -0x7fffffff, 0x7fffffff, 0.0f, -0x7fffffff, 0x7fffffff);
+	Entry *endl = newEntry(0x10);
+	endl->xl = 0x7ffffffe;
+	endl->xr = 0x7fffffff;
+	bottom->next = head; head->prev = bottom; head->next = tail; tail->prev = head; tail->next = endl; endl->prev = tail;
+	for (int row = 0; row < H; row++) {
+		tail->behind = nullptr;
+		head->behind = bottom;
+		for (uint i = 0; i < _endRows[row].size(); i++) {
+			Entry *en = _endRows[row][i]->entry;
+			if (!en)
+				continue;
+			en->prev->next = en->next;
+			en->next->prev = en->prev;
+		}
+		for (uint i = 0; i < _startRows[row].size(); i++) {
+			Edge *e = _startRows[row][i];
+			Entry *en = newEntry(e->gtype);
+			en->xl = e->x;
+			en->first = e;
+			e->entry = en;
+			en->next = tail->next; tail->next->prev = en; tail->next = en; en->prev = tail;
+		}
+		for (uint i = 0; i < _replRows[row].size(); i++)
+			_replRows[row][i]->pred->next = _replRows[row][i];
+		for (Entry *en = head->next; en != endl; en = en->next) {
+			Edge *e = en->first;
+			for (;;) {
+				e->x = wrap32((int64)e->x + e->dx);
+				e->iz = (float)((double)e->iz + (double)e->diz);
+				if (en->type == 2) {
+					e->u = wrap32((int64)e->u + e->du);
+					e->v = wrap32((int64)e->v + e->dv);
+				} else if (en->type == 9) {
+					e->U = (float)((double)e->U + (double)e->dU);
+					e->V = (float)((double)e->V + (double)e->dV);
+				}
+				if (!e->next)
+					break;
+				e = e->next;
+			}
+			en->xl = en->first->x;
+			en->xr = e->x;
+			en->cur = en->first;
+		}
+		for (Entry *en = head->next; en != endl;) {   // insertion sort by xl
+			Entry *nxt = en->next;
+			if (en->xl < en->prev->xl) {
+				Entry *p = en->prev;
+				p->next = nxt; nxt->prev = p;
+				p = p->prev;
+				while (en->xl < p->xl)
+					p = p->prev;
+				Entry *q = p->next;
+				en->next = q; q->prev = en; p->next = en; en->prev = p;
+			}
+			en = nxt;
+		}
+		buildSpans(head, tail);
+		for (int i = (int)_spans.size() - 1; i >= 0; i--) {
+			const Span &sp = _spans[i];
+			if (sp.xe - sp.xs > 0 && (sp.type == 1 || sp.type == 2 || sp.type == 9))
+				fillSpan(dst, pitch, row, sp.xs, sp.xe, *sp.e, sp.type);
+		}
+	}
+	for (uint i = 0; i < _edges.size(); i++)
+		_edges[i].entry = nullptr;
+}
+
+void DialogHead::render(uint16 *dst, int pitch) {
+	buildLists();
+	rasterise(dst, pitch);
 }
 
 } // End of namespace Atlantis
