@@ -232,6 +232,26 @@ public:
 	// standard background.  Rows 0 and 1 use colour-table entry 1 (RGB555
 	// 0x0001 -> RGB565 0x0001), a colour the port once used as its
 	// transparency marker.
+	// FUN_004108e0 (atlantis-re: functions/ui-FUN_0041eda8.md): the asm
+	// p - ((p & mask) >> 1) on 32-bit pixel pairs, mask 0xf79ef79e (5-6-5)
+	// or 0xfbdefbde (5-5-5).  Checked on every pixel against the per-channel
+	// reading: no carry crosses a channel.
+	void test_menu_dim_exhaustive() {
+		for (uint p = 0; p < 0x10000; p++) {
+			const uint r = p >> 11, g = (p >> 5) & 0x3f, b = p & 0x1f;
+			const uint16 want565 = (uint16)(((r - (r >> 1)) << 11) |
+			                                ((g - ((g & 0x3c) >> 1)) << 5) | (b - (b >> 1)));
+			TS_ASSERT_EQUALS(CryOmni3D::Atlantis::dimMenuPixel((uint16)p, true), want565);
+			if (p & 0x8000)
+				continue;   // 5-5-5 leaves the top bit clear
+			const uint r5 = p >> 10, g5 = (p >> 5) & 0x1f;
+			const uint16 want555 = (uint16)(((r5 - (r5 >> 1)) << 10) |
+			                                ((g5 - (g5 >> 1)) << 5) | (b - (b >> 1)));
+			TS_ASSERT_EQUALS(CryOmni3D::Atlantis::dimMenuPixel((uint16)p, false), want555);
+		}
+		TS_ASSERT_EQUALS(CryOmni3D::Atlantis::dimMenuPixel(0xffff, true), 0x8430);
+	}
+
 	void test_spr_synthetic_window() {
 		using namespace GraphicsSpritesTest;
 		static const uint16 expected[3][8] = {

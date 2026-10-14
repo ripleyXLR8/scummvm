@@ -137,6 +137,16 @@ inline uint16 blendSpwPixel565(uint16 src, uint16 dst, byte factor) {
 	return (uint16)(src + (uint16)((r << 11) | (g << 6) | b));
 }
 
+// Menu backdrop dim — atlantis.exe FUN_004108e0 (called by FUN_0041cc28
+// before the in-game menu and the disc prompt): p - ((p & mask) >> 1) on
+// each pixel, mask 0xf79e in 5-6-5 (key 0x235), 0xfbde in 5-5-5 (key 0x613).
+// Red and blue become c - c / 2; the 5-6-5 mask also clears green's bit 1,
+// so green becomes g - ((g & 0x3c) >> 1).
+inline uint16 dimMenuPixel(uint16 p, bool rgb565) {
+	const uint16 mask = rgb565 ? 0xf79e : 0xfbde;
+	return (uint16)(p - ((p & mask) >> 1));
+}
+
 } // End of namespace Atlantis
 } // End of namespace CryOmni3D
 

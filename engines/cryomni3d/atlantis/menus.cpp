@@ -668,6 +668,20 @@ int CryOmni3DEngine_Atlantis::displayPlayerScreen() {
 	return result == -2 ? -1 : result;
 }
 
+// atlantis.exe FUN_0041cc28's dim (FUN_004108e0, sprite_blend.h
+// dimMenuPixel) over a whole backdrop.
+static void dimMenuBackdrop(Graphics::ManagedSurface &surf) {
+	const Graphics::PixelFormat &fmt = surf.format;
+	if (fmt.bytesPerPixel != 2)
+		return;
+	const bool rgb565 = (fmt.gLoss == 2);
+	for (int y = 0; y < surf.h; y++) {
+		uint16 *row = (uint16 *)surf.getBasePtr(0, y);
+		for (int x = 0; x < surf.w; x++)
+			row[x] = dimMenuPixel(row[x], rgb565);
+	}
+}
+
 // LOAD screen (LOADMENU.TXT): the current player's per-episode saves listed by
 // their EPI.TXT names, with RESTART EPISODE / OK / Cancel and a draggable
 // scrollbar (atlantis.exe FUN_0041cf78).  Returns the 1-based slot to load, or
@@ -688,6 +702,9 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 		bg.blitFrom(*pano);
 	else
 		bg.fillRect(Common::Rect(0, 0, 640, 480), fmt.RGBToColor(0, 0, 0));
+	// FUN_0041cf78 starts with FUN_0041ce8c: the in-game menu's dimmed copy
+	// of the view.
+	dimMenuBackdrop(bg);
 
 	MenuLayout layout;
 	if (!loadMenuLayout("LOADMENU.TXT", layout))
@@ -1267,15 +1284,7 @@ void CryOmni3DEngine_Atlantis::changeDisc(uint discIdx) {
 	}
 	Graphics::ManagedSurface bg(640, 480, fmt);
 	bg.blitFrom(saved);
-	if (fmt.bytesPerPixel == 2) {
-		// 0xf79e (5-6-5) / 0xfbde (5-5-5): the low bit of each channel cleared
-		const uint16 mask = (fmt.gLoss == 2) ? 0xf79e : 0xfbde;
-		for (int y = 0; y < 480; y++) {
-			uint16 *row = (uint16 *)bg.getBasePtr(0, y);
-			for (int x = 0; x < 640; x++)
-				row[x] = (uint16)(row[x] - ((row[x] & mask) >> 1));
-		}
-	}
+	dimMenuBackdrop(bg);
 
 	MenuLayout layout;
 	if (loadMenuLayout(name.c_str(), layout)) {
@@ -1329,6 +1338,9 @@ uint CryOmni3DEngine_Atlantis::displayInGameMenu() {
 	} else {
 		bg.fillRect(Common::Rect(0, 0, 640, 480), fmt.RGBToColor(0, 0, 0));
 	}
+	// FUN_0041c838 -> FUN_0041cc28: the menu and its sub-menus (load,
+	// options, sound, quit) are drawn over the view dimmed to half.
+	dimMenuBackdrop(bg);
 
 	MenuLayout layout;
 	loadMenuLayout("MAINMENU.TXT", layout);
