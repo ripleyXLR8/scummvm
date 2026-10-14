@@ -478,6 +478,15 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 			// FUN_0042a100 runs the /sel scan FUN_004277c8 (0x0042a60e).
 			if (_currentPlaceId != uint(-1))
 				runArrivalSelSections((int)_currentPlaceId, (int)_lastVue);
+			// ARRIVEEVUE stays = LastVue: only the place loop clears it, right
+			// after its own arrival scan (@ 0x00423be7).  A chapter= run
+			// anywhere else in the pass (timers, clicks, puzzle, departure)
+			// therefore gets a second arrival scan on the next pass
+			// (@ 0x00423b5a..0x00423b78) when LastVue != 0.
+			if (!_inPlaceArrivalScan && !_conInitRunning && _lastVue != 0 && _currentPlaceId != uint(-1)) {
+				_arrivalScanPending = true;
+				_arrivalFromVue = _lastVue;
+			}
 		}
 		return;
 	}

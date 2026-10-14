@@ -265,6 +265,9 @@ private:
 	// FUN_0042a100 Vue=N: enter place N at once (no transition video), the
 	// arrival /sel scan running when the place loop next comes round.
 	void enterPlaceFromScript(uint placeId);
+	// True while the place loop runs its own arrival scan (FUN_00423ad8
+	// @ 0x00423b78), after which it clears ARRIVEEVUE (@ 0x00423be7).
+	bool _inPlaceArrivalScan = false;
 	bool _arrivalScanPending = false;
 	uint _arrivalFromVue = 0;
 	// atlantis.exe DAT_0049692c, LastVue: 1 at game start (0x004195fb) and

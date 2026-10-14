@@ -666,16 +666,22 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 			// Music persists across places — only startmusik/stopmusik (run
 			// by the new place's arrival CON sections, if any) change it.
 			musicUpdate();
-			if (_currentPlace)
+			if (_currentPlace) {
+				_inPlaceArrivalScan = true;   // FUN_00423ad8's own scan
 				runArrivalSelSections((int)_currentPlaceId, (int)fromVue);
+				_inPlaceArrivalScan = false;
+			}
 		} else if (_arrivalScanPending) {
 			// A script Vue= already entered the place (enterPlaceFromScript);
 			// the place loop now runs its arrival scan (atlantis.exe
 			// FUN_00423ad8 @ 0x00423b48).
 			_arrivalScanPending = false;
 			musicUpdate();
-			if (_currentPlace)
+			if (_currentPlace) {
+				_inPlaceArrivalScan = true;
 				runArrivalSelSections((int)_currentPlaceId, (int)_arrivalFromVue);
+				_inPlaceArrivalScan = false;
+			}
 		}
 		if (_nextPlaceId != uint(-1) || _arrivalScanPending)
 			continue;
