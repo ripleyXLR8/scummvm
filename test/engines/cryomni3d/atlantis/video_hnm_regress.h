@@ -275,21 +275,6 @@ public:
 					            .appendComponent(Common::String::format("%s.%u.port.raw", it->_key.c_str(), k)))))
 						df.write(le.data(), le.size());
 				}
-				// Frames that copy blocks from the older of the two buffers before
-				// the video has written it: in the game that buffer is the screen
-				// buffer [0x004960d4] as the video starts (FUN_0041bc74), which the
-				// emulation leaves black [UNKNOWN content]; atlantis-re
-				// experiments/2026-10-14-07-ix-rounding.md.
-				static const char *const kOlderBuffer[] = {
-					"CINEM005.HNM 2", "CINEM006.HNM 2", "FO161160.HNM 1", "FO161160.HNM 2",
-					"FO161160.HNM 3", "FO061060.HNM 1", "FO061060.HNM 2", "FO061060.HNM 3"
-				};
-				bool skip = false;
-				for (uint q = 0; q < ARRAYSIZE(kOlderBuffer); q++)
-					if (key == kOlderBuffer[q])
-						skip = true;
-				if (skip)
-					continue;
 				if (!golden.contains(key) || golden[key] != AtlantisTest::md5Hex(le.data(), le.size())) {
 					bad++;
 					if (report.size() < 300)
