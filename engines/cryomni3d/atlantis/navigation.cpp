@@ -520,14 +520,14 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			if (shouldAbort()) {
 				actionId = 66666;
 				exit = true;
-			} else if (_arrivalScanPending) {
-				// A Vue= in the timer section entered another place; return to
-				// the place loop for its arrival scan.  When the original's warp
-				// loop returns in this case is not established (atlantis-re:
-				// experiments/2026-10-12-15-con-vue.md).
-				actionId = 66666;
-				exit = true;
 			} else {
+				// A Vue= in the timer section has entered another place; the
+				// warp loop does not return for it: the section executor ends
+				// with the click flag cleared (FUN_0042844c @ 0x00428d77) and
+				// the Vue= branch sets no exit flag (FUN_0042a100 @
+				// 0x0042a630..0x0042a749), so the loop runs on in the new
+				// place and the arrival scan (_arrivalScanPending) comes after
+				// the next click (atlantis-re subsystems/scripts-con.md).
 				g_system->lockMouse(true);
 				takeMouseRelative();
 				setMousePos(Common::Point(320, 240));
