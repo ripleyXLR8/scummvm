@@ -656,6 +656,11 @@ private:
 	// start by loadAtlantisExeTables().
 	Common::Array<Common::String> _newSoundApcNames;
 	Audio::SoundHandle _newSoundHandle;
+	// FUN_00432a64, the NewSound poller: 0x006cd87c the value last started,
+	// 0x00772912 the playing flag.
+	int _newSoundLast = 0;
+	bool _newSoundPlaying = false;
+	void pollNewSound();
 
 	// FONTMAX gold menu font (FONTMAX.SPR) + its hover/highlight set
 	// (FONTMAX2.SPR).  Glyph index = char_code - 0x20.

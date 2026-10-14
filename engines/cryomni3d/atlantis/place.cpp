@@ -479,6 +479,7 @@ void CryOmni3DEngine_Atlantis::ambientEnterPlace() {
 
 // FUN_00432178's ambient part, at the end of a warp or bar frame.
 void CryOmni3DEngine_Atlantis::ambientFrame() {
+	pollNewSound();   // FUN_00432178's tail calls FUN_00432a64 in every frame
 	if (!_ambientOut || !_ambient.active())
 		return;
 	const AtlantisPlace *place = _wam.findPlaceById((uint16)_currentPlaceId);

@@ -627,57 +627,12 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 		return;
 	}
 
-	// newsound=N — play the ambient/SFX track identified by APC table index N
-	// (table extracted from atlantis.exe by loadAtlantisExeTables).  Always
-	// stops any active newsound before starting a new one, so blocked-zone
-	// feedback (e.g. CHAPI001 `/set(newsound=14)` at zones 150/168) doesn't
-	// pile up.  Played as one-shot SFX on the SFX channel.
+	// newsound=N: the value is stored; the poller FUN_00432a64, run after
+	// every executed script line (FUN_00428da8) and at the end of every frame
+	// (FUN_00432178), starts and stops the sound.
 	if (key == "newsound") {
-		int soundId = value;
-		_gameVars["newsound"] = soundId;
-
-		// FUN_00432a64 returns at once for NEWSOUND == 0, stopping nothing
-		// (the table's entry 0 would be strange.apc).
-		if (soundId == 0)
-			return;
-
-		if (_mixer->isSoundHandleActive(_newSoundHandle))
-			_mixer->stopHandle(_newSoundHandle);
-
-		// soundId is a 0-based index into the APC table extracted from
-		// atlantis.exe: empirically, CON `newsound=14` plays the 15th file in
-		// our enumeration (Toctoc.apc), so do NOT subtract 1 here.
-		if (soundId < 0 || (uint)soundId >= _newSoundApcNames.size()) {
-			if (!_newSoundApcNames.empty())
-				debugC(1, kDebugScript, "execConSetCommand: newsound=%d out of table range (0..%u)",
-				      soundId, _newSoundApcNames.size() - 1);
-			return;
-		}
-
-		const Common::String &apcName = _newSoundApcNames[soundId];
-		Common::SeekableReadStream *apcFile =
-		    openBigFileStream(kFileTypeSound, apcName);
-		if (!apcFile) {
-			debugC(1, kDebugScript, "execConSetCommand: newsound=%d '%s' not in BigFile",
-			      soundId, apcName.c_str());
-			return;
-		}
-
-		Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*apcFile);
-		if (apc) {
-			int64 remaining = apcFile->size() - apcFile->pos();
-			if (remaining > 0) {
-				byte *buf = new byte[remaining];
-				apcFile->read(buf, (uint32)remaining);
-				apc->queuePacket(new Common::MemoryReadStream(buf, remaining,
-				                                              DisposeAfterUse::YES));
-			}
-			apc->finish();
-			_mixer->playStream(Audio::Mixer::kSFXSoundType, &_newSoundHandle, apc);
-			debugC(1, kDebugScript, "execConSetCommand: newsound=%d playing '%s'",
-			      soundId, apcName.c_str());
-		}
-		delete apcFile;
+		_gameVars["newsound"] = value;
+		pollNewSound();
 		return;
 	}
 
@@ -1194,6 +1149,59 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 
 	_gameVars["clicperso"] = 0;
 	_dialBaseAlphaValid = false;
+}
+
+// FUN_00432a64 (atlantis-re functions/audio-FUN_00432a64.md).  The loop flag
+// 0x00496194 is 0 in the image and never written, so a sound plays once.
+void CryOmni3DEngine_Atlantis::pollNewSound() {
+	const int value = _gameVars.getValOrDefault("newsound", 0);
+	if (value == 0)
+		return;                                   // 1: nothing is stopped
+	const bool active = _mixer->isSoundHandleActive(_newSoundHandle);
+	if (value != _newSoundLast) {                 // 3: another value
+		_mixer->stopHandle(_newSoundHandle);
+		_newSoundPlaying = false;
+	}
+	if (_newSoundPlaying) {
+		if (!active) {                            // 4: done (status 2)
+			_mixer->stopHandle(_newSoundHandle);
+			_newSoundPlaying = false;
+			_gameVars["newsound"] = 0;
+		}
+		return;
+	}
+	// 5: wav\ + entry `value` of the table at 0x00496224 (the cinema sound
+	// 0x007728c7 of 0x00496190 is played by the Cinema command)
+	if (value < 0 || (uint)value >= _newSoundApcNames.size()) {
+		debugC(1, kDebugScript, "pollNewSound: newsound=%d out of table range", value);
+		_gameVars["newsound"] = 0;
+		return;
+	}
+	const Common::String &apcName = _newSoundApcNames[value];
+	Common::SeekableReadStream *apcFile = openBigFileStream(kFileTypeSound, apcName);
+	if (!apcFile) {
+		debugC(1, kDebugScript, "pollNewSound: newsound=%d '%s' not in BigFile", value, apcName.c_str());
+		_gameVars["newsound"] = 0;              // missing file: NEWSOUND = 0
+		return;
+	}
+	Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*apcFile);
+	if (!apc) {
+		_gameVars["newsound"] = 0;              // bad header: NEWSOUND = 0
+		delete apcFile;
+		return;
+	}
+	const int64 remaining = apcFile->size() - apcFile->pos();
+	if (remaining > 0) {
+		byte *buf = new byte[remaining];
+		apcFile->read(buf, (uint32)remaining);
+		apc->queuePacket(new Common::MemoryReadStream(buf, remaining, DisposeAfterUse::YES));
+	}
+	apc->finish();
+	_mixer->playStream(Audio::Mixer::kSFXSoundType, &_newSoundHandle, apc);
+	_newSoundPlaying = true;
+	_newSoundLast = value;
+	debugC(1, kDebugScript, "pollNewSound: newsound=%d playing '%s'", value, apcName.c_str());
+	delete apcFile;
 }
 
 } // End of namespace Atlantis
