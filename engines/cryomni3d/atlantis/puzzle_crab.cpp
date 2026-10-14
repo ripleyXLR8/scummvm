@@ -50,7 +50,7 @@ struct CrabMemory {
 static CrabMemory g_crabMemory = { false, {} };
 
 CrabPuzzle::CrabPuzzle(CryOmni3DEngine_Atlantis *engine)
-	: _engine(engine), _picture(0), _rng("atlantis_crab"), _loaded(false), _prevButton(false), _bgDone(false) {
+	: _engine(engine), _picture(0), _loaded(false), _prevButton(false), _bgDone(false) {
 	bool ok = loadPuzzleSpr(engine, "CRABE.SPR", _frames);
 	for (int i = 0; i < 4; i++)
 		ok = loadPuzzleTGA(engine, kPictures[i], _pictures[i]) && ok;
@@ -68,8 +68,8 @@ int CrabPuzzle::play() {
 	g_system->lockMouse(false);
 	_engine->showMouse(false);   // FUN_0043e5a4 draws the cursor into the frame
 	_prevButton = (_engine->getCurrentMouseButton() != 0);
-	// FUN_0043a1e0 seeds the puzzle LCG from the clock.
-	lcgSeed = (uint16)_rng.getRandomNumber(0xffff);
+	// FUN_0043a1e0 seeded the puzzle LCG from the clock.
+	lcgSeed = _engine->_puzzleLcgSeed;
 	// the shared cursor animation (engine.h PuzzleCursorState)
 	cursorMode = _engine->_puzzleCursor.mode;
 	cursorFrame = _engine->_puzzleCursor.frame;
@@ -162,7 +162,7 @@ void CrabPuzzle::stopSounds() {
 }
 
 int CrabPuzzle::rand32767() {
-	return (int)_rng.getRandomNumber(32767);
+	return _engine->crtRand();   // FUN_0043ede8 @ 0x0043ee25
 }
 
 bool CrabPuzzle::aborted() const {

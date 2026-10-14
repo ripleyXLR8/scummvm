@@ -34,7 +34,7 @@ static const int kScreenW = 640;
 static const int kScreenH = 480;
 
 RatPuzzle::RatPuzzle(CryOmni3DEngine_Atlantis *engine)
-	: _engine(engine), _rng("AtlantisRatPuzzle"), _loaded(false), _prevButton(false),
+	: _engine(engine), _loaded(false), _prevButton(false),
 	  _mouseX(0), _mouseY(0) {
 	bool ok = loadPuzzleTGA(engine, "PZFBACK.TGA", _bgPixels);
 	ok = loadPuzzleSpr(engine, "PZFPIECE.SPR", _pieces) && ok;
@@ -121,7 +121,7 @@ void RatPuzzle::playSound(int slot) {
 }
 
 int RatPuzzle::randomValue() {
-	return (int)_rng.getRandomNumber(0x7fff);
+	return _engine->crtRand();   // FUN_00438fd4 @ 0x00439418
 }
 
 uint32 RatPuzzle::ticks() {

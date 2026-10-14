@@ -254,8 +254,6 @@ public:
 	void test_explicit_cam_on_unavailable_cam() {
 		VideoPeek::Eng *e = VideoPeek::rawEngine();
 		new (&e->_dialInitData) Common::HashMap<int, VideoPeek::Eng::DialInitEntry>();
-		new (&e->_dialRng) Common::RandomSource("video_test");
-		e->_dialRng.setSeed(1);
 		VideoPeek::Eng::DialInitEntry d;
 		d.camUBB[0] = "none";            // cam2 unavailable
 		d.camUBB[1] = "pecan2c3";
@@ -271,7 +269,6 @@ public:
 	void test_reine_forced_cam2() {
 		VideoPeek::Eng *e = VideoPeek::rawEngine();
 		new (&e->_dialInitData) Common::HashMap<int, VideoPeek::Eng::DialInitEntry>();
-		new (&e->_dialRng) Common::RandomSource("video_test");
 		VideoPeek::Eng::DialInitEntry d;
 		d.camUBB[0] = "rhean1c2";
 		d.camUBB[1] = "rhean1c3";
@@ -279,8 +276,8 @@ public:
 		d.camUBB[3] = "rhean1c5";
 		e->_dialInitData[560] = d;
 		int notTwo = 0;
-		for (uint seed = 1; seed <= 32; seed++) {
-			e->_dialRng.setSeed(seed);
+		// the draws read the millisecond clock (as the original's)
+		for (uint pass = 1; pass <= 32; pass++) {
 			e->_lastDialCam = 0;
 			if (e->pickDialCam(560, 0) != 2)
 				notTwo++;

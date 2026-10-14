@@ -88,8 +88,7 @@ static const int kFinLose  = 2;
 static const int kFinAbort = 1;
 
 OgreGamePuzzle::OgreGamePuzzle(CryOmni3DEngine_Atlantis *engine)
-    : _engine(engine), _moveCounter(2), _holding(false), _bgLoaded(false),
-      _rng("AtlantisOgreGame") {
+    : _engine(engine), _moveCounter(2), _holding(false), _bgLoaded(false) {
 	loadPuzzleSpr(engine, "PUZCYCLO.SPR", _pieceFrames);
 	_bgLoaded = loadPuzzleTGA(engine, "PUZCYCLO.TGA", _bgPixels);
 
@@ -109,13 +108,13 @@ OgreGamePuzzle::OgreGamePuzzle(CryOmni3DEngine_Atlantis *engine)
 OgreGamePuzzle::~OgreGamePuzzle() {
 }
 
-// FUN_004422b8: roll until qx + qy == 10 -- one of (4,6) / (5,5) / (6,4),
-// the corner region opposite the hero.
+// FUN_004422b8: two draws of the puzzle LCG per try until qx + qy == 10 --
+// one of (4,6) / (5,5) / (6,4), the corner region opposite the hero.
 void OgreGamePuzzle::placeQueen() {
-	do {
-		_rules.p[1].x = (int)_rng.getRandomNumber(6);
-		_rules.p[1].y = (int)_rng.getRandomNumber(6);
-	} while (_rules.p[1].x + _rules.p[1].y != 10);
+	int x, y;
+	ogreQueenCell(_engine->_puzzleLcgSeed, x, y);
+	_rules.p[1].x = x;
+	_rules.p[1].y = y;
 }
 
 // FUN_00442360: each ogre steps sign(hero - ogre) per axis, diverting to
@@ -157,8 +156,8 @@ void OgreGamePuzzle::moveOgres(Graphics::ManagedSurface &working, int &result) {
 // for a target that avoids all three cells of the hero's move path; she
 // stays put when that fails.
 void OgreGamePuzzle::walkQueen() {
-	Common::RandomSource &rng = _rng;
-	auto rand32767 = [&rng]() { return (int)rng.getRandomNumber(32767); };
+	CryOmni3DEngine_Atlantis *engine = _engine;
+	auto rand32767 = [engine]() { return engine->crtRand(); };   // the C rand
 	_rules.walkQueen(rand32767);
 }
 

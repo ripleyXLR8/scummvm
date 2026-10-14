@@ -72,7 +72,6 @@ private:
 	Common::Array<uint16>    _bgPixels;     // PUZCYCLO.TGA
 	bool _bgLoaded;
 
-	Common::RandomSource _rng;
 
 	void placeQueen();
 	void moveOgres(Graphics::ManagedSurface &working, int &result);

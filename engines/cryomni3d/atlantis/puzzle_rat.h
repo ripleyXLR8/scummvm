@@ -64,7 +64,6 @@ private:
 	Common::Array<PuzzleSpr> _pieces;     // PZFPIECE.SPR (0x007beae0)
 	Common::Array<PuzzleSpr> _rat;        // PZFRAT.SPR (0x007bead4)
 	Graphics::ManagedSurface _working;
-	Common::RandomSource _rng;
 	bool _loaded;
 	bool _prevButton;
 	int _mouseX, _mouseY;

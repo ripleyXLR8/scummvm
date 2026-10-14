@@ -222,6 +222,8 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 		_gameVars["finpuzzle"] = check;
 		return;
 	}
+	// FUN_0043a1e0 seeds the puzzle LCG 0x007bec20 from the clock.
+	_puzzleLcgSeed = (uint16)g_system->getMillis();
 	switch (puzzleId) {
 	case 0: {
 		// Celestial alignment ("eclipse on Atlantis") at CHAPI012 vue 221.

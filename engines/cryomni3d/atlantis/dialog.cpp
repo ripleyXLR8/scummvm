@@ -147,9 +147,9 @@ int CryOmni3DEngine_Atlantis::pickDialCam(int persoId, int explicitCam, bool set
 	//    one and its UBB is not "none" (0x004287f6); lines that do not start
 	//    with "Seth" draw a second time against the first draw (0x00428896);
 	//  - persoId 0x230 (560) is then forced to cam 2 (0x0042892e).
-	// The original's draws use the millisecond clock (FUN_00451d0c); the
-	// port uses _dialRng.  With fewer than two usable cams the original
-	// would loop forever; the port stops after 64 draws.
+	// The draws read the millisecond clock (FUN_00451d0c), as the original's
+	// do.  With fewer than two usable cams the original would loop forever;
+	// the port stops after 64 draws.
 	Common::HashMap<int, DialInitEntry>::const_iterator it = _dialInitData.find(persoId);
 	auto usable = [&](int cam) {
 		if (it == _dialInitData.end())
@@ -160,7 +160,7 @@ int CryOmni3DEngine_Atlantis::pickDialCam(int persoId, int explicitCam, bool set
 	auto draw = [&](int last) {
 		int cam = 2;
 		for (int tries = 0; tries < 64; tries++) {
-			cam = (int)_dialRng.getRandomNumber(3) + 2;
+			cam = (int)(g_system->getMillis() & 3) + 2;
 			if (cam != last && usable(cam))
 				return cam;
 		}

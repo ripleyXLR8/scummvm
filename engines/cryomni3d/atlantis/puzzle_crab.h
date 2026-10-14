@@ -65,7 +65,6 @@ private:
 	int                      _picture;
 	Common::Array<PuzzleSpr> _frames;        // CRABE.SPR
 	Graphics::ManagedSurface _working;
-	Common::RandomSource     _rng;
 	Audio::SoundHandle       _comment;
 	bool _loaded;
 	bool _prevButton;

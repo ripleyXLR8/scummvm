@@ -40,6 +40,7 @@
 #include "cryomni3d/atlantis/bigfile.h"
 #include "cryomni3d/atlantis/chapter_start.h"
 #include "cryomni3d/atlantis/con_eval.h"
+#include "cryomni3d/atlantis/random.h"
 #include "cryomni3d/atlantis/inventory.h"
 #include "cryomni3d/atlantis/con_script.h"
 #include "cryomni3d/atlantis/menu_layout.h"
@@ -157,6 +158,14 @@ public:
 	struct PuzzleCursorState {
 		int16 mode, frame, step;
 	} _puzzleCursor;
+
+	// The original's two generators (random.h): the C rand, seeded 1 at
+	// launch and shared by the rat (FUN_00438fd4), crab (FUN_0043ede8) and
+	// ogre (FUN_00442a0c) puzzles; the puzzle LCG, seeded from the clock by
+	// the dispatcher FUN_0043a1e0 at every puzzle launch.
+	uint32 _crtRandSeed;
+	int crtRand() { return crtRandNext(_crtRandSeed); }
+	uint16 _puzzleLcgSeed;
 	// The held object (the OBJETENMAIN variable), and emptying the hand.
 	const Object *heldObject() const { return _inventory.selectedObject(); }
 	uint currentPlaceId() const { return _currentPlaceId; }
@@ -574,7 +583,6 @@ private:
 
 	// Random camera selection per dialog line, and the previous line's cam so
 	// consecutive lines never reuse the same shot (atlantis.exe FUN_0042844c).
-	Common::RandomSource _dialRng;
 	int _lastDialCam;          // 0 = no previous line in this dialog session
 
 	// Subject-menu icon sprites decoded from SPRITE\2D\SUJETS.SPR.
