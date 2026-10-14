@@ -15,6 +15,7 @@
 #include "../../../system/null_osystem.h"
 
 #include "common/archive.h"
+#include "common/file.h"
 #include "common/fs.h"
 #include "common/memstream.h"
 
@@ -214,6 +215,121 @@ public:
 			                  (int)p.hitTest(expected[i][0], expected[i][1]), expected[i][2]);
 	}
 
+	// The places' ambient sounds (task 20): the objects, the per-place
+	// references, the file reference 2 and the centre .vue tables (FUN_004315b4)
+	// of every WAM that has them, against archive_wam_ambient.txt
+	// (atlantis-re tools/emu/archive_wam_ambient.py --golden).
+	void test_data_ambient_sounds() {
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("archive: no game data configured, skipping the ambient-sound data test");
+			return;
+		}
+		if (!SearchMan.hasArchive("archive_test_data"))
+			SearchMan.addDirectory("archive_test_data", Common::FSNode(Common::Path(AtlantisTest::dataDir(), '/')));
+		Common::File gf;
+		TS_ASSERT(gf.open(Common::FSNode(Common::Path(AtlantisTest::goldenDir(), '/').appendComponent("archive_wam_ambient.txt"))));
+		CryOmni3D::Atlantis::BigFileArchive big;
+		for (int d = 1; d <= 4; d++)
+			TS_ASSERT(big.open(Common::Path(Common::String::format("BIGCD%d.BIG", d))));
+		Common::HashMap<Common::String, CryOmni3D::Atlantis::AtlantisWAMParser *> wams;
+		auto wam = [&](const Common::String &path) -> CryOmni3D::Atlantis::AtlantisWAMParser * {
+			if (!wams.contains(path)) {
+				Common::SeekableReadStream *st = big.createReadStreamForMember(path);
+				CryOmni3D::Atlantis::AtlantisWAMParser *w = new CryOmni3D::Atlantis::AtlantisWAMParser();
+				if (st)
+					w->loadStream(*st);
+				delete st;
+				wams[path] = w;
+			}
+			return wams[path];
+		};
+		auto g = [](float v) { return Common::String::format("%.9g", (double)v); };
+		uint lines = 0, bad = 0;
+		while (!gf.eos()) {
+			Common::String line = gf.readLine();
+			if (line.empty() || line[0] == '#')
+				continue;
+			Common::Array<Common::String> tok;
+			Common::String cur;
+			for (uint k = 0; k <= line.size(); k++) {
+				if (k == line.size() || line[k] == ' ') {
+					if (!cur.empty())
+						tok.push_back(cur);
+					cur.clear();
+				} else {
+					cur += line[k];
+				}
+			}
+			lines++;
+			Common::String got;
+			if (tok[0] == "fileref2") {
+				const Common::Array<Common::String> &refs = wam(tok[1])->getFileRefs();
+				got = refs.size() > 2 ? refs[2] : "-";
+				if (got != tok[2])
+					bad++;
+			} else if (tok[0] == "obj") {
+				const Common::Array<CryOmni3D::Atlantis::AtlantisAmbientObject> &objs = wam(tok[1])->getAmbientObjects();
+				bool found = false;
+				for (const CryOmni3D::Atlantis::AtlantisAmbientObject &o : objs) {
+					if (Common::String::format("%u", o.id) != tok[2])
+						continue;
+					found = true;
+					Common::String v;
+					for (int k = 0; k < 4; k++)
+						v += (k ? "," : "") + (o.variants[k].empty() ? Common::String("-") : o.variants[k]);
+					got = Common::String::format("%s %s %s %s %s %u %u %u %u %s", o.name.empty() ? "-" : o.name.c_str(),
+					      g(o.pos[0]).c_str(), g(o.pos[1]).c_str(), g(o.pos[2]).c_str(), g(o.loudness).c_str(),
+					      o.weights[0], o.weights[1], o.weights[2], o.weights[3], v.c_str());
+				}
+				Common::String want;
+				for (uint k = 3; k < tok.size(); k++)
+					want += (k > 3 ? " " : "") + tok[k];
+				if (!found || got != want) {
+					bad++;
+					TS_WARN(("ambient object differs: " + line + " / port: " + got).c_str());
+				}
+			} else if (tok[0] == "ref") {
+				const CryOmni3D::Atlantis::AtlantisPlace *pl = wam(tok[1])->findPlaceById((uint16)atoi(tok[2].c_str()));
+				const uint k = (uint)atoi(tok[3].c_str());
+				if (!pl || k >= pl->ambientRefs.size()) {
+					bad++;
+					continue;
+				}
+				const CryOmni3D::Atlantis::AtlantisAmbientRef &r = pl->ambientRefs[k];
+				got = Common::String::format("%u %s %s %s", r.objectId, g(r.t).c_str(), g(r.m).c_str(), g(r.c).c_str());
+				if (got != tok[4] + " " + tok[5] + " " + tok[6] + " " + tok[7]) {
+					bad++;
+					TS_WARN(("ambient reference differs: " + line + " / port: " + got).c_str());
+				}
+			} else if (tok[0] == "centre") {
+				Common::SeekableReadStream *st = big.createReadStreamForMember("SPRLIST\\" + tok[1]);
+				TS_ASSERT(st);
+				if (!st)
+					continue;
+				Common::Array<byte> buf(st->size());
+				st->read(buf.data(), buf.size());
+				delete st;
+				Common::HashMap<int32, CryOmni3D::Atlantis::AtlantisCentrePos> table;
+				CryOmni3D::Atlantis::parseCentreVue(buf.data(), buf.size(), table);
+				const int32 n = atoi(tok[2].c_str());
+				if (!table.contains(n)) {
+					bad++;
+					continue;
+				}
+				const CryOmni3D::Atlantis::AtlantisCentrePos &c = table[n];
+				got = g(c.x) + " " + g(c.y) + " " + g(c.z);
+				if (got != tok[3] + " " + tok[4] + " " + tok[5]) {
+					bad++;
+					TS_WARN(("centre entry differs: " + line + " / port: " + got).c_str());
+				}
+			}
+		}
+		for (Common::HashMap<Common::String, CryOmni3D::Atlantis::AtlantisWAMParser *>::iterator it = wams.begin(); it != wams.end(); ++it)
+			delete it->_value;
+		TS_ASSERT(lines > 200);
+		TS_ASSERT_EQUALS(bad, 0u);
+	}
+
 	// Every .WAM of the four discs: each section of the parsed tables and the
 	// hit-test results over the point grid must match the original's.
 	void test_data_all_wams() {
@@ -258,9 +374,15 @@ public:
 			// valid only while every place has type 0.
 			TSM_ASSERT_EQUALS((name + ": places with non-zero type").c_str(),
 			                  golden[name + "|nonzero_type_places"], Common::String("0"));
-			if (golden[name + "|ambient_records"] != "0" || golden[name + "|objects3d"] != "0")
-				TS_WARN(Common::String::format("%s: %s per-place ambient records and %s 3D objects ignored by the port",
-				        name.c_str(), golden[name + "|ambient_records"].c_str(), golden[name + "|objects3d"].c_str()).c_str());
+			// The ambient-sound references and objects (task 20); their
+			// content is checked by test_data_ambient_sounds.
+			uint ambientRefs = 0;
+			for (const CryOmni3D::Atlantis::AtlantisPlace &p : w.getPlaces())
+				ambientRefs += p.ambientRefs.size();
+			TSM_ASSERT_EQUALS((name + ": ambient references").c_str(),
+			                  Common::String::format("%u", ambientRefs), golden[name + "|ambient_records"]);
+			TSM_ASSERT_EQUALS((name + ": ambient objects").c_str(),
+			                  Common::String::format("%u", w.getAmbientObjects().size()), golden[name + "|objects3d"]);
 			Common::Array<byte> hits;
 			for (const CryOmni3D::Atlantis::AtlantisPlace &p : w.getPlaces())
 				ArchiveWamTest::appendHits(p, hits);

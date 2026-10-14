@@ -146,9 +146,17 @@ void AtlantisWAMParser::loadStream(Common::SeekableReadStream &stream) {
 			place.zones.push_back(zone);
 		}
 
-		uint8 nTrailing = stream.readByte();
-		for (uint32 i = 0; i < (uint32)nTrailing * 17; i++)
-			stream.readByte();
+		// The ambient-sound references (place +0x2b2 count, +0x2b3 records).
+		uint8 nAmbient = stream.readByte();
+		for (uint8 i = 0; i < nAmbient; i++) {
+			AtlantisAmbientRef ref;
+			ref.objectId = stream.readByte();
+			/* the editor's pointer, replaced by FUN_0043187c = */ stream.readUint32LE();
+			ref.t = stream.readFloatLE();
+			ref.m = stream.readFloatLE();
+			ref.c = stream.readFloatLE();
+			place.ambientRefs.push_back(ref);
+		}
 
 		debugC(2, kDebugFile, "  place %u '%s' trans=%u zones=%u",
 		      place.placeId, place.cycloHnm.c_str(), nTransitions, nZones);
@@ -188,6 +196,7 @@ void AtlantisWAMParser::loadStream(Common::SeekableReadStream &stream) {
 			spfListFile = name;
 		else if (type == 3)
 			centVueFile = name;
+		_fileRefs.push_back(name);
 		debugC(2, kDebugFile, "  file-ref type=%u: '%s'", (uint)type, name.c_str());
 	}
 
@@ -223,6 +232,76 @@ void AtlantisWAMParser::loadStream(Common::SeekableReadStream &stream) {
 		_npcEntries.push_back(npc);
 		debugC(2, kDebugFile, "  NPC perso=%u sprite='%s'", persoId, spriteName.c_str());
 	}
+
+	if (stream.err() || stream.eos())
+		return;
+
+	// The 3D ambient sound objects: count byte + 100-byte records (0x0076f6c6).
+	uint8 nObjects = stream.readByte();
+	for (uint8 n = 0; n < nObjects && !stream.err() && !stream.eos(); n++) {
+		AtlantisAmbientObject obj;
+		obj.id = stream.readByte();
+		readFixedName13(stream, obj.name);
+		for (int k = 0; k < 3; k++)
+			obj.pos[k] = stream.readFloatLE();
+		obj.loudness = stream.readFloatLE();
+		for (uint32 p = 0x1e; p < 0x2c; p++)   // the gains (outputs) and two zero bytes
+			stream.readByte();
+		for (int k = 0; k < 4; k++)
+			obj.weights[k] = stream.readByte();
+		for (int k = 0; k < 4; k++)
+			readFixedName13(stream, obj.variants[k]);
+		_ambientObjects.push_back(obj);
+		debugC(2, kDebugFile, "  ambient object %u '%s'", obj.id, obj.name.c_str());
+	}
+}
+
+void parseCentreVue(const byte *buf, uint32 size, Common::HashMap<int32, AtlantisCentrePos> &table) {
+	// FUN_004315b4 @ 0x00431721..0x0043184a: atoi / strtod on a NUL-ended copy.
+	Common::Array<char> text(size + 1);
+	memcpy(text.data(), buf, size);
+	text[size] = '\0';
+	const char *t = text.data();
+	auto at = [&](uint32 p, const char *word, uint32 n) {
+		return p + n <= size && strncmp(t + p, word, n) == 0;
+	};
+	uint32 p = 0;
+	if (size == 0)
+		return;
+	do {
+		if (at(p, "frame", 5)) {
+			p += 6;
+			const int32 n = atoi(t + MIN(p, size));
+			do {
+				if (at(p, "camera", 6)) {
+					p += 7;
+					const float v1 = (float)strtod(t + MIN(p, size), nullptr);
+					float v2 = 0.0f;
+					do {
+						if (at(p, " ", 1)) {
+							p++;
+							v2 = (float)strtod(t + p, nullptr);
+							break;
+						}
+						p++;
+					} while (size > p);
+					do {
+						if (at(p, " ", 1)) {
+							p++;
+							const float v3 = (float)strtod(t + p, nullptr);
+							AtlantisCentrePos pos = { -v2, v1, -v3 };
+							table[n] = pos;
+							break;
+						}
+						p++;
+					} while (size > p);
+					break;
+				}
+				p++;
+			} while (size > p);
+		}
+		p++;
+	} while (size > p);
 }
 
 const AtlantisPlace *AtlantisWAMParser::findPlaceById(uint16 placeId) const {

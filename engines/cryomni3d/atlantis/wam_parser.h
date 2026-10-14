@@ -23,6 +23,7 @@
 #define CRYOMNI3D_ATLANTIS_WAM_PARSER_H
 
 #include "common/array.h"
+#include "common/hashmap.h"
 #include "common/rect.h"
 #include "common/str.h"
 
@@ -73,11 +74,43 @@ struct AtlantisNPCEntry {
 	Common::Array<uint16> vues;
 };
 
+// A place's reference to an ambient sound object (17 bytes after the zones;
+// FUN_0043187c binds it by id, FUN_00450ed8 reads t, m; c is copied to the
+// object's +0x26).  See atlantis-re formats/archive-wam.md.
+struct AtlantisAmbientRef {
+	uint8 objectId;   // 0xff: empty
+	float t;          // +5: the non-directional part of the gains
+	float m;          // +9: loudness, times the object's
+	float c;          // +0xd
+};
+
+// A 3D ambient sound object (100 bytes after the NPC records).  The position
+// is the file's; the original rotates it at load (x' = -y, y' = x, z' = -z).
+struct AtlantisAmbientObject {
+	uint8 id;
+	Common::String name;
+	float pos[3];             // +0x0e
+	float loudness;           // +0x1a
+	uint8 weights[4];         // +0x2c: of 101; above 100, weight - 100 and loop
+	Common::String variants[4];   // +0x30: wav\<name>; empty = absent
+};
+
+// The listener position of a place: a `frame N` / `camera v1 v2 v3` entry of
+// the WAM's centre .vue file, stored as (-v2, v1, -v3) (FUN_004315b4).
+struct AtlantisCentrePos {
+	float x, y, z;
+};
+
+// FUN_004315b4's walk of a centre .vue file into table (never cleared by the
+// original: entries from earlier files stay).
+void parseCentreVue(const byte *buf, uint32 size, Common::HashMap<int32, AtlantisCentrePos> &table);
+
 struct AtlantisPlace {
 	uint16 placeId;
 	Common::String cycloHnm;   // panoramic view HNM file, e.g. "atl16001.hnm"
 	Common::Array<AtlantisTransition> transitions;
 	Common::Array<AtlantisZone> zones;
+	Common::Array<AtlantisAmbientRef> ambientRefs;
 
 	// Returns the transition to dstPlaceId, or nullptr.
 	const AtlantisTransition *findTransition(uint16 dstPlaceId) const;
@@ -104,6 +137,10 @@ public:
 	const Common::Array<AtlantisSubWAM> &getSubWAMs() const { return _subWAMs; }
 	const Common::Array<AtlantisPlace> &getPlaces() const { return _places; }
 	const Common::Array<AtlantisNPCEntry> &getNPCEntries() const { return _npcEntries; }
+	const Common::Array<AtlantisAmbientObject> &getAmbientObjects() const { return _ambientObjects; }
+	// The file references by position (the original reads the centre .vue
+	// as entry 2 whatever its type, FUN_004315b4 @ 0x00431601).
+	const Common::Array<Common::String> &getFileRefs() const { return _fileRefs; }
 
 	// Sprite and view list filenames embedded in the WAM.
 	Common::String spwListFile;   // e.g. "spwatl1.txt"
@@ -114,6 +151,8 @@ private:
 	Common::Array<AtlantisPlace> _places;
 	Common::Array<AtlantisSubWAM> _subWAMs;
 	Common::Array<AtlantisNPCEntry> _npcEntries;
+	Common::Array<AtlantisAmbientObject> _ambientObjects;
+	Common::Array<Common::String> _fileRefs;
 };
 
 } // namespace Atlantis
