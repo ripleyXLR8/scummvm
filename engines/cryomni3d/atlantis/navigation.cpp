@@ -127,12 +127,14 @@ void CryOmni3DEngine_Atlantis::setBlendedCursor(uint16 w, uint16 h,
 	}
 }
 
-// The plain Atlantis pointer: CURSEURS.SPR sprite 8 (last frame of the default
-// group) — the static arrow used for menus and the subject grid.
+// The plain Atlantis pointer: CURSEURS.SPR frame 6, the one FUN_0042d558
+// draws (menus, puzzles, inventory bar, subject grid).
 void CryOmni3DEngine_Atlantis::setArrowCursor() {
-	if (_cursorSprites.size() <= 8)
+	// The original's normal pointer: CURSEURS frame 6, drawn by FUN_0042d558
+	// (@ 0x0042d5b9) in the menus, the puzzles and the inventory bar.
+	if (_cursorSprites.size() <= 6)
 		return;
-	const CursorSpr &spr = _cursorSprites[8];
+	const CursorSpr &spr = _cursorSprites[6];
 	if (spr.pixels.empty())
 		return;
 	setBlendedCursor(spr.w, spr.h, spr.pixels.data(), spr.blend.data(),

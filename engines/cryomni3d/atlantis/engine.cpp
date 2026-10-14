@@ -503,9 +503,18 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	// Cryo logo and pre-intro cinematics before the player screen (skipped
 	// when launched directly into a save).
 	if (bootSlot < 0) {
-		// [UNKNOWN] which player and pace the exe uses for these two.
-		playTransitionVideo("LOGO15N.HNM");
-		playTransitionVideo("PREINTRO.HNM");
+		// atlantis.exe @ 0x0041960a..0x004196cc: both through the transition
+		// player at the cinema pace (65 ms), with a 200-tick (1 s) busy wait
+		// between them that reads no input.
+		playTransitionVideo("LOGO15N.HNM", uint(-1), uint(-1), kCinemaFrameMs);
+		const uint32 waitStart = g_system->getMillis();
+		while (g_system->getMillis() - waitStart < 1000 && !shouldAbort()) {
+			Common::Event ev;
+			while (g_system->getEventManager()->pollEvent(ev)) {
+			}
+			g_system->delayMillis(10);
+		}
+		playTransitionVideo("PREINTRO.HNM", uint(-1), uint(-1), kCinemaFrameMs);
 	}
 	if (bootSlot >= 0) {
 		// Launched directly into a save from the ScummVM launcher: skip the
