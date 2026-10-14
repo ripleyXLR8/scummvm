@@ -172,6 +172,7 @@ bool parseOriginalCheckpoint(const byte *b, uint32 size, OrigCheckpoint &cp) {
 	cp.hiddenPersos.clear();
 	for (int32 i = 0; i < hidden && i < 256; i++)
 		cp.hiddenPersos.push_back((int16)READ_LE_UINT16(b + 0x842 + 2 * i));
+	cp.disc = b[0xa4e];
 	return true;
 }
 

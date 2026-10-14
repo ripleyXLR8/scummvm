@@ -81,6 +81,7 @@ struct OrigCheckpoint {
 	int32 guestId[4] = {};           // 0x82a
 	uint8 guestSprite[4] = {};
 	Common::Array<int> hiddenPersos; // 0x83e count, 0x842 int16 ids
+	uint8 disc = 1;                  // 0xa4e, the disc in use (1..4)
 };
 bool parseOriginalCheckpoint(const byte *data, uint32 size, OrigCheckpoint &out);
 

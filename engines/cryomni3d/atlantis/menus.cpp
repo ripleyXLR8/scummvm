@@ -1243,6 +1243,72 @@ bool CryOmni3DEngine_Atlantis::confirmQuit(const Graphics::ManagedSurface &bg) {
 	return false;
 }
 
+// atlantis.exe FUN_0041eda8 (atlantis-re: functions/ui-FUN_0041eda8.md).
+// FUN_0041cc28 dims the screen in place (FUN_004108e0: each 5-6-5 channel
+// c becomes c - c / 2) and keeps it; the loop draws CDnMENU.TXT (menu 7 +
+// disc) over it and presents, until the hovered record is 3 (OK) on a click
+// or 1000 ticks of the 200 Hz timer (5 s) have passed since the loop began;
+// then the disc's archive is opened and its label checked (always found:
+// the port reads every disc), FUN_0041ce8c puts the screen back, and
+// 0x00772913 = disc.
+void CryOmni3DEngine_Atlantis::changeDisc(uint discIdx) {
+	if (discIdx > 3)
+		discIdx = 3;
+	const Common::String name = Common::String::format("CD%uMENU.TXT", discIdx + 1);
+	debugC(1, kDebugScript, "changeDisc: %s (disc %u -> %u)", name.c_str(), _currentDisc, discIdx + 1);
+
+	Graphics::PixelFormat fmt = g_system->getScreenFormat();
+	Graphics::ManagedSurface saved(640, 480, fmt);
+	{
+		Graphics::Surface *scr = g_system->lockScreen();
+		if (scr)
+			saved.blitFrom(*scr);
+		g_system->unlockScreen();
+	}
+	Graphics::ManagedSurface bg(640, 480, fmt);
+	bg.blitFrom(saved);
+	if (fmt.bytesPerPixel == 2) {
+		// 0xf79e (5-6-5) / 0xfbde (5-5-5): the low bit of each channel cleared
+		const uint16 mask = (fmt.gLoss == 2) ? 0xf79e : 0xfbde;
+		for (int y = 0; y < 480; y++) {
+			uint16 *row = (uint16 *)bg.getBasePtr(0, y);
+			for (int x = 0; x < 640; x++)
+				row[x] = (uint16)(row[x] - ((row[x] & mask) >> 1));
+		}
+	}
+
+	MenuLayout layout;
+	if (loadMenuLayout(name.c_str(), layout)) {
+		Graphics::ManagedSurface surf(640, 480, fmt);
+		Common::Array<Common::Rect> hitRects;
+		clearKeys();
+		showMouse(true);
+		setArrowCursor();
+		const uint32 start = g_system->getMillis();
+		int hovered = -1;
+		while (!shouldAbort()) {
+			pollEvents();
+			hovered = hitTestMenu(layout, hitRects, getMousePos());
+			surf.blitFrom(bg);
+			renderMenuLayout(surf, layout, hovered, hitRects);
+			g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
+			g_system->updateScreen();
+			if (hovered == 3 && getCurrentMouseButton() == 1) {
+				waitMouseRelease();
+				break;
+			}
+			if (g_system->getMillis() - start >= 5000)   // 1000 ticks of 5 ms
+				break;
+			musicUpdate();
+			g_system->delayMillis(10);
+		}
+	}
+
+	g_system->copyRectToScreen(saved.getPixels(), saved.pitch, 0, 0, 640, 480);
+	g_system->updateScreen();
+	_currentDisc = (uint8)(discIdx + 1);
+}
+
 // In-game (Escape) menu over a panorama snapshot.  Reproduces MAINMENU.TXT's
 // three buttons by ordinal (LOAD GAME / OPTIONS MENU / QUIT GAME — never by
 // label text, so localized discs work).  Returns 0 = resume, 28 = load (sets

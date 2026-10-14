@@ -530,6 +530,13 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 	else if (key == "anglewarpy")
 		_omni3dMan.setBeta(conAngleRadians(value));
 
+	// ChangeCd=n: the disc prompt for disc n, whatever the current disc
+	// (atlantis.exe FUN_0042a100 @ 0x0042a4c4: FUN_0041eda8(n - 1)).
+	if (key == "changecd") {
+		changeDisc((uint)(value - 1) & 0xff);
+		return;
+	}
+
 	// Guests (atlantis.exe FUN_0042a100; atlantis-re:
 	// functions/scripts-guests.md).  HideGuest/ShowGuest store no variable.
 	if (key == "hideguest" || key == "showguest") {

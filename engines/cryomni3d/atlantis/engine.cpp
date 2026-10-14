@@ -567,8 +567,13 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 		_isPlaying = true;
 		if (nextStep == 28)
 			loadGame(_loadedSave);        // load: restores state + _nextPlaceId
-		else
+		else {
+			// FUN_0042de5c with no checkpoint: the saved disc is 1 (@ 0x0042e285
+			// path, 0x00772914 = 1), asked for when another one is in use.
+			if (_currentDisc != 1)
+				changeDisc(0);
 			changeChapter(1);             // new game (also the fallback)
+		}
 
 		gameStep();
 

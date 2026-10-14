@@ -474,6 +474,13 @@ private:
 	uint displayInGameMenu();
 	// "ARE YOU SURE ?" quit confirmation over `bg`; true = confirmed.
 	bool confirmQuit(const Graphics::ManagedSurface &bg);
+	// atlantis.exe FUN_0041eda8: the "PLEASE INSERT CD n" prompt (CDnMENU.TXT,
+	// disc = discIdx + 1, clamped to 4) over the dimmed screen, until OK or
+	// 1000 ticks; then the disc becomes the current one.
+	void changeDisc(uint discIdx);
+	// 0x00772913: the disc in use, 1 at boot (WinMain takes the first of
+	// bigcd1..4.big that opens; all are present here).
+	uint8 _currentDisc = 1;
 	// Options menu over `bg`: SUBTITLES + OMNI 3D (look-Y) toggles, persisted.
 	void displayOptionsMenu(const Graphics::ManagedSurface &bg);
 	// Sound menu over `bg`: four draggable volume sliders (master/music/sfx/

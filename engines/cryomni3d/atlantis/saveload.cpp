@@ -45,7 +45,7 @@ static const int32  kSaveSize        = 1792;
 static const uint   kSaveDescriptionLen = 20;
 static const uint   kWAMNameLen      = 32;
 static const uint32 kExtMagic        = 0x41544C53u;  // 'ATLS'
-static const uint32 kExtVersion      = 9;
+static const uint32 kExtVersion      = 10;
 static const uint   kSaveInvBaseSlots = 20;   // inventory slots in the base block
 
 // Player-profile file (cannot collide with the "atlantis.NNNN" save files).
@@ -75,6 +75,7 @@ struct PortSave {
 	bool guestsShown = true;
 	uint8 incPerso = 0;
 	uint32 lastVue = 1;
+	uint8 disc = 1;                      // ext v10: 0x00772913, .gam field 0xa4e
 };
 
 static void writePortSave(Common::WriteStream *out, const PortSave &s) {
@@ -169,6 +170,8 @@ static void writePortSave(Common::WriteStream *out, const PortSave &s) {
 	out->writeUint32BE(extra);
 	for (uint i = kSaveInvBaseSlots; i < s.inventory.size(); i++)
 		out->writeUint32BE(s.inventory[i]);
+	// ext v10: the disc in use (the original's .gam keeps it at 0xa4e).
+	out->writeByte(s.disc);
 }
 
 void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &saveName) {
@@ -207,6 +210,7 @@ void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &save
 	s.guestsShown = _guestsShown;
 	s.incPerso = _incPersoCount;
 	s.lastVue = (uint32)_lastVue;
+	s.disc = _currentDisc;
 	writePortSave(out, s);
 	out->finalize();
 	delete out;
@@ -292,6 +296,7 @@ void CryOmni3DEngine_Atlantis::importOriginalSaves() {
 			}
 			s.incPerso = cp.incPerso;
 			s.lastVue = (uint32)cp.lastVue;
+			s.disc = cp.disc;
 			Common::OutSaveFile *out = _saveFileMan->openForSaving(getSaveStateName(slot));
 			if (!out)
 				continue;
@@ -361,6 +366,7 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	uint8 savedIncPerso = 0;
 	int savedMusicTrack = 0;
 	int32 savedLastVue = -1;                // ext v8
+	int savedDisc = -1;                     // ext v10
 	bool hasExt = (in->size() > kSaveSize);
 	if (hasExt) {
 		uint32 magic = in->readUint32BE();
@@ -426,6 +432,8 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 				for (uint32 i = 0; i < extra && i < 64 && !in->eos(); i++)
 					savedInv.push_back(in->readUint32BE());
 			}
+			if (ver >= 10 && !in->eos())
+				savedDisc = in->readByte();
 		}
 	}
 	delete in;
@@ -437,6 +445,10 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	// on top of the loaded state.  The original never goes through chapter
 	// 1's WAM or CON here.
 	_currentChapter = chapter;
+	// Step 5: the saved disc, when it is not the current one (@ 0x0042e330:
+	// FUN_0041eda8(disc - 1)).  Saves older than ext v10 have none.
+	if (savedDisc >= 0 && savedDisc != _currentDisc)
+		changeDisc((uint)(savedDisc - 1) & 0xff);
 	Common::String wamName(wamNameC);
 	if (!wamName.empty())
 		setupWAMByName(wamName);   // FUN_00421ebc on the saved WAM name
