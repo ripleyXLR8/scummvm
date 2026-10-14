@@ -1294,11 +1294,14 @@ void CryOmni3DEngine_Atlantis::changeDisc(uint discIdx) {
 			g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
 			g_system->updateScreen();
 			if (hovered == 3 && getCurrentMouseButton() == 1) {
+				debugC(1, kDebugScript, "changeDisc: OK after %u ms", g_system->getMillis() - start);
 				waitMouseRelease();
 				break;
 			}
-			if (g_system->getMillis() - start >= 5000)   // 1000 ticks of 5 ms
+			if (g_system->getMillis() - start >= 5000) {   // 1000 ticks of 5 ms
+				debugC(1, kDebugScript, "changeDisc: timeout");
 				break;
+			}
 			musicUpdate();
 			g_system->delayMillis(10);
 		}
