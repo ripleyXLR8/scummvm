@@ -97,7 +97,7 @@ void CryOmni3DEngine_Atlantis::loadConScript(int chapter) {
 	// chapters 17-24.  A genuine new game still starts clean: changeChapter()
 	// clears the list before the first loadConScript, and loadGame restores
 	// the saved list.
-	_sujEnabled.clear();
+	_subjects.clear();
 
 	if (_conVarNames.empty()) {
 		Common::ScopedPtr<Common::SeekableReadStream> v(openBigFileStream(kFileTypeScript, "VARIAS.CON"));
@@ -369,12 +369,15 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 	// so that a value search running past the line sees the same bytes.  See
 	// atlantis-re: functions/scripts-FUN_0042a100.md.
 	ConSetCommand set;
+	Common::Array<char> lineText;
+	const Common::Array<char> *setText = &_conScript.text();
 	if (offset >= 0) {
 		parseConSet(_conVarNames, _conScript.text(), (uint32)offset, set);
 	} else {
 		Common::String line = "/set(" + cmd + ")\r\n";
-		Common::Array<char> text(line.c_str(), line.size());
-		parseConSet(_conVarNames, text, 0, set);
+		lineText = Common::Array<char>(line.c_str(), line.size());
+		setText = &lineText;
+		parseConSet(_conVarNames, lineText, 0, set);
 	}
 	if (!set.valid)
 		return;
@@ -399,50 +402,15 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 
 	const Common::String &key = set.name;
 	const int value = set.value;
-	// The raw text after the key, for the commands that read more than one
-	// number (EnableSuj,perso=suj,suj...).
-	const char *p = cmd.c_str();
-	while (*p && !strchr("=<>!#,", *p))
-		p++;
-
-	// enableSuj,persoId=suj1,suj2,... / disableSuj,persoId=sujId[,sujId...]
-	if (key == "enablesuj" && *p == ',') {
-		p++;
-		int perso = atoi(p);
-		while (*p && *p != '=') p++;
-		if (*p == '=') {
-			p++;
-			Common::Array<int> &sujs = sujsForPerso(perso);
-			while (*p) {
-				int suj = atoi(p);
-				if (suj > 0) {
-					bool found = false;
-					for (int s : sujs) { if (s == suj) { found = true; break; } }
-					if (!found) sujs.push_back(suj);
-				}
-				while (*p && *p != ',' && *p != ')') p++;
-				if (*p == ',') p++; else break;
-			}
-		}
+	// EnableSuj,perso=suj,suj... / DisableSuj,perso=suj,... (FUN_0042a100
+	// @ 0x0042a4ef..0x0042a560: FUN_00425f6c / FUN_0042606c on the text from
+	// the first digit).
+	if (key == "enablesuj") {
+		_subjects.enable(*setText, set.valuePos);
 		return;
 	}
-	if (key == "disablesuj" && *p == ',') {
-		p++;
-		int perso = atoi(p);
-		while (*p && *p != '=') p++;
-		if (*p == '=') {
-			p++;
-			Common::Array<int> &sujs = sujsForPerso(perso);
-			while (*p) {
-				int suj = atoi(p);
-				if (suj > 0) {
-					for (int i = (int)sujs.size() - 1; i >= 0; i--)
-						if (sujs[i] == suj) { sujs.remove_at(i); break; }
-				}
-				while (*p && *p != ',' && *p != ')') p++;
-				if (*p == ',') p++; else break;
-			}
-		}
+	if (key == "disablesuj") {
+		_subjects.disable(*setText, set.valuePos);
 		return;
 	}
 
@@ -831,12 +799,7 @@ void CryOmni3DEngine_Atlantis::talkToGuest(int32 guestId) {
 	// the subject path, after the JBE at 0x0042592a), then restored.
 	byte saved[AtlantisGuests::kSlots];
 	memcpy(saved, _guests.sprite, sizeof(saved));
-	bool hasSubjects = false;
-	for (const SujState &ss : _sujEnabled)
-		if (ss.persoId == guestId) {
-			hasSubjects = !ss.sujs.empty();
-			break;
-		}
+	const bool hasSubjects = !_subjects.subjects(guestId).empty();
 	if (hasSubjects)
 		for (uint i = 0; i < _guests.count; i++)
 			if (_guests.id[i] != guestId)
@@ -957,25 +920,6 @@ void CryOmni3DEngine_Atlantis::runDepartureSelSections(int departZone) {
 		playConSection(sec);
 		break;
 	}
-}
-
-Common::Array<int> &CryOmni3DEngine_Atlantis::sujsForPerso(int persoId) {
-	for (SujState &ss : _sujEnabled)
-		if (ss.persoId == persoId) return ss.sujs;
-	SujState ns;
-	ns.persoId = persoId;
-	_sujEnabled.push_back(ns);
-	return _sujEnabled.back().sujs;
-}
-
-bool CryOmni3DEngine_Atlantis::isSujEnabled(int persoId, int sujId) const {
-	for (const SujState &ss : _sujEnabled) {
-		if (ss.persoId != persoId) continue;
-		for (int s : ss.sujs)
-			if (s == sujId) return true;
-		return false;
-	}
-	return false;
 }
 
 void CryOmni3DEngine_Atlantis::playArcMagique() {
@@ -1099,8 +1043,8 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 	// subjects, or when its list holds the chosen subject (FUN_004264a8); a
 	// cancelled menu stops the walk at the first /suj entry.
 	Common::Array<int> sujs;
-	for (const SujState &ss : _sujEnabled)
-		if (ss.persoId == persoId) { sujs = ss.sujs; break; }
+	for (uint8 s : _subjects.subjects(persoId))
+		sujs.push_back(s);
 	const bool persoHasMenu = !sujs.empty();
 	int chosen = -1;
 	if (persoHasMenu) {

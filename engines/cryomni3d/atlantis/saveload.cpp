@@ -104,11 +104,19 @@ void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &save
 	for (int pid : _hiddenPersos)
 		out->writeSint32BE(pid);
 
-	out->writeUint32BE((uint32)_sujEnabled.size());
-	for (const SujState &ss : _sujEnabled) {
-		out->writeSint32BE(ss.persoId);
-		out->writeUint32BE((uint32)ss.sujs.size());
-		for (int s : ss.sujs)
+	// The subject table as (perso, count, ids) for the non-empty records.
+	uint32 nSujPersos = 0;
+	for (uint r = 0; r < ConSubjects::kRecords; r++)
+		if (!_subjects.subjects(0x200 + (int)r).empty())
+			nSujPersos++;
+	out->writeUint32BE(nSujPersos);
+	for (uint r = 0; r < ConSubjects::kRecords; r++) {
+		const Common::Array<uint8> &sujs = _subjects.subjects(0x200 + (int)r);
+		if (sujs.empty())
+			continue;
+		out->writeSint32BE(0x200 + (int32)r);
+		out->writeUint32BE((uint32)sujs.size());
+		for (uint8 s : sujs)
 			out->writeSint32BE(s);
 	}
 
@@ -196,7 +204,7 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 
 	// Extended block.
 	Common::Array<int> savedHiddenPersos;
-	Common::Array<SujState> savedSujEnabled;
+	ConSubjects savedSubjects;
 	Common::HashMap<Common::String, int> savedGameVars;
 	uint32 savedCONChapter = 0;
 	Common::Array<byte> savedConCounters;   // empty: saved before ext v5
@@ -219,12 +227,12 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 
 			uint32 nSuj = in->readUint32BE();
 			for (uint32 i = 0; i < nSuj && !in->eos(); i++) {
-				SujState ss;
-				ss.persoId = in->readSint32BE();
+				const int32 persoId = in->readSint32BE();
 				uint32 nK = in->readUint32BE();
+				Common::Array<uint8> sujs;
 				for (uint32 j = 0; j < nK && !in->eos(); j++)
-					ss.sujs.push_back(in->readSint32BE());
-				savedSujEnabled.push_back(ss);
+					sujs.push_back((uint8)in->readSint32BE());
+				savedSubjects.setSubjects(persoId, sujs);
 			}
 
 			uint32 nVars = in->readUint32BE();
@@ -316,7 +324,7 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 
 	if (hasExt) {
 		_hiddenPersos = savedHiddenPersos;
-		_sujEnabled   = savedSujEnabled;
+		_subjects     = savedSubjects;
 		for (const auto &kv : savedGameVars)
 			if (isPersistentGameVar(kv._key))
 				_gameVars[kv._key] = kv._value;

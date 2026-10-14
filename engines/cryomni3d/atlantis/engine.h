@@ -299,10 +299,6 @@ private:
 	// FUN_00425dd0 (drop the held object on its zone).
 	void runConClick();
 	void showPerso(int perso);
-	// Per-NPC enabled-subject table (atlantis.exe 0x602f10): /set(enablesuj)
-	// appends, /set(disablesuj) removes.  sujsForPerso creates-on-demand.
-	Common::Array<int> &sujsForPerso(int persoId);
-	bool isSujEnabled(int persoId, int sujId) const;
 
 	// --- Dialog playback (dialog.cpp) -------------------------------------
 	// Resolve a dialog line's speaker name to a perso ID.  Transcribes the
@@ -695,12 +691,8 @@ private:
 	// Cleared on chapter change.
 	Common::Array<int> _hiddenPersos;
 
-	// Per-NPC enabled-subject state (keyed by persoId).
-	struct SujState {
-		int persoId;
-		Common::Array<int> sujs;
-	};
-	Common::Array<SujState> _sujEnabled;
+	// The per-NPC subject table (atlantis.exe 0x00602f10).
+	ConSubjects _subjects;
 
 	// Panorama alpha captured when an NPC interaction starts (the direction
 	// the player faced on the click); the baseline for a line's default

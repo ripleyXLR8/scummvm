@@ -175,10 +175,99 @@ void parseConSet(const ConVariableNames &names, const Common::Array<char> &text,
 	for (uint i = 0; i < 16; i++) {
 		if (isAtoiDigit(t.at(p + i))) {
 			out.value = atoiAt(t, p + i);
+			out.valuePos = p + i;
 			out.valid = true;
 			return;
 		}
 	}
+}
+
+void ConSubjects::clear() {
+	for (uint i = 0; i < kRecords; i++)
+		_records[i].clear();
+}
+
+namespace {
+
+// The list walk of FUN_00425f6c / FUN_0042606c: a subject id is a byte
+// (atoi truncated), the pointer then steps 2, +1 above 9, +1 above 99 (on
+// the byte), until the byte before it is ')'.  The original reads on past
+// the line when no ')' falls there (a malformed list); the port stops at
+// the end of the text.
+template<typename Fn>
+void walkSubjectList(const TextCursor &t, uint32 p, Fn fn) {
+	for (;;) {
+		const uint8 subject = (uint8)atoiAt(t, p);
+		fn(subject);
+		p += 2;
+		if (subject > 9)
+			p++;
+		if (subject > 99)
+			p++;
+		if (t.at(p - 1) == ')')
+			break;
+		if (p > t.text.size()) {
+			warning("CON EnableSuj / DisableSuj: no ')' ends the subject list");
+			break;
+		}
+	}
+}
+
+} // End of anonymous namespace
+
+void ConSubjects::enable(const Common::Array<char> &text, uint32 pos) {
+	const TextCursor t(text);
+	// FUN_00425f6c: record atoi - 0x200; the list starts 4 bytes on (a
+	// 3-digit perso and '=').
+	const int32 record = atoiAt(t, pos) - 0x200;
+	if (record < 0 || record >= (int32)kRecords) {
+		// The original writes outside the table.
+		warning("CON EnableSuj: perso %d outside the subject table", record + 0x200);
+		return;
+	}
+	Common::Array<uint8> &list = _records[record];
+	walkSubjectList(t, pos + 4, [&](uint8 subject) {
+		for (uint k = 0; k < list.size(); k++)
+			if (list[k] == subject)
+				return;
+		list.push_back(subject);
+	});
+}
+
+void ConSubjects::disable(const Common::Array<char> &text, uint32 pos) {
+	const TextCursor t(text);
+	// FUN_0042606c: record = the low byte of atoi (the same record as
+	// EnableSuj for persos 0x200..0x2ff); the first match is removed and
+	// the entries after it shift down.
+	Common::Array<uint8> &list = _records[(uint8)atoiAt(t, pos)];
+	walkSubjectList(t, pos + 4, [&](uint8 subject) {
+		for (uint k = 0; k < list.size(); k++)
+			if (list[k] == subject) {
+				list.remove_at(k);
+				return;
+			}
+	});
+}
+
+const Common::Array<uint8> &ConSubjects::subjects(int persoId) const {
+	const int record = persoId - 0x200;
+	if (record < 0 || record >= (int)kRecords)
+		return _none;
+	return _records[record];
+}
+
+bool ConSubjects::has(int persoId, int subject) const {
+	const Common::Array<uint8> &list = subjects(persoId);
+	for (uint k = 0; k < list.size(); k++)
+		if (list[k] == subject)
+			return true;
+	return false;
+}
+
+void ConSubjects::setSubjects(int persoId, const Common::Array<uint8> &list) {
+	const int record = persoId - 0x200;
+	if (record >= 0 && record < (int)kRecords)
+		_records[record] = list;
 }
 
 float conAngleRadians(int32 value) {

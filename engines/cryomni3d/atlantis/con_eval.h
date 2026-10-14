@@ -64,6 +64,7 @@ struct ConSetCommand {
 	Common::String name;          // lower-case VARIAS.CON name of the key
 	int32 value = 0;
 	uint32 keyEnd = 0;            // text offset of the byte that ended the key
+	uint32 valuePos = 0;          // text offset of the first digit (value)
 };
 
 // FUN_0042a100's parse: from pos (the "/set"), skip to '(', copy the key up
@@ -73,6 +74,32 @@ struct ConSetCommand {
 // the first digit run among the 16 bytes from the terminator (none: invalid).
 void parseConSet(const ConVariableNames &names, const Common::Array<char> &text, uint32 pos,
                  ConSetCommand &out);
+
+// The per-perso subject table of atlantis.exe (0x00602f10): 0x100 records
+// of 0xe1 bytes, record perso - 0x200, holding a count byte and the subject
+// ids (one byte each, in 14-byte entries) in the order they were enabled.
+// See atlantis-re: functions/scripts-FUN_00425f6c.md.
+class ConSubjects {
+public:
+	static const uint kRecords = 0x100;
+
+	// FUN_00427634: memset(0x00602f10, 0, 0xe100).
+	void clear();
+	// FUN_00425f6c (EnableSuj) and FUN_0042606c (DisableSuj), on the CON
+	// text from pos, the first digit after the key (ConSetCommand::valuePos).
+	void enable(const Common::Array<char> &text, uint32 pos);
+	void disable(const Common::Array<char> &text, uint32 pos);
+
+	// The enabled subjects of a perso, in order (empty outside the table).
+	const Common::Array<uint8> &subjects(int persoId) const;
+	bool has(int persoId, int subject) const;
+	// For the saves.
+	void setSubjects(int persoId, const Common::Array<uint8> &subjects);
+
+private:
+	Common::Array<uint8> _records[kRecords];
+	Common::Array<uint8> _none;
+};
 
 // FUN_0042a100, AngleWarpX= / AngleWarpY=: the view angle in radians,
 // value * pi / 180 computed on the x87 and stored as a float (pi is the
