@@ -41,6 +41,11 @@ public:
 	// Reproduce the original decoder's RGB565 output bit for bit (its green
 	// clip and channel truncation, and its signed IDCT mask compare).
 	void setBitExact(bool bitExact) { _bitExact = bitExact; }
+	// Video mode: decode into two caller-owned buffers of width * height
+	// pixels each instead of fresh zeroed ones; the first is the first
+	// frame's reference.  Their content is kept from one video to the next
+	// (Atlantis allocates them once and never clears them).
+	virtual void setVideoBuffers(byte *first, byte *second) {}
 protected:
 	HNM6Decoder(uint16 width, uint16 height, const Graphics::PixelFormat &format,
 	            bool videoMode = false) : Codec(),

@@ -695,16 +695,14 @@ public:
 	~DecoderImpl() override;
 
 	const Graphics::Surface *decodeFrame(Common::SeekableReadStream &stream) override;
+	void setVideoBuffers(byte *first, byte *second) override;
 
 private:
+	bool _externalBuffers = false;
 	uint32 _bufferSize;
 	byte *_buffer;
 	Graphics::Surface _surface;
 	Graphics::Surface _surfaceOld;
-	// Video mode: both surfaces in one zeroed block, with kBlockPadRows rows
-	// before and after it (the farthest motion source is 127 rows away).
-	static const uint kBlockPadRows = 136;
-	byte *_block = nullptr;
 
 	bool _keyframe;
 	HNM6::BitBuffer _bitbuf;
@@ -1483,12 +1481,23 @@ DecoderImpl::DecoderImpl(uint16 width, uint16 height, const Graphics::PixelForma
 
 DecoderImpl::~DecoderImpl() {
 	delete [] _buffer;
-	if (_block) {
-		delete [] _block;
-	} else {
+	if (!_externalBuffers) {
 		_surface.free();
 		_surfaceOld.free();
 	}
+}
+
+void DecoderImpl::setVideoBuffers(byte *first, byte *second) {
+	if (!_videoMode || !first || !second)
+		return;
+	if (!_externalBuffers) {
+		_surface.free();
+		_surfaceOld.free();
+	}
+	const uint pitch = _width * _format.bytesPerPixel;
+	_surface.init(_width, _height, pitch, first, _format);
+	_surfaceOld.init(_width, _height, pitch, second, _format);
+	_externalBuffers = true;
 }
 
 const Graphics::Surface *DecoderImpl::decodeFrame(Common::SeekableReadStream &stream) {

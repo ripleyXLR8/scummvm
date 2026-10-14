@@ -192,9 +192,12 @@ bool HNMDecoder::loadStream(Common::SeekableReadStream *stream) {
 			}
 			_stream->seek(savedPos);
 		}
-		_videoTrack = new HNM6VideoTrack(width, height, frameSize, frameCount,
-		                                 _regularFrameDelayMs, audioSampleRate,
-		                                 _format, hnm6WarpMode);
+		HNM6VideoTrack *track = new HNM6VideoTrack(width, height, frameSize, frameCount,
+		                                           _regularFrameDelayMs, audioSampleRate,
+		                                           _format, hnm6WarpMode);
+		if (_hnm6Buffers && !hnm6WarpMode)
+			track->setVideoBuffers(_hnm6Buffers, _hnm6Buffers + width * height * _format.bytesPerPixel);
+		_videoTrack = track;
 	} else {
 		// We should never be here
 		close();
@@ -1121,6 +1124,10 @@ HNMDecoder::HNM6VideoTrack::HNM6VideoTrack(uint32 width, uint32 height, uint32 f
 
 HNMDecoder::HNM6VideoTrack::~HNM6VideoTrack() {
 	delete _decoder;
+}
+
+void HNMDecoder::HNM6VideoTrack::setVideoBuffers(byte *first, byte *second) {
+	_decoder->setVideoBuffers(first, second);
 }
 
 uint16 HNMDecoder::HNM6VideoTrack::getWidth() const {

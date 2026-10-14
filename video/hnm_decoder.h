@@ -63,6 +63,11 @@ public:
 	void close() override;
 
 	void setRegularFrameDelay(uint32 regularFrameDelay) { _regularFrameDelayMs = regularFrameDelay; }
+	/** HNM6 video (not warp) only: decode into a caller-owned block of two
+	 *  frame buffers (2 * width * height pixels of the output format) that
+	 *  keeps its content from one video to the next, as Atlantis does.
+	 *  Set before loadStream; default none (fresh zeroed buffers). */
+	void setHNM6VideoBuffers(byte *block) { _hnm6Buffers = block; }
 	/** Atlantis dialog UBBs interleave the IV (CLUT8 video) chunk with an IA
 	 *  chunk that contains the per-frame compositor opcode stream (3 op
 	 *  types — SKIP / RUN-shaded / RUN-per-pixel-shade — consumed by the
@@ -201,6 +206,7 @@ private:
 		/** Decode a video chunk. */
 		void decodeChunk(byte *data, uint32 size,
 		                 uint16 chunkType, uint16 flags) override;
+		void setVideoBuffers(byte *first, byte *second);
 	private:
 		Image::HNM6Decoder *_decoder;
 		const Graphics::Surface *_surface;
@@ -250,6 +256,7 @@ private:
 	byte *_initialPalette;
 
 	uint32 _regularFrameDelayMs;
+	byte *_hnm6Buffers = nullptr;
 	// These two pointer are owned by VideoDecoder
 	HNMVideoTrack *_videoTrack;
 	HNMAudioTrack *_audioTrack;
