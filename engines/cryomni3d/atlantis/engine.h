@@ -312,13 +312,15 @@ private:
 	// frame (empty = mouth baked into the UBB).  `camNum` (2..5) selects the
 	// per-cam zoom; `hasAngle`/angleX/angleY rotate the panorama under the
 	// head; `interactiveDialog` is reserved for the sprite-hiding the NPC
-	// layer adds later.  The F3DC mouth pipeline layers on top once that
-	// subsystem lands.
+	// layer adds later.  `dialRow` is the INITDIAL row of the speaker: its 3D
+	// head (DialogHead, the animated mouth) is drawn over every UBB frame
+	// when the line has a .SYC lip-sync track (-1: no head).
 	void playSingleConLine(int sectionId, char track, const Common::String &text,
 	                       const Common::String &videoName = "",
 	                       const Common::String &spfBaseName = "",
 	                       bool hasAngle = false, int angleX = 0, int angleY = 0,
-	                       int camNum = 2, bool interactiveDialog = true);
+	                       int camNum = 2, bool interactiveDialog = true,
+	                       int dialRow = -1);
 	// True when subtitles are enabled in the ScummVM options.
 	bool showSubtitles() const;
 	// Draw subject icon sprite `sprIdx` centred at (cx, cy) onto dst (RGB565).
@@ -534,15 +536,19 @@ private:
 
 	// Per-character dialog resource table parsed from DIALOG\INITDIAL.TXT.
 	// camUBB[0..3] = UBB talking-head video basenames for cameras 2..5 ("none"
-	//   or empty = unavailable).  camSPF/animMBase/s3dBase/anim3DCBase name the
-	//   per-cam SPF overlay, mouth vertex animation, scene-graph mesh and body
-	//   mesh used by the F3DC mouth pipeline (consumed once that layer lands).
+	//   or empty = unavailable).  camSPF names the per-cam SPF overlay;
+	//   anim3DCBase, anim3DABase, animMBase and s3dBase the 3D head's .3DC
+	//   mesh, *A.3DA head animation, *M.3DA mouth shapes and .S3D tables
+	//   (DialogHead, head3d.h).  Only the first sub-record exists: every
+	//   shipped row is "1" and FUN_0042844c always selects sub-record 0
+	//   (0x004287c8, 0x00428a8a).
 	struct DialInitEntry {
 		Common::String camUBB[4];
 		Common::String camSPF[4];
 		Common::String animMBase;
 		Common::String s3dBase;
 		Common::String anim3DCBase;
+		Common::String anim3DABase;
 	};
 	Common::HashMap<int, DialInitEntry> _dialInitData;
 	int _heroPersoId;          // player character's persoId (INITDIAL "hero" row)

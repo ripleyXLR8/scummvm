@@ -49,6 +49,7 @@
 #include "cryomni3d/omni3d.h"
 #include "cryomni3d/atlantis/sprite_decode.h"
 #include "cryomni3d/atlantis/engine.h"
+#include "cryomni3d/atlantis/head3d.h"
 #include "cryomni3d/atlantis/subject_menu.h"
 #include "cryomni3d/atlantis/subtitle_layout.h"
 #include "cryomni3d/atlantis/sprite_blend.h"
@@ -112,6 +113,9 @@ void CryOmni3DEngine_Atlantis::loadDialInitData() {
 		// Column 2 = anim3DC basename (body mesh, DIALOG\PERSO\<base>.3DC).
 		if (!tok[2].equalsIgnoreCase("none"))
 			entry.anim3DCBase = tok[2];
+		// Column 3 = head animation (DIALOG\PERSO\<base>.3DA, FUN_00468990).
+		if (!tok[3].equalsIgnoreCase("none"))
+			entry.anim3DABase = tok[3];
 		// Columns 10..13 = per-cam SPF overlay basenames (optional).
 		for (int i = 0; i < 4; i++) {
 			if (10 + i < (int)tok.size() && !tok[10 + i].equalsIgnoreCase("none"))
@@ -466,7 +470,8 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		playSingleConLine(sec.id, (char)('A' + lineIdx++), item.line.text, vid,
 		                  spfBase,
 		                  effHasAngle, effAngleX, effAngleY, effCamNum,
-		                  /*interactiveDialog=*/sec.isCon);
+		                  /*interactiveDialog=*/sec.isCon,
+		                  (persoId > 0 && !isOffCam && !vid.empty()) ? dialRow : -1);
 		_gameVars["clicperso"] = 0;   // after every line (0x00428b39)
 	}
 	_gameVars["clicperso"] = savedClicPerso;   // 0x00428cb2
@@ -538,6 +543,25 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 // (SKIP leaves the cyclo panorama showing through, RUN paints palette[idx]
 // with optional edge anti-aliasing).  The animated mouth mesh and the SPF
 // overlays layer on top once the F3DC pipeline lands.
+namespace {
+
+// The 3D head's files, read from the BIG archives by their full path.
+class BigHeadSource : public HeadFileSource {
+public:
+	explicit BigHeadSource(BigFileArchive &big) : _big(big) {}
+	bool readFile(const Common::String &name, Common::Array<byte> &out) override {
+		Common::ScopedPtr<Common::SeekableReadStream> s(_big.createReadStreamForMember(Common::Path(name, '/')));
+		if (!s)
+			return false;
+		out.resize((uint)s->size());
+		return s->read(out.data(), out.size()) == out.size();
+	}
+private:
+	BigFileArchive &_big;
+};
+
+} // End of anonymous namespace
+
 void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
                                                   const Common::String &text,
                                                   const Common::String &videoName,
@@ -545,7 +569,8 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
                                                   bool hasAngle,
                                                   int angleX, int angleY,
                                                   int camNum,
-                                                  bool interactiveDialog) {
+                                                  bool interactiveDialog,
+                                                  int dialRow) {
 	(void)interactiveDialog;  // used by the NPC sprite-hiding layer (later PR)
 	const Graphics::PixelFormat fmt = g_system->getScreenFormat();
 	const int screenW = (int)g_system->getWidth();
@@ -571,11 +596,20 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 #ifdef USE_HNM
 	Video::HNMDecoder *bgDecoder = nullptr;
 	Graphics::Surface ubbConvFrame;
+	// The frame count of the UBB header (hnm + 0x10): the original rewinds
+	// there and the head animation's frame index restarts with it.
+	int ubbFrameCount = 0;
 	byte ubbPal[256 * 3];
 	memset(ubbPal, 0, sizeof(ubbPal));
 
 	if (!videoName.empty()) {
 		Common::SeekableReadStream *vs = openBigFileStream(kFileTypeDialog, videoName);
+		if (vs) {
+			// read before the decoder takes the stream
+			vs->seek(0x10);
+			ubbFrameCount = (int)vs->readUint32LE();
+			vs->seek(0);
+		}
 		if (!vs) {
 			debugC(1, kDebugScript, "playSingleConLine: %s not found in BigFile",
 			      videoName.c_str());
@@ -690,6 +724,34 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 	// FUN_00425304 every frame: the place sprites animate, the persos are not
 	// drawn.  The voice-only and off0 players do neither.
 	const bool talkingHead = (camNum != 0) && !_dialKeepScreen;
+
+#ifdef USE_HNM
+	// The 3D head drawn over the UBB, the animated mouth (FUN_0042ee88 step
+	// 4: the speaker's INITDIAL row, its first sub-record, the camera, and
+	// the line's lip-sync track wav\ata<NNNN><letter>.syc read by
+	// FUN_0042f9e8).  The original draws it into the RGB565 back buffer.
+	Common::ScopedPtr<DialogHead> head;
+	if (talkingHead && dialRow >= 0 && bgDecoder && ubbConvFrame.getPixels() &&
+	        fmt == Graphics::PixelFormat(2, 5, 6, 5, 0, 11, 5, 0, 0) &&
+	        ubbConvFrame.w == 640 && ubbConvFrame.h == 480 && camNum >= 2 && camNum <= 5) {
+		Common::HashMap<int, DialInitEntry>::const_iterator it = _dialInitData.find(dialRow);
+		if (it != _dialInitData.end() && !it->_value.s3dBase.empty() && !it->_value.anim3DCBase.empty() &&
+		        !it->_value.anim3DABase.empty() && !it->_value.animMBase.empty()) {
+			BigHeadSource src(_bigFile);
+			head.reset(new DialogHead());
+			const Common::String syc = Common::String::format("ATA%04d%c.SYC", sectionId, track);
+			if (!head->load(src, it->_value.s3dBase, it->_value.anim3DCBase, it->_value.anim3DABase,
+			                it->_value.animMBase, camNum, syc)) {
+				// No .SYC: the original plays the line voice-only
+				// (FUN_0042ee88 step 3); the port still shows the UBB.
+				debugC(1, kDebugScript, "playSingleConLine: no head for row %d (%s)", dialRow, syc.c_str());
+				head.reset();
+			}
+		}
+	}
+	bool headTimeStarted = false, headEnded = false;
+	uint32 headTime0 = 0;
+#endif
 	if (talkingHead) {
 		_spritesHideNpcs = true;
 		recompositeSpriteLayer();
@@ -767,6 +829,27 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 							else               memcpy(dst, &c, bpp);
 						}
 					}
+				}
+
+				// The 3D head (FUN_0044dd10 with the frame index of the UBB
+				// loop, FUN_0044e860 at the ms elapsed since the first frame,
+				// or FUN_0044e2e0 once it has returned a negative value, then
+				// FUN_0044c9c0), drawn after the UBB composite and before the
+				// SPF frame as in FUN_0042ee88's loop.
+				if (head) {
+					const int cur = bgDecoder->getCurFrame();
+					head->setFrame(ubbFrameCount > 0 ? cur % ubbFrameCount : cur);
+					const uint32 now = g_system->getMillis();
+					if (!headTimeStarted) {
+						headTime0 = now;
+						headTimeStarted = true;
+					}
+					if (headEnded)
+						head->neutral();
+					else if (head->lipsync((int32)(now - headTime0)) < 0)
+						headEnded = true;
+					head->transform();
+					head->render((uint16 *)ubbConvFrame.getPixels(), ubbConvFrame.pitch / 2);
 				}
 
 				// Per-cam SPF overlay (INITDIAL columns 10..13).  The
