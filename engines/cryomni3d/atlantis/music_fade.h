@@ -43,9 +43,18 @@ struct AtlantisMusicFade {
 	uint8 vol;          // 0x00495e72: the music volume (sound menu)
 	uint32 ticks;       // 0x006ce118
 	uint32 lastStep;    // 0x006ce0f4
+	// FUN_0042f7a8's second part: the NewSound sample 0x006ce110 (cinema
+	// sound) fading out after a cut-short video.
+	uint8 sfxMode;      // 0x00495eb0: 2 fade out
+	int32 sfxVol;       // 0x006ce128
+	int32 sfxVol0;      // its start, 0x00495e73 (the effects volume)
+	uint32 sfxLast;     // 0x006ce104
+	bool sfxChanged;    // set by tick: apply sfxVol
+	bool sfxStop;       // set by tick: stop the sample
 
 	AtlantisMusicFade() : cur(0), mode(0), downTarget(-1), upTarget(0), percent(80), vol(127),
-		ticks(0), lastStep(0) {}
+		ticks(0), lastStep(0), sfxMode(0), sfxVol(0), sfxVol0(127), sfxLast(0), sfxChanged(false),
+		sfxStop(false) {}
 
 	// One tick of FUN_00431150.
 	void tick() {
@@ -75,6 +84,19 @@ struct AtlantisMusicFade {
 					mode = 0;
 					downTarget = -1;
 				}
+			}
+		}
+		if (sfxMode == 2) {
+			if (ticks - sfxLast > 4) {
+				sfxLast = ticks;
+				sfxVol -= 2;
+				if (sfxVol < 0)
+					sfxVol = 0;
+				sfxChanged = true;
+			}
+			if (sfxVol < 1) {
+				sfxStop = true;
+				sfxMode = 0;
 			}
 		}
 		// FUN_0042f974: the step comes before the test, so a fade that

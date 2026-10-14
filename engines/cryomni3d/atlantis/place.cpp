@@ -24,6 +24,7 @@
 // sections, NPC sprite compositing, transition videos and autosave are layered
 // on as their subsystems land.
 
+#include "common/config-manager.h"
 #include "common/debug.h"
 #include "common/memstream.h"
 #include "common/ptr.h"
@@ -352,7 +353,10 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 	// Play matching APC audio if present (e.g. WAV\CINEM020.APC for
 	// CINEM020.HNM).  AT*.HNM place-to-place transitions are intentionally
 	// silent — they have no APC on the disc.
-	Audio::SoundHandle apcHandle;
+	// The cinema sound is the NewSound sample (FUN_0042a100 @ 0x0042a74e:
+	// NEWSOUND = 1, poller FUN_00432a64); the start-up videos also play
+	// theirs through NewSound (18, 19).
+	bool apcStarted = false;
 	{
 		const char *dot = strrchr(hnmName.c_str(), '.');
 		Common::String apcName = dot
@@ -371,7 +375,12 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 					                                              DisposeAfterUse::YES));
 				}
 				apc->finish();
-				_mixer->playStream(Audio::Mixer::kSFXSoundType, &apcHandle, apc);
+				_mixer->stopHandle(_newSoundHandle);
+				_mixer->playStream(Audio::Mixer::kSFXSoundType, &_newSoundHandle, apc);
+				_newSoundLast = 1;
+				_newSoundPlaying = true;
+				_gameVars["newsound"] = 1;
+				apcStarted = true;
 			}
 			delete apcFile;
 		}
@@ -418,7 +427,17 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 			break;
 		g_system->delayMillis(10);
 	}
-	_mixer->stopHandle(apcHandle);
+	// A video that ends by itself leaves its sound playing to its end
+	// (FUN_0042a100 @ 0x0042a907..0x0042a954 stops nothing); one cut short
+	// fades it out, 2 volume steps every 25 ms from the effects volume
+	// (FUN_0041bc74 @ 0x0041be69..0x0041be9e arms 0x00495eb0 = 2).
+	if (apcStarted && !decoder->endOfVideo() && _mixer->isSoundHandleActive(_newSoundHandle)) {
+		const int sfx = ConfMan.hasKey("sfx_volume") ? ConfMan.getInt("sfx_volume") : Audio::Mixer::kMaxMixerVolume;
+		Common::StackLock lock(_musicFade.mutex);
+		_musicFade.sfxVol0 = MAX(1, sfx * 127 / Audio::Mixer::kMaxMixerVolume);
+		_musicFade.sfxVol = _musicFade.sfxVol0;
+		_musicFade.sfxMode = 2;
+	}
 	delete decoder;
 	for (Common::SeekableReadStream *spf : spfStreams)
 		delete spf;

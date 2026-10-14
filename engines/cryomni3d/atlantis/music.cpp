@@ -164,7 +164,22 @@ static void startMusicFromBuffer(Audio::Mixer *mixer, Audio::SoundHandle &handle
 }
 
 void CryOmni3DEngine_Atlantis::musicFadeTimer(void *refCon) {
-	((CryOmni3DEngine_Atlantis *)refCon)->_musicFade.tick();
+	CryOmni3DEngine_Atlantis *e = (CryOmni3DEngine_Atlantis *)refCon;
+	e->_musicFade.tick();
+	bool change = false, stop = false;
+	int vol = 0, vol0 = 1;
+	{
+		Common::StackLock lock(e->_musicFade.mutex);
+		change = e->_musicFade.sfxChanged;
+		stop = e->_musicFade.sfxStop;
+		vol = e->_musicFade.sfxVol;
+		vol0 = MAX<int>(e->_musicFade.sfxVol0, 1);
+		e->_musicFade.sfxChanged = e->_musicFade.sfxStop = false;
+	}
+	if (change)
+		e->_mixer->setChannelVolume(e->_newSoundHandle, (byte)CLIP(vol * 255 / vol0, 0, 255));
+	if (stop)
+		e->_mixer->stopHandle(e->_newSoundHandle);   // NewSound is cleared by its poller
 }
 
 // 0x00495e72 from the music volume setting (the sound menu stores the AIL
