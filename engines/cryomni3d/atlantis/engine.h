@@ -684,6 +684,17 @@ private:
 
 	bool _isPlaying;
 	int _shotCountdown;   // port-only: polls left before g_system->saveScreenshot()
+	// Port-only scripted input (atlantis_input_script): "poll x y button"
+	// or "poll shot" lines, applied at that input poll of the puzzle.
+	struct InputScriptAction {
+		uint poll;
+		int x, y, button;
+		bool shot;
+	};
+	Common::Array<InputScriptAction> _inputScript;
+	uint _inputScriptPos, _pollCount;
+	int _scriptPendingUp;
+	void loadInputScript(const Common::String &path);
 	AbortCommand _abortCommand;
 	uint _loadedSave;          // 1-based slot a kAbortLoadGame should re-enter
 	bool _conInitRunning;      // a CON /INIT block runs (0x00496168): no checkpoint

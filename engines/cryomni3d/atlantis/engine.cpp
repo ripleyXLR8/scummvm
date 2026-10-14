@@ -21,6 +21,7 @@
 
 #include "common/archive.h"
 #include "common/config-manager.h"
+#include "common/fs.h"
 #include "common/debug.h"
 #include "common/func.h"
 #include "common/events.h"
@@ -81,7 +82,7 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_currentPlaceId(uint(-1)),
 	_nextPlaceId(uint(-1)),
 	_currentPlace(nullptr),
-	_isPlaying(false), _shotCountdown(0),
+	_isPlaying(false), _shotCountdown(0), _inputScriptPos(0), _pollCount(0), _scriptPendingUp(0),
 	_abortCommand(kAbortQuit),
 	_loadedSave(0),
 	_conInitRunning(false),
@@ -301,7 +302,81 @@ bool CryOmni3DEngine_Atlantis::loadCycloHNM(const Common::String &name) {
 #endif
 }
 
+void CryOmni3DEngine_Atlantis::loadInputScript(const Common::String &path) {
+	_inputScript.clear();
+	_inputScriptPos = 0;
+	Common::FSNode node(Common::Path(path, '/'));
+	Common::SeekableReadStream *in = node.createReadStream();
+	if (!in) {
+		warning("Atlantis: cannot read the input script '%s'", path.c_str());
+		return;
+	}
+	while (!in->eos()) {
+		Common::String line = in->readLine();
+		Common::Array<Common::String> tok;
+		Common::String cur;
+		for (uint k = 0; k <= line.size(); k++) {
+			if (k == line.size() || line[k] == ' ' || line[k] == '\t') {
+				if (!cur.empty())
+					tok.push_back(cur);
+				cur.clear();
+			} else {
+				cur += line[k];
+			}
+		}
+		if (tok.empty() || tok[0].hasPrefix("#"))
+			continue;
+		InputScriptAction a;
+		a.poll = (uint)atoi(tok[0].c_str());
+		a.x = a.y = a.button = 0;
+		a.shot = (tok.size() >= 2 && tok[1] == "shot");
+		if (!a.shot && tok.size() >= 4) {
+			a.x = atoi(tok[1].c_str());
+			a.y = atoi(tok[2].c_str());
+			a.button = atoi(tok[3].c_str());
+		} else if (!a.shot) {
+			continue;
+		}
+		_inputScript.push_back(a);
+	}
+	delete in;
+	warning("Atlantis: input script '%s', %u actions", path.c_str(), _inputScript.size());
+}
+
 bool CryOmni3DEngine_Atlantis::pollEvents() {
+	// Testing aid (port-only): the scripted input.  A click is the button
+	// down for one poll; clicks must be two polls apart.
+	if (!_inputScript.empty()) {
+		Common::EventManager *em = g_system->getEventManager();
+		if (_scriptPendingUp) {
+			Common::Event up;
+			up.type = (_scriptPendingUp == 1) ? Common::EVENT_LBUTTONUP : Common::EVENT_RBUTTONUP;
+			up.mouse = em->getMousePos();
+			em->pushEvent(up);
+			_scriptPendingUp = 0;
+		}
+		while (_inputScriptPos < _inputScript.size() && _inputScript[_inputScriptPos].poll <= _pollCount) {
+			const InputScriptAction &a = _inputScript[_inputScriptPos++];
+			if (a.shot) {
+				g_system->saveScreenshot();
+				warning("Atlantis: screenshot saved at poll %u", _pollCount);
+				continue;
+			}
+			Common::Event mv;
+			mv.type = Common::EVENT_MOUSEMOVE;
+			mv.mouse = Common::Point((int16)a.x, (int16)a.y);
+			g_system->warpMouse(a.x, a.y);
+			em->pushEvent(mv);
+			if (a.button == 1 || a.button == 2) {
+				Common::Event dn;
+				dn.type = (a.button == 1) ? Common::EVENT_LBUTTONDOWN : Common::EVENT_RBUTTONDOWN;
+				dn.mouse = mv.mouse;
+				em->pushEvent(dn);
+				_scriptPendingUp = a.button;
+			}
+		}
+		_pollCount++;
+	}
 	const bool r = CryOmni3DEngine::pollEvents();
 	if (_shotCountdown > 0 && --_shotCountdown == 0) {
 		g_system->saveScreenshot();
@@ -404,6 +479,12 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 		// after n input polls of the puzzle.
 		if (ConfMan.hasKey("atlantis_puzzle_shot"))
 			_shotCountdown = ConfMan.getInt("atlantis_puzzle_shot");
+		// atlantis_input_script=<file> replays "poll x y button" lines
+		// (button 1 left, 2 right, 0 a move) and "poll shot" screenshots
+		// from the puzzle's first input poll.
+		if (ConfMan.hasKey("atlantis_input_script"))
+			loadInputScript(ConfMan.get("atlantis_input_script"));
+		_pollCount = 0;
 		playPuzzle(puzzle);
 		warning("Atlantis: puzzle %d ended with FinPuzzle %d", puzzle,
 		        _gameVars.getValOrDefault("finpuzzle", 0));
