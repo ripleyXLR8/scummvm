@@ -5,9 +5,9 @@
 //    release is decoded by the current Video::HNMDecoder and by a verbatim
 //    copy of the decoder before the Atlantis changes (video_upstream_hnm.h);
 //    every frame and palette must be identical, in normal and in loop mode.
-//  - test_atlantis_ix_unchanged: same comparison on every Atlantis
-//    UBB_VUE\*.HNM (HNM6, 'IX' video chunks): the warp detection must leave
-//    video files on the video path.
+//  - test_ubb_vue_ix_vs_original (replaces test_atlantis_ix_unchanged, which
+//    pinned the IX frames to the upstream rounding): the first frames of every
+//    Atlantis UBB_VUE\*.HNM against the original video decoder FUN_004506ec.
 //  - test_cyclo_warp_vs_original: every CYCLO\*.HNM decoded by the current
 //    HNMDecoder (the way loadCycloHNM() does it) against the panorama decoded
 //    by the original warp decoder FUN_0045084c (golden
@@ -151,39 +151,6 @@ public:
 		TS_ASSERT_EQUALS(bad, 0);
 	}
 
-	void test_atlantis_ix_unchanged() {
-		if (!AtlantisTest::haveData()) {
-			TS_WARN("Atlantis data not configured: IX regression test skipped");
-			return;
-		}
-		VideoTest::Big big;
-		Common::Array<Common::String> names = big.names(".HNM");
-		const Graphics::PixelFormat fmt(2, 5, 6, 5, 0, 11, 5, 0, 0);
-		int nfiles = 0, decoded = 0, bad = 0;
-		Common::String report;
-		for (uint i = 0; i < names.size(); i++) {
-			if (!names[i].hasPrefix("UBB_VUE\\"))
-				continue;
-			uint32 size;
-			byte *d = big.get(names[i], size);
-			d[6] = 0;   // audioflags: no APC track
-			bool term;
-			uint32 sc = countSuperchunks(d, size, term);
-			nfiles++;
-			int b = compare(d, size, fmt, false, MIN(sc, READ_LE_UINT32(d + 0x10)), decoded);
-			if (b) {
-				bad += b;
-				if (report.size() < 400)
-					report += " " + names[i];
-			}
-			delete[] d;
-		}
-		TS_WARN(Common::String::format("Atlantis UBB_VUE (IX): %d files, %d frames compared, %d differ%s",
-		        nfiles, decoded, bad, report.c_str()).c_str());
-		TS_ASSERT_EQUALS(nfiles, 953);
-		TS_ASSERT_EQUALS(bad, 0);
-	}
-
 	void test_cyclo_warp_vs_original() {
 		if (!AtlantisTest::haveData()) {
 			TS_WARN("Atlantis data not configured: warp test skipped");
@@ -243,6 +210,96 @@ public:
 		TS_WARN(Common::String::format("CYCLO warp: %d files, %d differ from FUN_0045084c%s",
 		        nfiles, bad, report.c_str()).c_str());
 		TS_ASSERT_EQUALS(nfiles, 804);
+		TS_ASSERT_EQUALS(bad, 0);
+	}
+
+	// The in-game videos (IX chunks of UBB_VUE\*.HNM) against the original's
+	// decoder FUN_004506ec, run under emulation with the buffers swapped after
+	// each frame as its caller does (atlantis-re tools/emu/video_ix.py; golden
+	// video_ix_frames.txt: the first frames of every file).
+	void test_ubb_vue_ix_vs_original() {
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("Atlantis data not configured: IX test skipped");
+			return;
+		}
+		AtlantisTest::Golden golden;
+		if (!AtlantisTest::loadGolden("video_ix_frames.txt", golden)) {
+			TS_WARN("video_ix_frames.txt missing: IX test skipped");
+			return;
+		}
+		Common::HashMap<Common::String, uint> framesOf;
+		for (AtlantisTest::Golden::const_iterator it = golden.begin(); it != golden.end(); ++it) {
+			const uint sp = it->_key.findFirstOf(' ');
+			const Common::String name = it->_key.substr(0, sp);
+			const uint n = (uint)atoi(it->_key.c_str() + sp + 1) + 1;
+			if (!framesOf.contains(name) || framesOf[name] < n)
+				framesOf[name] = n;
+		}
+		VideoTest::Big big;
+		const Graphics::PixelFormat fmt(2, 5, 6, 5, 0, 11, 5, 0, 0);
+		int frames = 0, bad = 0;
+		Common::String report;
+		for (Common::HashMap<Common::String, uint>::const_iterator it = framesOf.begin(); it != framesOf.end(); ++it) {
+			uint32 size;
+			byte *d = big.get("UBB_VUE\\" + it->_key, size);
+			if (!d) {
+				bad++;
+				continue;
+			}
+			d[6] = 0;   // audioflags: no APC track
+			Video::HNMDecoder dec(fmt);
+			if (!dec.loadStream(new Common::MemoryReadStream(d, size, DisposeAfterUse::YES))) {
+				bad++;
+				continue;
+			}
+			dec.start();
+			for (uint k = 0; k < it->_value; k++) {
+				const Graphics::Surface *f = dec.decodeNextFrame();
+				if (!f)
+					break;
+				Common::Array<byte> le(f->w * f->h * 2);
+				for (int y = 0; y < f->h; y++) {
+					const uint16 *row = (const uint16 *)f->getBasePtr(0, y);
+					for (int x = 0; x < f->w; x++) {
+						le[(y * f->w + x) * 2] = row[x] & 0xff;
+						le[(y * f->w + x) * 2 + 1] = row[x] >> 8;
+					}
+				}
+				frames++;
+				const Common::String key = Common::String::format("%s %u", it->_key.c_str(), k);
+				// Debug aid: "dump_ix=<NAME>" + "dump_dir=<dir>" writes the port's
+				// frames as raw RGB565 LE (<NAME>.<frame>.port.raw).
+				if (AtlantisTest::configValue("dump_ix") == it->_key) {
+					Common::DumpFile df;
+					if (df.open(Common::FSNode(Common::Path(AtlantisTest::configValue("dump_dir"), '/')
+					            .appendComponent(Common::String::format("%s.%u.port.raw", it->_key.c_str(), k)))))
+						df.write(le.data(), le.size());
+				}
+				// Frames that copy blocks from the older of the two buffers before
+				// the video has written it: in the game that buffer is the screen
+				// buffer [0x004960d4] as the video starts (FUN_0041bc74), which the
+				// emulation leaves black [UNKNOWN content]; atlantis-re
+				// experiments/2026-10-14-07-ix-rounding.md.
+				static const char *const kOlderBuffer[] = {
+					"CINEM005.HNM 2", "CINEM006.HNM 2", "FO161160.HNM 1", "FO161160.HNM 2",
+					"FO161160.HNM 3", "FO061060.HNM 1", "FO061060.HNM 2", "FO061060.HNM 3"
+				};
+				bool skip = false;
+				for (uint q = 0; q < ARRAYSIZE(kOlderBuffer); q++)
+					if (key == kOlderBuffer[q])
+						skip = true;
+				if (skip)
+					continue;
+				if (!golden.contains(key) || golden[key] != AtlantisTest::md5Hex(le.data(), le.size())) {
+					bad++;
+					if (report.size() < 300)
+						report += " " + key;
+				}
+			}
+		}
+		TS_WARN(Common::String::format("UBB_VUE IX: %d frames, %d differ from FUN_004506ec%s",
+		        frames, bad, report.c_str()).c_str());
+		TS_ASSERT(frames > 0);
 		TS_ASSERT_EQUALS(bad, 0);
 	}
 };

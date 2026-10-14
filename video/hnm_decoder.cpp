@@ -1146,7 +1146,7 @@ void HNMDecoder::HNM6VideoTrack::decodeChunk(byte *data, uint32 size,
 		// IW chunks use the warp (panorama) decoder; IX uses the standard decoder.
 		// Warp output is bit exact: checked against Atlantis's FUN_0045084c.
 		_decoder->setWarpMode(chunkType == MKTAG16('I', 'W'));
-		_decoder->setBitExact(chunkType == MKTAG16('I', 'W'));
+		_decoder->setBitExact(chunkType == MKTAG16('I', 'W') || chunkType == MKTAG16('I', 'X'));
 		Common::MemoryReadStream stream(data, size);
 		_surface = _decoder->decodeFrame(stream);
 	} else {
