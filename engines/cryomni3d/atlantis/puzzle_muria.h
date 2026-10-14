@@ -44,8 +44,8 @@ public:
 	int play();
 
 protected:
-	void startInput(int &mx, int &my, bool &click) override;
-	void boundary(int &mx, int &my, bool &click) override;
+	void startInput(int &mx, int &my, bool &clicked) override;
+	void boundary(int &mx, int &my, bool &clicked) override;
 	void loadPicture(const char *name) override;
 	void drawBackground() override;
 	void drawSprite(char bank, int x, int y, int frame) override;
@@ -63,7 +63,7 @@ private:
 	bool _prevButton;
 	bool _bgDone;   // the first background call of a pass restores it
 
-	void readInput(int &mx, int &my, bool &click);
+	void readInput(int &mx, int &my, bool &clicked);
 };
 
 } // End of namespace Atlantis

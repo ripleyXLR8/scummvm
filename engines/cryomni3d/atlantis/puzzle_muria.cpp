@@ -63,22 +63,22 @@ int MuriaPuzzle::play() {
 	return _engine->shouldAbort() ? 1 : r;
 }
 
-void MuriaPuzzle::readInput(int &mx, int &my, bool &click) {
+void MuriaPuzzle::readInput(int &mx, int &my, bool &clicked) {
 	_engine->pollEvents();
 	const Common::Point m = _engine->getMousePos();
 	const bool now = (_engine->getCurrentMouseButton() == 1);
 	mx = m.x;
 	my = m.y;
-	click = now && !_prevButton;
+	clicked = now && !_prevButton;
 	_prevButton = now;
 }
 
-void MuriaPuzzle::startInput(int &mx, int &my, bool &click) {
-	readInput(mx, my, click);
+void MuriaPuzzle::startInput(int &mx, int &my, bool &clicked) {
+	readInput(mx, my, clicked);
 }
 
-void MuriaPuzzle::boundary(int &mx, int &my, bool &click) {
-	readInput(mx, my, click);
+void MuriaPuzzle::boundary(int &mx, int &my, bool &clicked) {
+	readInput(mx, my, clicked);
 }
 
 void MuriaPuzzle::loadPicture(const char *) {

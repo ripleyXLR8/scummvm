@@ -65,8 +65,8 @@ public:
 	bool won() const;                   // FUN_0043f6cc
 
 protected:
-	virtual void startInput(int &mx, int &my, bool &click) = 0;
-	virtual void boundary(int &mx, int &my, bool &click) = 0;   // FUN_0043318c
+	virtual void startInput(int &mx, int &my, bool &clicked) = 0;
+	virtual void boundary(int &mx, int &my, bool &clicked) = 0;   // FUN_0043318c
 	virtual void loadPicture(const char *name) = 0;             // FUN_00447478
 	virtual void drawBackground() = 0;                          // FUN_00410f36
 	virtual void drawSprite(char bank, int x, int y, int frame) = 0;   // 'P' puzmuria.spr, 'C' CURSEURS

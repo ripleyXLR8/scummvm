@@ -61,8 +61,8 @@ public:
 	int lcg(int n);   // FUN_00447524: 0..n
 
 protected:
-	virtual void startInput(int &mx, int &my, bool &click) = 0;
-	virtual void boundary(int &mx, int &my, bool &click) = 0;   // FUN_0043318c
+	virtual void startInput(int &mx, int &my, bool &clicked) = 0;
+	virtual void boundary(int &mx, int &my, bool &clicked) = 0;   // FUN_0043318c
 	virtual void loadPicture(const char *name) = 0;             // FUN_00447478
 	virtual void drawBackground() = 0;                          // FUN_00410f36
 	// 'A' crabe0.spr (the portraits, never seen: see drawFrame), 'B'
