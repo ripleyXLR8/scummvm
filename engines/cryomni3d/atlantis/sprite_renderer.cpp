@@ -428,8 +428,20 @@ void CryOmni3DEngine_Atlantis::animateSprites() {
 	if (!_warpLoaded || _currentPlaceId >= _spriteAnimCurrent.size())
 		return;
 	int wspr = _gameVars.getValOrDefault("wsprframe", 0);
-	if (animatePlaceSprites(_spritePlaceList, (uint16)_currentPlaceId, _spriteAnimCurrent[_currentPlaceId],
-	                        g_system->getMillis() / kSpriteTickMs, _spriteAnimLast, wspr, _spritesHideNpcs))
+	// FUN_00425304 tests "more than 13 ticks" once per frame; the original
+	// does not wait for the display, so under Wine its steps fall 14 or 15
+	// ticks apart (70 ms; experiments/2026-10-14-13).  Here a frame waits for
+	// the vertical sync (16.7 ms), which put every step at 16 ticks: the
+	// test is run for each tick elapsed since the last call instead (at most
+	// 2 s, e.g. after a video).
+	const uint32 now = g_system->getMillis() / kSpriteTickMs;
+	uint32 t = (_spriteAnimTick && now - _spriteAnimTick <= 400) ? _spriteAnimTick + 1 : now;
+	bool changed = false;
+	for (; (int32)(now - t) >= 0; t++)
+		changed |= animatePlaceSprites(_spritePlaceList, (uint16)_currentPlaceId, _spriteAnimCurrent[_currentPlaceId],
+		                               t, _spriteAnimLast, wspr, _spritesHideNpcs);
+	_spriteAnimTick = now;
+	if (changed)
 		recompositeSpriteLayer();
 	_gameVars["wsprframe"] = wspr;
 }

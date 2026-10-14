@@ -819,6 +819,7 @@ private:
 	// of the last frame step (0x006cc578, never reset) and each view's
 	// current animation entry (place byte +4, set by NEWWSPRANIM).
 	uint32 _spriteAnimLast[kSpriteAnimSlots];
+	uint32 _spriteAnimTick = 0;   // the last tick animateSprites() evaluated
 	Common::Array<uint> _spriteAnimCurrent;
 	// One FUN_00425304 step for the current view; recomposites when a frame
 	// or an active flag changed.
