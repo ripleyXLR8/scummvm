@@ -25,6 +25,7 @@
 #include "common/debug.h"
 #include "common/func.h"
 #include "common/events.h"
+#include "common/timer.h"
 #include "common/file.h"
 #include "common/memstream.h"
 #include "common/ptr.h"
@@ -131,6 +132,7 @@ const Graphics::Font *CryOmni3DEngine_Atlantis::subtitleFont() {
 }
 
 CryOmni3DEngine_Atlantis::~CryOmni3DEngine_Atlantis() {
+	g_system->getTimerManager()->removeTimerProc(&musicFadeTimer);
 	delete[] _ixVideoBuffers;
 	delete _subtitleTTF;
 	stopAmbient();   // 0x004197a0, on the way out
@@ -205,6 +207,7 @@ void CryOmni3DEngine_Atlantis::setupPalette(const byte *colors, uint start, uint
 
 void CryOmni3DEngine_Atlantis::syncSoundSettings() {
 	CryOmni3DEngine::syncSoundSettings();
+	musicSyncVolume();
 
 	// Scale every channel by the SONMENU "Volume" master slider, which the base
 	// class knows nothing about.  Absent key → full volume (no-op).
@@ -395,6 +398,11 @@ bool CryOmni3DEngine_Atlantis::pollEvents() {
 
 Common::Error CryOmni3DEngine_Atlantis::run() {
 	CryOmni3DEngine::run();
+
+	// The original's 200 Hz timer runs the music fades (FUN_0042f7a8,
+	// FUN_0042f974); 0x00495e72 follows the music volume setting.
+	musicSyncVolume();
+	g_system->getTimerManager()->installTimerProc(&musicFadeTimer, 5000, this, "atlantis-music-fade");
 
 	// Open the game's data archives.  The full game spans four discs
 	// (BIGCD1-4.BIG), all merged into one index.  Disc 1 is required; discs
@@ -777,7 +785,7 @@ void CryOmni3DEngine_Atlantis::playQuitOutro() {
 	// with none the credits are silent.  [INFERRED] "a track is open" is
 	// taken as a selected track.
 	if (_musicTrackId != 0 && _musicTrackId != 22)
-		musicPlayTrack(26);
+		musicSwitchTrack(26);
 
 	Common::Array<byte> txt;
 	{
@@ -842,7 +850,7 @@ void CryOmni3DEngine_Atlantis::playQuitOutro() {
 
 	// After the loop: the music is faded out and stopped, the screen cleared
 	// (FUN_00450ec0 over 640 x 480 x 2).
-	musicStop();
+	musicStopCommand();
 	buffer.clear(0);
 	g_system->copyRectToScreen(buffer.getPixels(), buffer.pitch, 0, 0, buffer.w, buffer.h);
 	g_system->updateScreen();

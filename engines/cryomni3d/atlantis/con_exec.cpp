@@ -315,7 +315,11 @@ void CryOmni3DEngine_Atlantis::runPuzzleZone(int puzzleId) {
 	// reloaded, StartPuzzle = 0, one /sel scan, then FinPuzzle = 0.  It
 	// first stops the ambient sounds (FUN_00431e98 @ 0x0042417e).
 	stopAmbient();
+	// FUN_00423ad8 around FUN_004240fc: the music down by half
+	// (0x00495ea4 = 50, 0x00495eac = 2), then back up with 80 % again.
+	musicDuck(false, 50);
 	playPuzzle(puzzleId);
+	musicUnduck(80);
 	if (shouldAbort())
 		return;
 	if (_currentPlace && loadCycloHNM(_currentPlace->cycloHnm)) {
@@ -480,13 +484,13 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 
 	// startmusik=N — select music track N (kMusicTrackNames) and loop it.
 	if (key == "startmusik") {
-		musicPlayTrack(value);
+		musicStartCommand(value);
 		return;
 	}
 
 	// stopmusik=N — clear the music selection and stop playback.
 	if (key == "stopmusik") {
-		musicStop();
+		musicStopCommand();
 		return;
 	}
 

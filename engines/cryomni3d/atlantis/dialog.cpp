@@ -326,6 +326,11 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 	// chapter so the loop stops the instant that happens.
 	const uint entryChapter = _currentCONChapter;
 	int lineIdx = 0;
+	// FUN_0042844c: a body that starts with a dialog line lowers the music
+	// when no fade runs (@ 0x004284e8); every section ends by raising it
+	// (@ 0x00428d8b, on the only exit).
+	if (!sec.items.empty() && !sec.items[0].isSet)
+		musicDuck(true);
 	// FUN_0042844c saves ClicPerso at entry (0x004284c2) and restores it at
 	// the end (0x00428cb2); in between it is cleared after every dialog line
 	// (0x00428b39), so only the first line of a section entered with a
@@ -488,6 +493,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		_gameVars["clicperso"] = 0;   // after every line (0x00428b39)
 	}
 	_gameVars["clicperso"] = savedClicPerso;   // 0x00428cb2
+	musicUnduck();   // 0x00428d8b
 
 	// Game-over screen (GereGameOver): show the verdict image + narrator, then
 	// reload the chapter checkpoint.  Run after the loop so the click/key that
@@ -999,6 +1005,11 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 	}
 	clearKeys();
 
+	// FUN_00430258 (no talking head) lowers the music when no fade runs
+	// (@ 0x0043027f) and raises it once the voice has played (@ 0x004305a6);
+	// without the voice file it returns before, leaving the music low.
+	if (camNum == 0)
+		musicDuck(true);
 	Common::String apcName = Common::String::format("ATA%04d%c.APC", sectionId, track);
 	Common::SeekableReadStream *apcFile = openBigFileStream(kFileTypeSound, apcName);
 
@@ -1053,6 +1064,8 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 				_mixer->stopHandle(handle);
 			else
 				delete apc;   // never handed to the mixer
+			if (voiceStarted && camNum == 0)
+				musicUnduck();
 		}
 		delete apcFile;
 	}

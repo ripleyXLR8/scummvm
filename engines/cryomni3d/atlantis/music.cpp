@@ -24,6 +24,8 @@
 #include "audio/decoders/raw.h"
 #include "audio/mixer.h"
 #include "common/config-manager.h"
+#include "common/events.h"
+#include "common/mutex.h"
 #include "common/memstream.h"
 #include "common/scummsys.h"
 #include "common/system.h"
@@ -74,8 +76,6 @@ static const char *const kMusicTrackNames[] = {
 
 // Number of per-channel samples to fade in/out at each loop boundary (~46ms at 22050 Hz).
 // Both ends ramp to zero so the loop-point discontinuity (IMA predictor reset) is inaudible.
-static const int kLoopFadeSamples = 1024;
-
 // Decode an APC file from raw bytes into a PCM buffer, apply a linear fade-in at the
 // start and fade-out at the end, and return an infinitely-looping RewindableAudioStream.
 // The caller must not free `data` while the stream is alive (it reads only during this call).
@@ -89,7 +89,6 @@ static Audio::AudioStream *buildLoopingMusicStream(const byte *data, uint32 size
 
 	const bool stereo = apc->isStereo();
 	const int  rate   = apc->getRate();
-	const int  ch     = stereo ? 2 : 1;
 
 	// Queue all remaining compressed data for decode.
 	int64 remaining = (int64)size - (int64)raw->pos();
@@ -111,13 +110,8 @@ static Audio::AudioStream *buildLoopingMusicStream(const byte *data, uint32 size
 	// Apply fade-in to the first kLoopFadeSamples per-channel frames and
 	// fade-out to the last kLoopFadeSamples per-channel frames, so the loop
 	// restarts cleanly even though the IMA predictor is reset from the header.
-	if (got > kLoopFadeSamples * ch * 2) {
-		int16 *pcm = (int16 *)pcmBytes;
-		for (int i = 0; i < kLoopFadeSamples * ch; i++)
-			pcm[i] = (int16)(pcm[i] * (i / ch) / kLoopFadeSamples);
-		for (int i = got - kLoopFadeSamples * ch; i < got; i++)
-			pcm[i] = (int16)(pcm[i] * ((got - 1 - i) / ch) / kLoopFadeSamples);
-	}
+	// No fade at the loop point: the original seeks the file back to 0 and
+	// restarts the decoder (FUN_0043318c).
 
 	byte flags = Audio::FLAG_16BITS;
 	if (stereo)
@@ -131,26 +125,143 @@ static Audio::AudioStream *buildLoopingMusicStream(const byte *data, uint32 size
 	return Audio::makeLoopingAudioStream(rawStream, 0);
 }
 
+// The music sample at the original's volume: the gain is the AIL volume
+// (0x00495e71, clamped to 127) over the music volume (0x00495e72), which the
+// mixer's music volume already applies.
+class FadedMusicStream : public Audio::AudioStream {
+public:
+	FadedMusicStream(Audio::AudioStream *in, AtlantisMusicFade *fade) : _in(in), _fade(fade) {}
+	~FadedMusicStream() override { delete _in; }
+	int readBuffer(int16 *buffer, const int numSamples) override {
+		const int got = _in->readBuffer(buffer, numSamples);
+		int cur, vol;
+		{
+			Common::StackLock lock(_fade->mutex);
+			cur = MIN<int>(_fade->cur, 127);
+			vol = _fade->vol;
+		}
+		if (vol <= 0) {
+			memset(buffer, 0, got * sizeof(int16));
+		} else if (cur != vol) {
+			for (int i = 0; i < got; i++)
+				buffer[i] = (int16)CLIP<int>(buffer[i] * cur / vol, -32768, 32767);
+		}
+		return got;
+	}
+	bool isStereo() const override { return _in->isStereo(); }
+	int getRate() const override { return _in->getRate(); }
+	bool endOfData() const override { return _in->endOfData(); }
+private:
+	Audio::AudioStream *_in;
+	AtlantisMusicFade *_fade;
+};
+
 static void startMusicFromBuffer(Audio::Mixer *mixer, Audio::SoundHandle &handle,
-                                 const byte *data, uint32 size) {
+                                 const byte *data, uint32 size, AtlantisMusicFade *fade) {
 	Audio::AudioStream *stream = buildLoopingMusicStream(data, size);
 	if (stream)
-		mixer->playStream(Audio::Mixer::kMusicSoundType, &handle, stream);
+		mixer->playStream(Audio::Mixer::kMusicSoundType, &handle, new FadedMusicStream(stream, fade));
+}
+
+void CryOmni3DEngine_Atlantis::musicFadeTimer(void *refCon) {
+	((CryOmni3DEngine_Atlantis *)refCon)->_musicFade.tick();
+}
+
+// 0x00495e72 from the music volume setting (the sound menu stores the AIL
+// volume rescaled to the mixer's 0..255).
+void CryOmni3DEngine_Atlantis::musicSyncVolume() {
+	const int v = ConfMan.hasKey("music_volume") ? ConfMan.getInt("music_volume") : Audio::Mixer::kMaxMixerVolume;
+	Common::StackLock lock(_musicFade.mutex);
+	_musicFade.vol = (uint8)CLIP(v * 127 / Audio::Mixer::kMaxMixerVolume, 0, 127);
+}
+
+// The original spins on the fade (calling only the music refill) until the
+// timer callback has finished it; the screen does not change meanwhile.
+void CryOmni3DEngine_Atlantis::musicWaitFadeEnd() {
+	for (;;) {
+		{
+			Common::StackLock lock(_musicFade.mutex);
+			if (_musicFade.mode == 0)
+				return;
+		}
+		if (shouldQuit())
+			return;
+		Common::Event ev;
+		while (g_system->getEventManager()->pollEvent(ev)) {
+		}
+		g_system->delayMillis(5);
+	}
+}
+
+void CryOmni3DEngine_Atlantis::musicSwitchTrack(int trackId) {
+	if (_musicCurrentFile && _mixer->isSoundHandleActive(_musicHandle)) {
+		{
+			Common::StackLock lock(_musicFade.mutex);
+			_musicFade.percent = 99;
+			_musicFade.mode = 2;
+		}
+		musicWaitFadeEnd();
+		musicHaltPlayback();
+		Common::StackLock lock(_musicFade.mutex);
+		_musicFade.percent = 80;
+	}
+	musicPlayTrack(trackId);
+	if (_musicCurrentFile) {
+		Common::StackLock lock(_musicFade.mutex);
+		_musicFade.mode = 1;
+		_musicFade.cur = 0;
+		_musicFade.upTarget = _musicFade.vol;
+	}
+}
+
+void CryOmni3DEngine_Atlantis::musicStartCommand(int trackId) {
+	if (trackId == _musicTrackId && _musicCurrentFile) {
+		Common::StackLock lock(_musicFade.mutex);
+		_musicFade.mode = 1;
+		_musicFade.upTarget = _musicFade.vol;
+		return;
+	}
+	musicSwitchTrack(trackId);
+}
+
+void CryOmni3DEngine_Atlantis::musicStopCommand() {
+	if (_musicCurrentFile && _mixer->isSoundHandleActive(_musicHandle)) {
+		uint8 saved;
+		{
+			Common::StackLock lock(_musicFade.mutex);
+			saved = _musicFade.cur;
+			_musicFade.percent = 99;
+			_musicFade.mode = 2;
+		}
+		musicWaitFadeEnd();
+		musicHaltPlayback();
+		Common::StackLock lock(_musicFade.mutex);
+		_musicFade.cur = saved;
+		_musicFade.percent = 80;
+	}
+	_musicTrackId = 0;
+}
+
+void CryOmni3DEngine_Atlantis::musicDuck(bool onlyWhenIdle, int percent) {
+	Common::StackLock lock(_musicFade.mutex);
+	if (percent >= 0)
+		_musicFade.percent = (uint8)percent;
+	if (!onlyWhenIdle || _musicFade.mode == 0)
+		_musicFade.mode = 2;
+}
+
+void CryOmni3DEngine_Atlantis::musicUnduck(int percent) {
+	Common::StackLock lock(_musicFade.mutex);
+	_musicFade.mode = 1;
+	if (percent >= 0)
+		_musicFade.percent = (uint8)percent;
 }
 
 // Stop mixer playback and release the decoded buffer, keeping _musicTrackId so
 // the selected track can be resumed later (e.g. after unmuting).
 void CryOmni3DEngine_Atlantis::musicHaltPlayback() {
-	if (_mixer->isSoundHandleActive(_musicHandle)) {
-		// Smooth fade-out over ~160ms (32 steps of ~3% each).
-		byte vol = _mixer->getChannelVolume(_musicHandle);
-		for (int step = 0; step < 32 && vol > 0; step++) {
-			vol = (vol > 8) ? vol - 8 : 0;
-			_mixer->setChannelVolume(_musicHandle, vol);
-			g_system->delayMillis(5);
-		}
-		_mixer->stopHandle(_musicHandle);
-	}
+	// The fades are the original's (AtlantisMusicFade); this stops at once.
+	_mixer->stopHandle(_musicHandle);
 	delete[] _musicRawData;
 	_musicRawData = nullptr;
 	_musicRawSize = 0;
@@ -193,7 +304,7 @@ void CryOmni3DEngine_Atlantis::musicPlayTrack(int trackId) {
 	delete apcFile;
 
 	_musicCurrentFile = musicFile;
-	startMusicFromBuffer(_mixer, _musicHandle, _musicRawData, _musicRawSize);
+	startMusicFromBuffer(_mixer, _musicHandle, _musicRawData, _musicRawSize, &_musicFade);
 	debugC(1, kDebugMusic, "musicPlayTrack: track %d '%s'", trackId, musicFile);
 }
 
@@ -213,6 +324,13 @@ void CryOmni3DEngine_Atlantis::musicUpdate() {
 	if (_mixer->isSoundHandleActive(_musicHandle))
 		return;                // selected track already looping
 	musicPlayTrack(_musicTrackId);  // first play, or resume after a mute
+	// A track restarted from volume 0 (a loaded game) fades in, as the
+	// chapter's startmusik does in the original (@ 0x0042ae23).
+	Common::StackLock lock(_musicFade.mutex);
+	if (_musicCurrentFile && _musicFade.cur == 0 && _musicFade.mode == 0) {
+		_musicFade.mode = 1;
+		_musicFade.upTarget = _musicFade.vol;
+	}
 }
 
 // The tracks the original would find in its install folder, as a bit set

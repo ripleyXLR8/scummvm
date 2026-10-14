@@ -475,7 +475,11 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			// Open the in-game menu (resume / load / quit).
 			g_system->lockMouse(false);
 			showMouse(true);   // the warp cursor may be hidden
+			// FUN_0041c838 lowers the music by the current percentage while
+			// it runs (@ 0x0041c88a) and raises it at the end (@ 0x0041cb7d).
+			musicDuck(false);
 			uint act = displayInGameMenu();
+			musicUnduck();
 			if (act == 40) {                 // quit
 				actionId = 66666;
 				exit = true;

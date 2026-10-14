@@ -27,6 +27,7 @@
 #include "common/hash-str.h"
 #include "common/hashmap.h"
 #include "common/path.h"
+#include "common/mutex.h"
 #include "common/random.h"
 #include "common/rect.h"
 #include "common/str.h"
@@ -40,6 +41,7 @@
 #include "cryomni3d/atlantis/bigfile.h"
 #include "cryomni3d/atlantis/chapter_start.h"
 #include "cryomni3d/atlantis/con_eval.h"
+#include "cryomni3d/atlantis/music_fade.h"
 #include "cryomni3d/atlantis/random.h"
 #include "cryomni3d/atlantis/inventory.h"
 #include "cryomni3d/atlantis/con_script.h"
@@ -403,6 +405,24 @@ private:
 	void musicHaltPlayback();
 	// Per-frame mixer sync (see above).
 	void musicUpdate();
+	// The original's music commands, with its fades:
+	// startmusik (FUN_0042a100 @ 0x0042ad53): the same track only re-arms the
+	// fade-in; another one first fades the playing track down to 1 %
+	// (blocking), then starts the new one at volume 0 and fades it in.
+	void musicStartCommand(int trackId);
+	// The credits' switch (FUN_0041a72c @ 0x0041a868): the same, without the
+	// same-track test.
+	void musicSwitchTrack(int trackId);
+	// stopmusik (@ 0x0042ae8a): blocking fade down to 1 %, stop.
+	void musicStopCommand();
+	// Ducking: fade down by the current percentage (voices: only when idle)
+	// and back up.
+	void musicDuck(bool onlyWhenIdle, int percent = -1);
+	void musicUnduck(int percent = -1);
+	AtlantisMusicFade _musicFade;
+	static void musicFadeTimer(void *refCon);
+	void musicSyncVolume();
+	void musicWaitFadeEnd();
 	// SPRMENU.SPR — the menu/toolbar decorative golden overlays.
 	void loadMenuSprites();
 	void blitMenuSprite(Graphics::ManagedSurface &dst, uint idx, int hx, int hy) const;
