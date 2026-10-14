@@ -45,7 +45,8 @@ static const int32  kSaveSize        = 1792;
 static const uint   kSaveDescriptionLen = 20;
 static const uint   kWAMNameLen      = 32;
 static const uint32 kExtMagic        = 0x41544C53u;  // 'ATLS'
-static const uint32 kExtVersion      = 8;
+static const uint32 kExtVersion      = 9;
+static const uint   kSaveInvBaseSlots = 20;   // inventory slots in the base block
 
 // Player-profile file (cannot collide with the "atlantis.NNNN" save files).
 static const char  *kPlayersFile    = "atlantis-players.dat";
@@ -72,11 +73,12 @@ void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &save
 	for (uint i = 0; i < 200; i++)    // dialog variables (reserved)
 		out->writeByte(0);
 
-	// Inventory (20 slots × uint32BE object index into _objects; -1 = empty).
-	for (Inventory::const_iterator it = _inventory.begin(); it != _inventory.end(); ++it) {
+	// Inventory: the first 20 slots × uint32BE object index into _objects
+	// (-1 = empty); slots 20.. go to ext v9.
+	for (uint i = 0; i < kSaveInvBaseSlots; i++) {
 		uint objId = uint(-1);
-		if (*it != nullptr)
-			objId = (uint)(*it - _objects.begin());
+		if (i < _inventory.size() && _inventory[i] != nullptr)
+			objId = (uint)(_inventory[i] - _objects.begin());
 		out->writeUint32BE(objId);
 	}
 
@@ -156,6 +158,11 @@ void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &save
 	out->writeByte(_incPersoCount);
 	// ext v8: LastVue (0x0049692c, .gam field 0x116), restored by a load.
 	out->writeUint32BE((uint32)_lastVue);
+	// ext v9: inventory slots 20.. (the original's table holds 30 records,
+	// 0x006ce138, all in its checkpoint).
+	out->writeUint32BE(_inventory.size() > kSaveInvBaseSlots ? _inventory.size() - kSaveInvBaseSlots : 0);
+	for (uint i = kSaveInvBaseSlots; i < _inventory.size(); i++)
+		out->writeUint32BE(_inventory[i] ? (uint32)(_inventory[i] - _objects.begin()) : 0xffffffffu);
 
 	out->finalize();
 	delete out;
@@ -188,7 +195,7 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	// Inventory object indices — captured now, applied after the WAM/CON
 	// re-entry below (setupChapterWAM on chapter 1 would otherwise clear it).
 	Common::Array<uint> savedInv;
-	for (Inventory::iterator it = _inventory.begin(); it != _inventory.end(); ++it)
+	for (uint i = 0; i < kSaveInvBaseSlots; i++)
 		savedInv.push_back(in->readUint32BE());
 
 	uint32 chapter = in->readUint32BE();
@@ -272,6 +279,11 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 				savedIncPerso = in->readByte();
 			if (ver >= 8 && !in->eos())
 				savedLastVue = (int32)in->readUint32BE();
+			if (ver >= 9 && !in->eos()) {
+				const uint32 extra = in->readUint32BE();
+				for (uint32 i = 0; i < extra && i < 64 && !in->eos(); i++)
+					savedInv.push_back(in->readUint32BE());
+			}
 		}
 	}
 	delete in;
@@ -343,8 +355,8 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 
 	// Apply the saved inventory now that setupChapterWAM/loadConScript (which
 	// can clear or repopulate it) have run.
-	for (uint i = 0; i < _inventory.size() && i < savedInv.size(); i++) {
-		uint objId = savedInv[i];
+	for (uint i = 0; i < _inventory.size(); i++) {
+		uint objId = i < savedInv.size() ? savedInv[i] : uint(-1);   // older saves: 20 slots
 		if (objId >= _objects.size())
 			objId = uint(-1);
 		_inventory[i] = (objId != uint(-1)) ? (_objects.begin() + objId) : nullptr;

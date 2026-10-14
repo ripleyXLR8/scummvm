@@ -457,7 +457,10 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	loadObjectSprites();
 	loadFontSpriteSet("SUIVEUR.SPR", _guestSprites);   // guest portraits (FUN_00427344)
 	loadInventoryBarSprite();
-	_inventory.init(20, new Common::Functor1Mem<uint, void, CryOmni3DEngine_Atlantis>(
+	// 30 records: the original's table 0x006ce138 (0x10e bytes, all in the
+	// checkpoint); the pick-up appends with no test (FUN_004278a0 @
+	// 0x00427a7f..0x00427afa), the 31st would overwrite players.atl data.
+	_inventory.init(30, new Common::Functor1Mem<uint, void, CryOmni3DEngine_Atlantis>(
 	                        this, &CryOmni3DEngine_Atlantis::refreshInventoryToolbar));
 
 	// The inventory bar: the OBJETS0.SPR background is added as the toolbar's

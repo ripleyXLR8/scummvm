@@ -21,6 +21,8 @@
 
 #include "cryomni3d/atlantis/inventory.h"
 
+#include "common/textconsole.h"
+
 namespace CryOmni3D {
 namespace Atlantis {
 
@@ -52,7 +54,12 @@ Object *findInventoryObject(Objects &objects, uint objId) {
 
 void inventoryAppend(Inventory &inventory, Object *obj) {
 	// The used slots are at the front, so the first empty slot is the end of
-	// the list.  Inventory::add errors out when every slot is used.
+	// the list.  Past the 30 records of the original's table its next record
+	// would overwrite players.atl data (0x006ce246); the port drops it.
+	if (inventory.size() && inventory[inventory.size() - 1] != nullptr) {
+		warning("inventoryAppend: the 30 records are used, object dropped");
+		return;
+	}
 	inventory.add(obj);
 }
 
