@@ -33,6 +33,7 @@ endif
 
 ifdef ENABLE_ATLANTIS
 MODULE_OBJS += \
+	atlantis/ambient_sounds.o \
 	atlantis/bigfile.o \
 	atlantis/con_eval.o \
 	atlantis/con_exec.o \

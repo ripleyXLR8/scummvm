@@ -1,0 +1,251 @@
+// Verifier "audio": the places' ambient sounds (task 20).
+//
+// Original: atlantis-cd-en-714240 FUN_00432178 / FUN_00450ed8 (per frame,
+// emulated unmodified by atlantis-re/tools/emu/audio_ambient.py, golden
+// audio_ambient_gain.txt) and FUN_00431a1c / FUN_004320bc / FUN_00431e98
+// (read in the disassembly: functions/audio-FUN_00431a1c.md,
+// audio-FUN_00432178.md; the state tests below restate those rules).
+//
+// Port: AmbientSounds and ambientGains (ambient_sounds.h), called directly.
+
+#include "atlantis_test_helper.h"
+#include "../../../system/null_osystem.h"
+
+#include "common/file.h"
+#include "common/fs.h"
+
+#include "cryomni3d/atlantis/ambient_sounds.h"
+
+namespace AudioAmbient {
+
+using namespace CryOmni3D::Atlantis;
+
+// A recording sample output with a settable status per slot.
+class FakeOut : public AmbientSampleOutput {
+public:
+	int st[AmbientSounds::kSlots];
+	Common::Array<Common::String> log;
+	FakeOut() { for (uint i = 0; i < AmbientSounds::kSlots; i++) st[i] = kStopped; }
+	int status(uint slot) override { return st[slot]; }
+	void start(uint slot, uint object, uint variant, bool loopForever) override {
+		log.push_back(Common::String::format("start %u %u %u %d", slot, object, variant, loopForever ? 1 : 0));
+		st[slot] = kPlaying;
+	}
+	void stop(uint slot) override { log.push_back(Common::String::format("stop %u", slot)); }
+	void setPan(uint slot, uint8 pan) override { log.push_back(Common::String::format("pan %u %u", slot, pan)); }
+	void setVolume(uint slot, uint8 v) override { log.push_back(Common::String::format("vol %u %u", slot, v)); }
+	void release(uint object) override { log.push_back(Common::String::format("release %u", object)); }
+	bool has(const Common::String &s) const {
+		for (uint i = 0; i < log.size(); i++)
+			if (log[i] == s)
+				return true;
+		return false;
+	}
+};
+
+struct Clock {
+	Common::Array<uint32> values;
+	uint pos = 0;
+	static uint32 fn(void *ctx) {
+		Clock *c = (Clock *)ctx;
+		return c->pos < c->values.size() ? c->values[c->pos++] : 0;
+	}
+};
+
+static AtlantisAmbientObject object(uint8 id, uint8 w0, uint8 w1, uint8 w2, uint8 w3, int variants) {
+	AtlantisAmbientObject o;
+	o.id = id;
+	o.pos[0] = 100.0f; o.pos[1] = 0.0f; o.pos[2] = 0.0f;
+	o.loudness = 500.0f;
+	o.weights[0] = w0; o.weights[1] = w1; o.weights[2] = w2; o.weights[3] = w3;
+	for (int k = 0; k < variants; k++)
+		o.variants[k] = Common::String::format("v%d.apc", k);
+	return o;
+}
+
+static AtlantisPlace place(uint16 id, const uint8 *ids, uint n) {
+	AtlantisPlace p;
+	p.placeId = id;
+	for (uint i = 0; i < n; i++) {
+		AtlantisAmbientRef r;
+		r.objectId = ids[i];
+		r.t = 0.0f; r.m = 200.0f; r.c = 0.0f;
+		p.ambientRefs.push_back(r);
+	}
+	return p;
+}
+
+} // End of namespace AudioAmbient
+
+class AudioAmbientTestSuite : public CxxTest::TestSuite {
+public:
+	void setUp() override { Common::install_null_g_system(); }
+	void tearDown() override { Common::uninstall_null_g_system(); }
+
+	// FUN_00450ed8 + FUN_00432178's pan / volume against the emulated original
+	// (3006 cases, ear angle 0.65).
+	void test_gains_vs_original() {
+		using namespace AudioAmbient;
+		if (AtlantisTest::goldenDir().empty()) {
+			TS_WARN("golden directory not configured: ambient gains test skipped");
+			return;
+		}
+		Common::File f;
+		if (!f.open(Common::FSNode(Common::Path(AtlantisTest::goldenDir(), '/').appendComponent("audio_ambient_gain.txt")))) {
+			TS_WARN("audio_ambient_gain.txt missing: ambient gains test skipped");
+			return;
+		}
+		uint cases = 0, bad = 0;
+		while (!f.eos()) {
+			Common::String line = f.readLine();
+			if (line.empty() || line[0] == '#')
+				continue;
+			// "((x, y, z), (cx, cy, cz), (t, m, c), gain, alpha, beta) a b c26 pan vol"
+			Common::Array<double> v;
+			Common::String num;
+			for (uint k = 0; k <= line.size(); k++) {
+				const char ch = k < line.size() ? line[k] : ' ';
+				if ((ch >= '0' && ch <= '9') || ch == '.' || ch == '-' || ch == 'e' || ch == '+') {
+					num += ch;
+				} else {
+					if (!num.empty())
+						v.push_back(atof(num.c_str()));
+					num.clear();
+				}
+			}
+			if (v.size() != 17)
+				continue;
+			cases++;
+			const float pos[3] = { (float)v[0], (float)v[1], (float)v[2] };
+			AtlantisCentrePos cam = { (float)v[3], (float)v[4], (float)v[5] };
+			AtlantisAmbientRef ref;
+			ref.objectId = 1;
+			ref.t = (float)v[6]; ref.m = (float)v[7]; ref.c = (float)v[8];
+			const AmbientGains g = ambientGains(pos, (float)v[9], cam, ref, (float)v[10], (float)v[11], 0.65f);
+			if (g.right != (int32)v[12] || g.left != (int32)v[13] || g.out26 != (int32)v[14] ||
+			        g.pan != (uint8)v[15] || g.volume != (uint8)v[16]) {
+				if (bad < 5)
+					TS_WARN(("ambient gains differ: " + line + Common::String::format(" / port %d %d %d %u %u",
+					         g.right, g.left, g.out26, g.pan, g.volume)).c_str());
+				bad++;
+			}
+		}
+		TS_ASSERT_EQUALS(cases, 3006u);
+		TS_ASSERT_EQUALS(bad, 0u);
+	}
+
+	// FUN_004320bc: draw = clock & 0x7f, redrawn above 100; the first variant
+	// whose running sum exceeds it; -1 past the last; a weight above 100
+	// counts as weight - 100 and sets the loop flag when scanned.
+	void test_pick_variant() {
+		using namespace AudioAmbient;
+		AmbientSounds a;
+		Clock c;
+		a.setClock(&Clock::fn, &c);
+		const AtlantisAmbientObject o = object(1, 25, 25, 25, 25, 4);
+		c.values = { 0, 24, 25, 99, 100, 128 + 50, 101, 127, 30 };
+		TS_ASSERT_EQUALS(a.pickVariant(o, 4), 0);    // 0
+		TS_ASSERT_EQUALS(a.pickVariant(o, 4), 0);    // 24 < 25
+		TS_ASSERT_EQUALS(a.pickVariant(o, 4), 1);    // 25
+		TS_ASSERT_EQUALS(a.pickVariant(o, 4), 3);    // 99
+		TS_ASSERT_EQUALS(a.pickVariant(o, 4), -1);   // 100: no sum exceeds it
+		TS_ASSERT_EQUALS(a.pickVariant(o, 4), 2);    // & 0x7f -> 50
+		TS_ASSERT_EQUALS(a.pickVariant(o, 4), 1);    // 101, 127 redrawn, then 30
+		TS_ASSERT(!a._loopFlag);
+		const AtlantisAmbientObject loop = object(1, 199, 0, 0, 0, 1);
+		c.values = { 100 };
+		c.pos = 0;
+		TS_ASSERT_EQUALS(a.pickVariant(loop, 1), -1);   // 99 is not above 100
+		TS_ASSERT(a._loopFlag);                          // set even for a pause
+	}
+
+	// FUN_00431a1c / FUN_00431f9c: records by ref index, the delay, the
+	// pointer-identity "already loaded" test, the remove pass shifting the
+	// records but not the handles; FUN_00431e98.
+	void test_enter_place_and_stop() {
+		using namespace AudioAmbient;
+		AmbientSounds a;
+		Clock c;
+		a.setClock(&Clock::fn, &c);
+		FakeOut out;
+		Common::Array<AtlantisAmbientObject> objs;
+		objs.push_back(object(1, 25, 25, 25, 25, 4));   // delay (100 - 100) / 4 = 0
+		objs.push_back(object(2, 20, 20, 20, 20, 4));   // delay 20 / 4 = 5
+		const uint8 both[] = { 1, 2 };
+		TS_ASSERT(a.enterPlace(out, place(132, both, 2), objs));
+		TS_ASSERT_EQUALS(a.count(), 2u);
+		TS_ASSERT(a.active());
+		TS_ASSERT_EQUALS(a._records[0].object, 0);
+		TS_ASSERT_EQUALS(a._records[1].object, 1);
+		TS_ASSERT_EQUALS(a._records[0].delay, 0u);
+		TS_ASSERT_EQUALS(a._records[1].delay, 5u);
+		TS_ASSERT_EQUALS(a._records[1].count, 4);
+		// the same objects in the other order: nothing reloaded, records kept
+		const uint8 swapped[] = { 2, 1 };
+		out.log.clear();
+		TS_ASSERT(a.enterPlace(out, place(133, swapped, 2), objs));
+		TS_ASSERT_EQUALS(out.log.size(), 0u);
+		TS_ASSERT_EQUALS(a._records[0].object, 0);
+		// only object 2 left: record 0 removed, record 1 shifted to 0
+		const uint8 two[] = { 2 };
+		out.log.clear();
+		TS_ASSERT(a.enterPlace(out, place(134, two, 1), objs));
+		TS_ASSERT_EQUALS(a.count(), 1u);
+		TS_ASSERT_EQUALS(a._records[0].object, 1);
+		TS_ASSERT(out.has("release 0"));
+		TS_ASSERT(out.has("pan 0 64"));
+		// no references: FUN_00431e98
+		out.log.clear();
+		TS_ASSERT(a.enterPlace(out, place(1, nullptr, 0), objs));
+		TS_ASSERT_EQUALS(a.count(), 0u);
+		TS_ASSERT(!a.active());
+		TS_ASSERT(out.has("release 1"));
+	}
+
+	// FUN_00432178: a stopped sample starts a drawn variant and gets its pan
+	// and volume; a pause arms CHAPTERTIME and ends when the difference
+	// exceeds the delay; the loop flag makes the next start loop forever.
+	void test_frame() {
+		using namespace AudioAmbient;
+		AmbientSounds a;
+		Clock c;
+		a.setClock(&Clock::fn, &c);
+		FakeOut out;
+		Common::Array<AtlantisAmbientObject> objs;
+		objs.push_back(object(1, 20, 20, 20, 20, 4));   // delay 5
+		const uint8 one[] = { 1 };
+		const AtlantisPlace p = place(135, one, 1);
+		c.values = { 0 };                                // the load's discarded draw
+		TS_ASSERT(a.enterPlace(out, p, objs));
+		AtlantisCentrePos cam = { 0.0f, 0.0f, 0.0f };
+		// draw 90: no variant (sum 80) -> a pause from CHAPTERTIME 10
+		c.values = { 90 }; c.pos = 0;
+		out.log.clear();
+		a.frame(out, p, objs, cam, 0.0f, 0.0f, 10);
+		TS_ASSERT_EQUALS(a._records[0].start, 10u);
+		TS_ASSERT(!out.has("pan 0 63"));
+		// CHAPTERTIME 15: 15 - 10 = 5 is not above the delay 5
+		c.values = { 30 }; c.pos = 0;
+		out.log.clear();
+		a.frame(out, p, objs, cam, 0.0f, 0.0f, 15);
+		TS_ASSERT_EQUALS(a._records[0].start, 10u);
+		TS_ASSERT_EQUALS(out.log.size(), 0u);
+		// CHAPTERTIME 16: redraws until a variant (90 none, then 30 -> 1)
+		c.values = { 90, 30 }; c.pos = 0;
+		a.frame(out, p, objs, cam, 0.0f, 0.0f, 16);
+		TS_ASSERT_EQUALS(a._records[0].start, 0u);
+		TS_ASSERT(out.has("start 0 0 1 0"));
+		// playing: only the positional update
+		out.log.clear();
+		a.frame(out, p, objs, cam, 0.0f, 0.0f, 17);
+		TS_ASSERT_EQUALS(out.log.size(), 2u);
+		// the loop flag: a stale flag makes the next start loop forever
+		a._loopFlag = true;
+		out.st[0] = AmbientSampleOutput::kDone;
+		c.values = { 0 }; c.pos = 0;
+		out.log.clear();
+		a.frame(out, p, objs, cam, 0.0f, 0.0f, 18);
+		TS_ASSERT(out.has("start 0 0 0 1"));
+		TS_ASSERT(!a._loopFlag);
+	}
+};
