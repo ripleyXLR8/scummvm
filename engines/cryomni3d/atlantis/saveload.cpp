@@ -45,7 +45,7 @@ static const int32  kSaveSize        = 1792;
 static const uint   kSaveDescriptionLen = 20;
 static const uint   kWAMNameLen      = 32;
 static const uint32 kExtMagic        = 0x41544C53u;  // 'ATLS'
-static const uint32 kExtVersion      = 7;
+static const uint32 kExtVersion      = 8;
 
 // Player-profile file (cannot collide with the "atlantis.NNNN" save files).
 static const char  *kPlayersFile    = "atlantis-players.dat";
@@ -154,6 +154,8 @@ void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &save
 	out->writeByte(_guestsShown ? 1 : 0);
 	// ext v7: the IncPerso count (the original's .gam keeps it at 0x11e).
 	out->writeByte(_incPersoCount);
+	// ext v8: LastVue (0x0049692c, .gam field 0x116), restored by a load.
+	out->writeUint32BE((uint32)_lastVue);
 
 	out->finalize();
 	delete out;
@@ -213,6 +215,7 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	bool hasGuests = false;
 	uint8 savedIncPerso = 0;
 	int savedMusicTrack = 0;
+	int32 savedLastVue = -1;                // ext v8
 	bool hasExt = (in->size() > kSaveSize);
 	if (hasExt) {
 		uint32 magic = in->readUint32BE();
@@ -267,6 +270,8 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 			}
 			if (ver >= 7 && !in->eos())
 				savedIncPerso = in->readByte();
+			if (ver >= 8 && !in->eos())
+				savedLastVue = (int32)in->readUint32BE();
 		}
 	}
 	delete in;
@@ -290,11 +295,12 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 
 	_nextPlaceId = placeId;
 	_arrivalScanPending = false;   // a Vue= of the reloaded /INIT is superseded
-	// FUN_0042de5c sets LastVue and the current place to 1 (0x0042e285,
-	// 0x0042e29e); its chapter change FUN_00427634 copies LastVue into
-	// ArriveeVue (0x0042777d), so the place loop's arrival scan runs with
-	// ArriveeVue = 1 (gameStep passes the current place as the origin).
-	_lastVue = 1;
+	// FUN_0042de5c restores LastVue from the checkpoint (a successful load
+	// jumps over the stores of 1 at 0x0042e285 / 0x0042e29e, which are for a
+	// missing file: @ 0x0042e247); its chapter change FUN_00427634 copies
+	// LastVue into ArriveeVue (0x0042777d) for the place loop's arrival scan.
+	// Saves before ext v8 did not keep it: 1, the earlier behaviour.
+	_lastVue = savedLastVue >= 0 ? (uint)savedLastVue : 1;
 	_currentPlaceId = 1;
 	_omni3dMan.setAlpha(alpha);
 	_omni3dMan.setBeta(beta);
