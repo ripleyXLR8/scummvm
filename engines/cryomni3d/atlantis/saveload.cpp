@@ -54,17 +54,33 @@ static const char  *kPlayersFile    = "atlantis-players.dat";
 // p<L><N>.gam checkpoints are not read, so such a player starts anew).
 static const char  *kOrigPlayersFile = "players.atl";
 
-void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &saveName) {
-	Common::String saveFileName = getSaveStateName((int)saveNum - 1);
-	Common::OutSaveFile *out = _saveFileMan->openForSaving(saveFileName);
-	if (!out) {
-		warning("saveGame: cannot open '%s' for writing", saveFileName.c_str());
-		return;
-	}
+// Everything a save holds, in the order it is written (writePortSave).
+struct PortSave {
+	Common::String name;
+	Common::Array<uint32> inventory;     // object index into _objects, -1 = empty
+	uint32 chapter = 0;
+	Common::String wamName;
+	uint32 placeId = 0;
+	double alpha = 0.0, beta = 0.0;
+	Common::Array<int> hiddenPersos;
+	bool keepInitSubjects = false;       // an imported checkpoint: the /INIT's
+	Common::Array<Common::Pair<int, Common::Array<uint8> > > subjects;
+	Common::Array<Common::Pair<Common::String, int32> > vars;   // the persistent ones
+	uint32 conChapter = 0;
+	uint32 musicTrack = 0;
+	Common::Array<byte> conCounters;
+	uint8 guestCount = 0;
+	int32 guestId[AtlantisGuests::kSlots] = {};
+	uint8 guestSprite[AtlantisGuests::kSlots] = {};
+	bool guestsShown = true;
+	uint8 incPerso = 0;
+	uint32 lastVue = 1;
+};
 
+static void writePortSave(Common::WriteStream *out, const PortSave &s) {
 	char saveNameC[kSaveDescriptionLen + 1];
 	memset(saveNameC, 0, sizeof(saveNameC));
-	strncpy(saveNameC, saveName.c_str(), kSaveDescriptionLen);
+	strncpy(saveNameC, s.name.c_str(), kSaveDescriptionLen);
 	out->write(saveNameC, kSaveDescriptionLen);
 
 	out->writeUint32LE(0);            // dummy padding
@@ -75,23 +91,19 @@ void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &save
 
 	// Inventory: the first 20 slots × uint32BE object index into _objects
 	// (-1 = empty); slots 20.. go to ext v9.
-	for (uint i = 0; i < kSaveInvBaseSlots; i++) {
-		uint objId = uint(-1);
-		if (i < _inventory.size() && _inventory[i] != nullptr)
-			objId = (uint)(_inventory[i] - _objects.begin());
-		out->writeUint32BE(objId);
-	}
+	for (uint i = 0; i < kSaveInvBaseSlots; i++)
+		out->writeUint32BE(i < s.inventory.size() ? s.inventory[i] : 0xffffffffu);
 
-	out->writeUint32BE(_currentChapter);
+	out->writeUint32BE(s.chapter);
 
 	char wamNameC[kWAMNameLen];
 	memset(wamNameC, 0, sizeof(wamNameC));
-	strncpy(wamNameC, _currentWAMName.c_str(), kWAMNameLen - 1);
+	strncpy(wamNameC, s.wamName.c_str(), kWAMNameLen - 1);
 	out->write(wamNameC, kWAMNameLen);
 
-	out->writeUint32BE(_currentPlaceId);
-	out->writeDoubleBE(_omni3dMan.getAlpha());
-	out->writeDoubleBE(_omni3dMan.getBeta());
+	out->writeUint32BE(s.placeId);
+	out->writeDoubleBE(s.alpha);
+	out->writeDoubleBE(s.beta);
 
 	for (uint i = 0; i < 256; i++)    // place states (not modelled yet)
 		out->writeUint32BE(0);
@@ -102,71 +114,196 @@ void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &save
 	out->writeUint32BE(kExtMagic);
 	out->writeUint32BE(kExtVersion);
 
-	out->writeUint32BE((uint32)_hiddenPersos.size());
-	for (int pid : _hiddenPersos)
+	out->writeUint32BE((uint32)s.hiddenPersos.size());
+	for (int pid : s.hiddenPersos)
 		out->writeSint32BE(pid);
 
-	// The subject table as (perso, count, ids) for the non-empty records.
-	uint32 nSujPersos = 0;
-	for (uint r = 0; r < ConSubjects::kRecords; r++)
-		if (!_subjects.subjects(0x200 + (int)r).empty())
-			nSujPersos++;
-	out->writeUint32BE(nSujPersos);
-	for (uint r = 0; r < ConSubjects::kRecords; r++) {
-		const Common::Array<uint8> &sujs = _subjects.subjects(0x200 + (int)r);
-		if (sujs.empty())
-			continue;
-		out->writeSint32BE(0x200 + (int32)r);
-		out->writeUint32BE((uint32)sujs.size());
-		for (uint8 s : sujs)
-			out->writeSint32BE(s);
+	// The subject table as (perso, count, ids) for the non-empty records;
+	// 0xffffffff: keep the ones the chapter's /INIT sets (an imported
+	// checkpoint: the original does not save the table).
+	if (s.keepInitSubjects) {
+		out->writeUint32BE(0xffffffffu);
+	} else {
+		out->writeUint32BE((uint32)s.subjects.size());
+		for (uint i = 0; i < s.subjects.size(); i++) {
+			out->writeSint32BE(s.subjects[i].first);
+			out->writeUint32BE((uint32)s.subjects[i].second.size());
+			for (uint8 v : s.subjects[i].second)
+				out->writeSint32BE(v);
+		}
 	}
 
 	// Named game variables — only the 7 persistent ones (VARIAS.CON idx 0-6);
 	// the rest are chapter-transient and the original never saves them.
-	uint32 nPersist = 0;
-	for (const auto &kv : _gameVars)
-		if (isPersistentGameVar(kv._key))
-			nPersist++;
-	out->writeUint32BE(nPersist);
-	for (const auto &kv : _gameVars) {
-		if (!isPersistentGameVar(kv._key))
-			continue;
-		uint32 klen = (uint32)kv._key.size();
-		out->writeUint32BE(klen);
-		out->write(kv._key.c_str(), klen);
-		out->writeSint32BE(kv._value);
+	out->writeUint32BE((uint32)s.vars.size());
+	for (uint i = 0; i < s.vars.size(); i++) {
+		const Common::String &key = s.vars[i].first;
+		out->writeUint32BE((uint32)key.size());
+		out->write(key.c_str(), key.size());
+		out->writeSint32BE(s.vars[i].second);
 	}
 
-	out->writeUint32BE(_currentCONChapter);   // ext v2: active CHAPI*.CON
+	out->writeUint32BE(s.conChapter);    // ext v2: active CHAPI*.CON
 	// ext v3: the playing music track.  startmusik/stopmusik own the
 	// selection; it is not a game variable, so persist it explicitly.
-	out->writeUint32BE((uint32)_musicTrackId);
-	out->writeUint32BE(0);                     // ext v4: shown-perso count (not modelled yet)
+	out->writeUint32BE(s.musicTrack);
+	out->writeUint32BE(0);               // ext v4: shown-perso count (not modelled yet)
 	// ext v5: the /con play counters (the original saves the same 0x5dc
 	// bytes, FUN_0042d6b8).
-	out->write(_conPlayCounters.begin(), _conPlayCounters.size());
+	out->write(s.conCounters.data(), s.conCounters.size());
 	// ext v6: the guests (the original saves the list, FUN_0042d6b8 @
 	// 0x0042db2a) and the shown flag.
-	out->writeByte((byte)_guests.count);
+	out->writeByte(s.guestCount);
 	for (uint i = 0; i < AtlantisGuests::kSlots; i++) {
-		out->writeSint32BE(_guests.id[i]);
-		out->writeByte(_guests.sprite[i]);
+		out->writeSint32BE(s.guestId[i]);
+		out->writeByte(s.guestSprite[i]);
 	}
-	out->writeByte(_guestsShown ? 1 : 0);
+	out->writeByte(s.guestsShown ? 1 : 0);
 	// ext v7: the IncPerso count (the original's .gam keeps it at 0x11e).
-	out->writeByte(_incPersoCount);
+	out->writeByte(s.incPerso);
 	// ext v8: LastVue (0x0049692c, .gam field 0x116), restored by a load.
-	out->writeUint32BE((uint32)_lastVue);
+	out->writeUint32BE(s.lastVue);
 	// ext v9: inventory slots 20.. (the original's table holds 30 records,
 	// 0x006ce138, all in its checkpoint).
-	out->writeUint32BE(_inventory.size() > kSaveInvBaseSlots ? _inventory.size() - kSaveInvBaseSlots : 0);
-	for (uint i = kSaveInvBaseSlots; i < _inventory.size(); i++)
-		out->writeUint32BE(_inventory[i] ? (uint32)(_inventory[i] - _objects.begin()) : 0xffffffffu);
+	const uint32 extra = s.inventory.size() > kSaveInvBaseSlots ? s.inventory.size() - kSaveInvBaseSlots : 0;
+	out->writeUint32BE(extra);
+	for (uint i = kSaveInvBaseSlots; i < s.inventory.size(); i++)
+		out->writeUint32BE(s.inventory[i]);
+}
 
+void CryOmni3DEngine_Atlantis::saveGame(uint saveNum, const Common::String &saveName) {
+	Common::String saveFileName = getSaveStateName((int)saveNum - 1);
+	Common::OutSaveFile *out = _saveFileMan->openForSaving(saveFileName);
+	if (!out) {
+		warning("saveGame: cannot open '%s' for writing", saveFileName.c_str());
+		return;
+	}
+	PortSave s;
+	s.name = saveName;
+	for (uint i = 0; i < _inventory.size(); i++)
+		s.inventory.push_back(_inventory[i] ? (uint32)(_inventory[i] - _objects.begin()) : 0xffffffffu);
+	s.chapter = _currentChapter;
+	s.wamName = _currentWAMName;
+	s.placeId = _currentPlaceId;
+	s.alpha = _omni3dMan.getAlpha();
+	s.beta = _omni3dMan.getBeta();
+	s.hiddenPersos = _hiddenPersos;
+	for (uint r = 0; r < ConSubjects::kRecords; r++) {
+		const Common::Array<uint8> &sujs = _subjects.subjects(0x200 + (int)r);
+		if (!sujs.empty())
+			s.subjects.push_back(Common::Pair<int, Common::Array<uint8> >(0x200 + (int)r, sujs));
+	}
+	for (const auto &kv : _gameVars)
+		if (isPersistentGameVar(kv._key))
+			s.vars.push_back(Common::Pair<Common::String, int32>(kv._key, kv._value));
+	s.conChapter = _currentCONChapter;
+	s.musicTrack = (uint32)_musicTrackId;
+	s.conCounters = _conPlayCounters;
+	s.guestCount = (uint8)_guests.count;
+	for (uint i = 0; i < AtlantisGuests::kSlots; i++) {
+		s.guestId[i] = _guests.id[i];
+		s.guestSprite[i] = _guests.sprite[i];
+	}
+	s.guestsShown = _guestsShown;
+	s.incPerso = _incPersoCount;
+	s.lastVue = (uint32)_lastVue;
+	writePortSave(out, s);
 	out->finalize();
 	delete out;
 	debugC(1, kDebugScript, "saveGame: wrote slot %u ('%s')", saveNum, saveName.c_str());
+}
+
+void CryOmni3DEngine_Atlantis::importOriginalSaves() {
+	// Only once: the port's players file does not exist yet.
+	{
+		Common::InSaveFile *own = _saveFileMan->openForLoading(kPlayersFile);
+		if (own) {
+			delete own;
+			return;
+		}
+	}
+	char letters[kMaxPlayers];
+	{
+		Common::InSaveFile *orig = _saveFileMan->openForLoading(kOrigPlayersFile);
+		if (!orig)
+			return;
+		const bool ok = readOriginalPlayersLetters(*orig, letters);
+		delete orig;
+		if (!ok)
+			return;
+	}
+	loadConVarNames();
+	uint imported = 0;
+	for (uint p = 0; p < kMaxPlayers; p++) {
+		if (_players[p].empty())
+			continue;
+		for (uint ch = 2; ch < kPlayerSlotStride; ch++) {
+			const Common::String fileName = Common::String::format("p%c%u.gam", letters[p], ch);
+			Common::InSaveFile *in = _saveFileMan->openForLoading(fileName);
+			if (!in)
+				continue;
+			Common::Array<byte> data((uint)in->size());
+			if (data.size())
+				in->read(data.data(), data.size());
+			delete in;
+			OrigCheckpoint cp;
+			if (!parseOriginalCheckpoint(data.data(), data.size(), cp) || cp.chapter != ch) {
+				warning("importOriginalSaves: %s is not a checkpoint of chapter %u", fileName.c_str(), ch);
+				continue;
+			}
+			const int slot = episodeSaveSlot(p, ch);
+			if (saveSlotExists(slot))
+				continue;
+			PortSave s;
+			s.name = episodeName(ch);
+			for (const OrigCheckpoint::Record &r : cp.inventory) {
+				// the record's icon indexes the catalogue for every object the
+				// original can hand out (experiments/2026-10-12-18)
+				Object *obj = (r.sprite < _objects.size() && (int32)_objects[r.sprite].idOBJ() == r.id)
+				              ? &_objects[r.sprite] : findInventoryObject(_objects, (uint)r.id);
+				if (obj)
+					s.inventory.push_back((uint32)(obj - &_objects.front()));
+				else
+					warning("importOriginalSaves: %s: no object %d", fileName.c_str(), r.id);
+			}
+			// The port's base WAM chapter (its saves keep 1 for the whole game;
+			// the area WAM below replaces it on load) and the area WAM.
+			s.chapter = 1;
+			s.wamName = cp.wamName;
+			s.placeId = (uint32)cp.placeId;
+			// The original's load keeps the view angles it has; the
+			// chapter's /INIT usually sets them (AngleWarpX).
+			s.alpha = s.beta = 0.0;
+			s.hiddenPersos = cp.hiddenPersos;
+			s.keepInitSubjects = true;
+			for (uint v = 0; v < 7 && v < _conVarNames.size(); v++) {
+				Common::String key = _conVarNames.name(v);
+				key.toLowercase();
+				s.vars.push_back(Common::Pair<Common::String, int32>(key, cp.vars[v]));
+			}
+			s.conChapter = ch;
+			s.musicTrack = 0;   // not in the checkpoint: the chapter's script starts it
+			s.conCounters = cp.conCounters;
+			s.conCounters.resize(kConPlayCounterCount, 0);
+			s.guestCount = (uint8)cp.guestCount;
+			for (uint g = 0; g < cp.guestCount && g < AtlantisGuests::kSlots; g++) {
+				s.guestId[g] = cp.guestId[g];
+				s.guestSprite[g] = cp.guestSprite[g];
+			}
+			s.incPerso = cp.incPerso;
+			s.lastVue = (uint32)cp.lastVue;
+			Common::OutSaveFile *out = _saveFileMan->openForSaving(getSaveStateName(slot));
+			if (!out)
+				continue;
+			writePortSave(out, s);
+			out->finalize();
+			delete out;
+			imported++;
+		}
+	}
+	// The port's players file now exists: the import does not run again.
+	savePlayers();
+	debugC(1, kDebugScript, "importOriginalSaves: %u checkpoints imported", imported);
 }
 
 bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
@@ -214,6 +351,7 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	// Extended block.
 	Common::Array<int> savedHiddenPersos;
 	ConSubjects savedSubjects;
+	bool keepInitSubjects = false;
 	Common::HashMap<Common::String, int> savedGameVars;
 	uint32 savedCONChapter = 0;
 	Common::Array<byte> savedConCounters;   // empty: saved before ext v5
@@ -236,6 +374,10 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 				savedHiddenPersos.push_back(in->readSint32BE());
 
 			uint32 nSuj = in->readUint32BE();
+			if (nSuj == 0xffffffffu) {   // an imported checkpoint: keep /INIT's
+				keepInitSubjects = true;
+				nSuj = 0;
+			}
 			for (uint32 i = 0; i < nSuj && !in->eos(); i++) {
 				const int32 persoId = in->readSint32BE();
 				uint32 nK = in->readUint32BE();
@@ -342,7 +484,8 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 
 	if (hasExt) {
 		_hiddenPersos = savedHiddenPersos;
-		_subjects     = savedSubjects;
+		if (!keepInitSubjects)
+			_subjects = savedSubjects;
 		for (const auto &kv : savedGameVars)
 			if (isPersistentGameVar(kv._key))
 				_gameVars[kv._key] = kv._value;

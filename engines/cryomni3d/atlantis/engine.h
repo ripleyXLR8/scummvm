@@ -238,6 +238,11 @@ private:
 	// --- Save / load (saveload.cpp) ---------------------------------------
 	// Serialize / restore the full game state to a 1-based save slot.
 	void saveGame(uint saveNum, const Common::String &saveName);
+	// The original's checkpoints: on a first run with only its players.atl in
+	// the save folder, every p<letter><N>.gam of its players becomes a port
+	// save in that player's episode slot (atlantis-re formats/ui-gam.md).
+	void importOriginalSaves();
+	void loadConVarNames();
 	bool loadGame(uint saveNum);
 	// Write the per-chapter checkpoint (called on chapter entry).
 	void autosave();

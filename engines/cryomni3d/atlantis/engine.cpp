@@ -456,6 +456,7 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	// wired when the toolbar lands.
 	loadAtlantisExeTables();
 	setupObjects();
+	importOriginalSaves();
 	loadObjectSprites();
 	loadFontSpriteSet("SUIVEUR.SPR", _guestSprites);   // guest portraits (FUN_00427344)
 	loadInventoryBarSprite();

@@ -70,6 +70,20 @@ bool CryOmni3DEngine_Atlantis::isPersistentGameVar(const Common::String &key) {
 	return false;
 }
 
+void CryOmni3DEngine_Atlantis::loadConVarNames() {
+	if (!_conVarNames.empty())
+		return;
+	Common::ScopedPtr<Common::SeekableReadStream> v(openBigFileStream(kFileTypeScript, "VARIAS.CON"));
+	if (v) {
+		Common::Array<char> data(v->size());
+		if (data.size())
+			v->read(data.begin(), data.size());
+		_conVarNames.load(data.begin(), data.size());
+	} else {
+		warning("loadConScript: no VARIAS.CON");
+	}
+}
+
 void CryOmni3DEngine_Atlantis::loadConScript(int chapter) {
 	// FUN_00427634 restarts ChapterTime before loading the file (0x004276d0).
 	_conClocks.chapterStart = g_system->getMillis();
@@ -99,17 +113,7 @@ void CryOmni3DEngine_Atlantis::loadConScript(int chapter) {
 	// the saved list.
 	_subjects.clear();
 
-	if (_conVarNames.empty()) {
-		Common::ScopedPtr<Common::SeekableReadStream> v(openBigFileStream(kFileTypeScript, "VARIAS.CON"));
-		if (v) {
-			Common::Array<char> data(v->size());
-			if (data.size())
-				v->read(data.begin(), data.size());
-			_conVarNames.load(data.begin(), data.size());
-		} else {
-			warning("loadConScript: no VARIAS.CON");
-		}
-	}
+	loadConVarNames();
 
 	Common::String name = Common::String::format("CHAPI%03d.CON", chapter);
 	Common::SeekableReadStream *s = openBigFileStream(kFileTypeScript, name);
