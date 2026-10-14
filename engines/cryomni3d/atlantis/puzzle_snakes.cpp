@@ -117,7 +117,10 @@ void SnakesPuzzle::playSound(SnakesRules::Sound s) {
 
 // FUN_0043b0f4: phase 1 (FUN_0043c35c) until the four pieces are placed,
 // then phase 2 (FUN_0043c6bc); each frame FUN_0043bebc then the cursor
-// FUN_0043c7e8.  A leave click ends either phase before the frame.
+// FUN_0043c7e8.  A leave click ends phase 2 before the frame (the result
+// test at 0x0043b392 follows FUN_0043c6bc), phase 1 after it: its loop
+// draws, presents and polls the input before testing the result at
+// 0x0043b34e.
 int SnakesPuzzle::run() {
 	if (!_loaded)
 		return 1;
@@ -132,14 +135,15 @@ int SnakesPuzzle::run() {
 		_engine->pollEvents();
 		const Common::Point m = _engine->getMousePos();
 		const bool nowButton = (_engine->getCurrentMouseButton() == 1);
+		const bool phase1 = !_rules.allPlaced();
 		if (nowButton && !prevButton) {
-			if (!_rules.allPlaced())
+			if (phase1)
 				playSound(_rules.place(m.x, m.y));
 			else
 				playSound(_rules.steer(m.x, m.y));
 		}
 		prevButton = nowButton;
-		if (_rules.result != 0)
+		if (_rules.result != 0 && !phase1)
 			break;   // phase 2 leaves before the frame
 		if (_rules.frame(m.x, m.y)) {
 			playSound(SnakesRules::kSoundWin);
@@ -150,6 +154,8 @@ int SnakesPuzzle::run() {
 		drawCursor(working, m.x, m.y);
 		g_system->copyRectToScreen(working.getPixels(), working.pitch, 0, 0, kScreenW, kScreenH);
 		g_system->updateScreen();
+		if (_rules.result != 0)
+			break;   // phase 1 leaves after the frame
 		g_system->delayMillis(15);
 	}
 	_engine->showMouse(true);
