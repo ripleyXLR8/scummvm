@@ -57,6 +57,9 @@ static bool startsWithIgnoreCase(const Common::String &s, const char *prefix) {
 
 bool MenuLayout::loadFromStream(Common::ReadStream &s) {
 	items.clear();
+	raw.clear();
+	walk.records.clear();
+	walk.ops.clear();
 
 	// Read the whole stream into a heap buffer.  Menu files are tiny
 	// (< 500 bytes typical, < 5 KB for credits), so this is fine.
@@ -69,6 +72,7 @@ bool MenuLayout::loadFromStream(Common::ReadStream &s) {
 		for (uint32 i = 0; i < got; i++)
 			buf.push_back(chunk[i]);
 	}
+	raw = buf;
 	buf.push_back(0); // null-terminate so c_str scans are safe.
 
 	const char *cur = (const char *)buf.data();
@@ -310,6 +314,197 @@ void sprFontPen(const Common::String &text, int anchorX, int spaceAdvance,
 		out.push_back(g);
 		cx += (advanceTable && (uint)idx < advanceCount) ? advanceTable[idx] : glyphWidths[idx];
 	}
+}
+
+namespace {
+
+// FUN_00451b7a (atoi): leading spaces, a sign, digits.
+int walkAtoi(const byte *t, uint32 size, uint32 p) {
+	while (p < size && (t[p] == ' ' || t[p] == '\t'))
+		p++;
+	bool neg = false;
+	if (p < size && (t[p] == '-' || t[p] == '+'))
+		neg = (t[p++] == '-');
+	int v = 0;
+	while (p < size && t[p] >= '0' && t[p] <= '9')
+		v = v * 10 + (t[p++] - '0');
+	return neg ? -v : v;
+}
+
+// The digit steps of FUN_0041fb6c / FUN_004207c0: base, + 1 above 9,
+// + 1 above 99 (a 4-digit or negative number desynchronises the walk).
+uint32 walkStep(uint32 p, int v, int base, bool threeDigits = true) {
+	p += base;
+	if (v > 9)
+		p++;
+	if (threeDigits && v > 99)
+		p++;
+	return p;
+}
+
+bool walkAt(const byte *t, uint32 size, uint32 p, const char *word) {
+	const uint32 n = strlen(word);
+	return p + n <= size && memcmp(t + p, word, n) == 0;
+}
+
+MenuWalkRecord &walkSlot(MenuWalk &walk, uint n) {
+	while (walk.records.size() <= n) {
+		MenuWalkRecord r = { 0, 0, 0, 0 };
+		walk.records.push_back(r);
+	}
+	return walk.records[n];
+}
+
+} // End of anonymous namespace
+
+int menuWalkHit(const Common::Array<MenuWalkRecord> &records, int mx, int my) {
+	for (uint k = 0; k < records.size(); k++) {
+		const int x = (uint16)records[k].x, y = (uint16)records[k].y;
+		const int w = (uint16)records[k].w, h = (uint16)records[k].h;
+		if (x < mx && mx < x + w && y < my && my < y + h)
+			return (int)k;
+	}
+	return -1;
+}
+
+int menuNumber(const char *fileName) {
+	static const char *const kMenus[] = {
+		"MAINMENU", "LOADMENU", "OPTMENU", "NEWMENU", "SELEMENU", "SONMENU",
+		"SUREMENU", "CD1MENU", "CD2MENU", "CD3MENU", "CD4MENU", "WAIT",
+		"ERROR1", "ERROR2", "ERROR3" };
+	Common::String base(fileName);
+	const size_t dot = base.findFirstOf('.');
+	if (dot != Common::String::npos)
+		base = Common::String(base.c_str(), dot);
+	for (uint k = 0; k < ARRAYSIZE(kMenus); k++)
+		if (base.equalsIgnoreCase(kMenus[k]))
+			return (int)k;
+	return -1;
+}
+
+void walkMenuText(const byte *t, uint32 size, int menu, int hoverLine,
+                  int toggleA, int toggleB, MenuWalk &walk) {
+	walk.ops.clear();
+	uint count = 0;               // 0x006126b0 + 0xa1 * menu = 0
+	uint32 p = 0;
+	int line = 0;                 // EBP-0x14
+	int penX = 0, penY = 0;       // EBP-0x24, EBP-0x20
+	auto toCr = [&](uint32 q) {
+		while (q < size && t[q] != 0x0d)
+			q++;
+		return q;
+	};
+	while (p < size && !walkAt(t, size, p, "/fin")) {
+		bool draw = true;         // EBP-0x18
+		bool hover = (line == hoverLine && line != 0) || (line == hoverLine && menu == 0);
+		if ((line == 2 || line == 4) && menu == 2)
+			hover = false;
+		if (walkAt(t, size, p, "<>")) {             // 0x0041fd08
+			p += 3;
+			const int y = walkAtoi(t, size, p);
+			p = walkStep(p, y, 2);
+			int w = 0;                               // FUN_004206c8
+			for (uint32 q = p; q < size && t[q] != 0x0d; q++)
+				w += (t[q] >= 0x20 && t[q] - 0x20 < (int)ARRAYSIZE(kFontMaxMeasureWidths)) ? kFontMaxMeasureWidths[t[q] - 0x20] : 0;
+			penX = (640 - w) / 2;
+			penY = y;
+			MenuWalkRecord &r = walkSlot(walk, count);
+			r.x = (int16)(penX - 11);
+			r.y = (int16)(y - 28);
+			r.w = (int16)w;
+			r.h = 28;
+			count++;
+		}
+		if (walkAt(t, size, p, "<")) {              // 0x0041fe42
+			p++;
+			const int x = walkAtoi(t, size, p);
+			p = walkStep(p, x, 2);
+			const int y = walkAtoi(t, size, p);
+			p = walkStep(p, y, 2);
+			penX = x;
+			penY = y;
+			MenuWalkRecord &r = walkSlot(walk, count);
+			r.x = (int16)(x - 11);
+			r.y = (int16)(y - 28);
+			r.w = (int16)(0x16 * (int)(toCr(p) - p));
+			r.h = 28;
+			count++;
+		}
+		if (walkAt(t, size, p, "//")) {             // 0x0041ffb7
+			p += 2;
+			for (int k = 0; k < 2; k++) {
+				const bool on = (menu == 2) && (k == 0 ? (line == 3 && toggleA == 0) : (line == 5 && toggleB == 0));
+				if (!on)
+					continue;
+				uint32 q = p;                         // strchr(p, '&') + 2
+				while (q < size && t[q] != '&')
+					q++;
+				p = q + 2;
+			}
+		}
+		if (walkAt(t, size, p, "&&")) {             // 0x0042002d
+			if (menu == 2 && ((line == 3 && toggleA == 1) || (line == 5 && toggleB == 1))) {
+				p = toCr(p) + 1;
+				line++;
+			}
+		}
+		static const char *const kSpr[] = { "/sprj=", "/sprr=", "/sprc=", "/spr=" };
+		for (int v = 0; v < 4; v++) {               // 0x0042009d..0x004201be
+			if (!walkAt(t, size, p, kSpr[v]))
+				continue;
+			p += (v < 3) ? 6 : 5;
+			// FUN_004207c0: I (1-2 digits), X, Y, W (1-3 digits), H
+			const int idx = walkAtoi(t, size, p);
+			p = walkStep(p, idx, 2, false);
+			const int x = walkAtoi(t, size, p);
+			p = walkStep(p, x, 2);
+			const int y = walkAtoi(t, size, p);
+			p = walkStep(p, y, 2);
+			const int w = walkAtoi(t, size, p);
+			p = walkStep(p, w, 2);
+			const int h = walkAtoi(t, size, p);
+			MenuWalkRecord &r = walkSlot(walk, count);
+			int bx = x;
+			if (r.x == 0)
+				r.x = (int16)x;
+			else
+				bx = r.x;                             // a slider keeps its knob
+			if (r.y == 0)
+				r.y = (int16)y;
+			r.w = (int16)w;
+			r.h = (int16)h;
+			MenuWalkOp op = { true, v < 3, false, (int16)bx, (int16)y, idx, line, (int)count };
+			walk.ops.push_back(op);
+			count++;
+			p = toCr(p) + 1;                          // past the CR
+			draw = false;
+			line++;
+		}
+		if (p >= size)
+			break;
+		int c = t[p];                                 // 0x004201c1
+		if (c == 0x0d) {
+			p++;
+			penX = 0;
+			penY += 28;
+			draw = false;
+			line++;
+		}
+		if (c < 0x20 && c != 0x0d)
+			c = 0x20;
+		if (c == 0x20) {
+			penX += 0x16;
+			draw = false;
+		}
+		c -= 0x20;
+		if (draw) {
+			MenuWalkOp op = { false, false, hover, (int16)penX, (int16)penY, c, line, (int)count - 1 };
+			walk.ops.push_back(op);
+			penX += (c >= 0 && c < (int)ARRAYSIZE(kFontMaxMeasureWidths)) ? kFontMaxMeasureWidths[c] : 0;
+		}
+		p++;
+	}
+	walk.records.resize(count);
 }
 
 } // namespace Atlantis

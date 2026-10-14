@@ -924,6 +924,36 @@ inline void portRecords(const Common::Array<int> &, const char *text, int menu,
 	}
 }
 
+// The port's walkMenuText (FUN_0041fb6c) as records: the hit table, each
+// record's glyphs, its first blit and, for a sprite record, the index.
+inline void walkRecords(const char *text, int menu, int a, int b, Common::Array<PortRec> &out) {
+	CryOmni3D::Atlantis::MenuWalk walk;
+	CryOmni3D::Atlantis::walkMenuText((const byte *)text, strlen(text), menu, -1, a, b, walk);
+	for (uint i = 0; i < walk.records.size(); i++) {
+		PortRec r;
+		r.x = walk.records[i].x; r.y = walk.records[i].y;
+		r.w = walk.records[i].w; r.h = walk.records[i].h;
+		r.x0 = r.y0 = 0;
+		r.spr = -1;
+		bool first = true;
+		for (uint k = 0; k < walk.ops.size(); k++) {
+			const CryOmni3D::Atlantis::MenuWalkOp &op = walk.ops[k];
+			if (op.record != (int)i)
+				continue;
+			if (first) {
+				r.x0 = op.x;
+				r.y0 = op.y;
+				first = false;
+			}
+			if (op.sprite)
+				r.spr = op.index;
+			else
+				r.label += (char)(op.index + 0x20);
+		}
+		out.push_back(r);
+	}
+}
+
 } // namespace UiMenus
 
 using namespace UiMenus;
@@ -933,15 +963,6 @@ class UiMenusTestSuite : public CxxTest::TestSuite {
 	bool _haveSrc;
 
 public:
-	// Deferred known differences run only on request (they need no data, so
-	// they would otherwise fail every CI run).
-	static bool knownDifferences() {
-		if (AtlantisTest::configValue("known_differences") == "1")
-			return true;
-		TS_WARN("known difference; set known_differences=1 in atlantis_test.cfg to run it");
-		return false;
-	}
-
 	void tearDown() override { Common::uninstall_null_g_system(); }
 
 	void setUp() override {
@@ -1008,6 +1029,33 @@ public:
 		return nullptr;
 	}
 
+	// The port's byte walk (walkMenuText) on every emulated case, the edge
+	// cases included: records, glyphs, first blit, sprite index.
+	void checkWalkCase(const UiOrigCase &c) {
+		Common::Array<PortRec> port;
+		walkRecords(c.text, c.menu, c.toggleA, c.toggleB, port);
+		TSM_ASSERT_EQUALS(c.name, (int)port.size(), c.nrec);
+		for (int i = 0; i < c.nrec && i < (int)port.size(); i++) {
+			const UiOrigRec &o = c.recs[i];
+			const PortRec &p = port[i];
+			Common::String what = Common::String::format("%s rec %d", c.name, i);
+			TSM_ASSERT_EQUALS((what + " x").c_str(), p.x, o.x);
+			TSM_ASSERT_EQUALS((what + " y").c_str(), p.y, o.y);
+			TSM_ASSERT_EQUALS((what + " w").c_str(), p.w, o.w);
+			TSM_ASSERT_EQUALS((what + " h").c_str(), p.h, o.h);
+			TSM_ASSERT_EQUALS((what + " spr").c_str(), p.spr, o.spr);
+			TSM_ASSERT_EQUALS((what + " label").c_str(), p.label, Common::String(o.label));
+			if (o.label[0] != 0 || o.spr >= 0) {
+				TSM_ASSERT_EQUALS((what + " first blit x").c_str(), p.x0, o.x0);
+				TSM_ASSERT_EQUALS((what + " first blit y").c_str(), p.y0, o.y0);
+			}
+		}
+	}
+	void test_walk_all_cases() {
+		for (uint i = 0; i < ARRAYSIZE(kUiOrigCases); i++)
+			checkWalkCase(kUiOrigCases[i]);
+	}
+
 	// Constructs present in the shipped menu files.
 	void test_layout_shipped_constructs() {
 		if (!_haveSrc) { TS_WARN("menus.cpp not found; skipped"); return; }
@@ -1017,38 +1065,19 @@ public:
 	}
 
 	// Edge (not in the shipped files): /sprj= /sprr= /sprc= sprite records,
-	// parsed by the original (FUN_0041fb6c @ 0x4200a2..0x42017d), ignored by
-	// the port.  Also checks the 'I' / '-' measuring widths of a centred label.
-	// A deferred known difference, like the cases below.
-	void test_layout_edge_sprite_variants() {
-		if (!knownDifferences()) return;
-		checkCase(*findCase("three_digit_and_sprites"));
-	}
+	// records of the original (FUN_0041fb6c @ 0x4200a2..0x42017d), through
+	// the port's walk.  Also checks the 'I' / '-' measuring widths of a
+	// centred label.
+	void test_layout_edge_sprite_variants() { checkWalkCase(*findCase("three_digit_and_sprites")); }
 
-	// Inputs absent from the shipped files where the original's character-
-	// stream parser and the port's line parser disagree.  Deferred known
-	// differences (no impact on the shipped data, see REPORT): they run only
-	// with "known_differences=1" in atlantis_test.cfg.
-	void test_layout_edge_blank_and_unknown_lines() {
-		if (!knownDifferences()) return;
-		checkCase(*findCase("blank_line_and_unknown"));
-	}
-	void test_layout_edge_lf_only() {
-		if (!knownDifferences()) return;
-		checkCase(*findCase("lf_only"));
-	}
-	void test_layout_edge_trailing_spaces() {
-		if (!knownDifferences()) return;
-		checkCase(*findCase("trailing_space_centred"));
-	}
-	void test_layout_edge_uppercase_fin() {
-		if (!knownDifferences()) return;
-		checkCase(*findCase("uppercase_fin"));
-	}
-	void test_layout_edge_toggle_outside_options() {
-		if (!knownDifferences()) return;
-		checkCase(*findCase("toggle_outside_options"));
-	}
+	// Inputs absent from the shipped files where the original's character
+	// stream walk differs from a line parser; the menus are drawn and hit-
+	// tested through the port's walk (walkMenuText), which matches it.
+	void test_layout_edge_blank_line_and_unknown() { checkWalkCase(*findCase("blank_line_and_unknown")); }
+	void test_layout_edge_lf_only() { checkWalkCase(*findCase("lf_only")); }
+	void test_layout_edge_trailing_spaces() { checkWalkCase(*findCase("trailing_space_centred")); }
+	void test_layout_edge_uppercase_fin() { checkWalkCase(*findCase("uppercase_fin")); }
+	void test_layout_edge_toggle_outside_options() { checkWalkCase(*findCase("toggle_outside_options")); }
 
 	// Sound menu OK: the port's menuVolumeFromKnob vs the original FPU code,
 	// which uses __CHP (FUN_00451d6e, round toward zero) before FISTP.
@@ -1314,9 +1343,29 @@ private:
 			for (int st = 0; st < nstates; st++) {
 				int a = (st >> 1) & 1, b = st & 1;
 				Common::String suf = (f == 2) ? Common::String::format(".t%d%d", a, b) : Common::String();
-				Common::String key = name + "." + what + suf;
+				const bool viaWalk = !strncmp(what, "walk_", 5);
+				Common::String key = name + "." + (viaWalk ? what + 5 : what) + suf;
 				Common::String got;
-				if (!strcmp(what, "rects")) {
+				if (viaWalk) {
+					// the port's byte walk (walkMenuText, FUN_0041fb6c)
+					CryOmni3D::Atlantis::MenuWalk walk;
+					CryOmni3D::Atlantis::walkMenuText((const byte *)text.c_str(), text.size(), (int)f, -1, a, b, walk);
+					if (!strcmp(what, "walk_rects")) {
+						for (uint i = 0; i < walk.records.size(); i++) {
+							if (i) got += ";";
+							got += Common::String::format("%d,%d,%d,%d", walk.records[i].x, walk.records[i].y,
+							                              walk.records[i].w, walk.records[i].h);
+						}
+					} else {
+						const bool sprites = !strcmp(what, "walk_sprites");
+						for (uint i = 0; i < walk.ops.size(); i++) {
+							if (walk.ops[i].sprite != sprites)
+								continue;
+							if (!got.empty()) got += ";";
+							got += Common::String::format("%d,%d,%d", walk.ops[i].x, walk.ops[i].y, walk.ops[i].index);
+						}
+					}
+				} else if (!strcmp(what, "rects")) {
 					Common::Array<PortRec> recs;
 					portRecords(tbl, text.c_str(), (int)f, a, b, recs);
 					got = canonRects(recs);
@@ -1341,4 +1390,8 @@ public:
 	// table (0x49660e); so does the port (drawSprFontText with
 	// kFontMaxMeasureWidths), no longer by the FONTMAX.SPR sprite width.
 	void test_shipped_menu_glyph_positions() { run("glyphs"); }
+	// The same three, through the port's byte walk walkMenuText.
+	void test_shipped_menu_walk_hit_tables() { run("walk_rects"); }
+	void test_shipped_menu_walk_sprites() { run("walk_sprites"); }
+	void test_shipped_menu_walk_glyphs() { run("walk_glyphs"); }
 };

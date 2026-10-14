@@ -78,8 +78,53 @@ struct MenuItem {
 	      sprIdx(0), hx(0), hy(0), w(0), h(0), selected(0) {}
 };
 
+// atlantis.exe FUN_0041fb6c, the menu walk: the text is not parsed ahead of
+// time; every draw walks it byte by byte and rebuilds the menu's hit table
+// (0x006126b0 + 0xa1 * menu: a count, then {s16 x, y, w, h} records) in the
+// same pass.  At each position, in this order: `/fin` ends; `<>,Y>` centred
+// text (FUN_004206c8); `<X,Y>` positioned text; `//` and `&&` the options
+// toggles (menu 2, lines 3 and 5); `/sprj=` `/sprr=` `/sprc=` `/spr=`
+// sprite records (FUN_004207c0); then the byte itself: CR (the next byte is
+// consumed), space and other control bytes (pen + 22), or a FONTMAX glyph.
+struct MenuWalkRecord {
+	int16 x, y, w, h;
+};
+struct MenuWalkOp {
+	bool sprite;        // a sprite of SPRMENU.SPR (or of the alternate bank)
+	bool altBank;       // /sprj= /sprr= /sprc=: bank 0x006cd874
+	bool hoverFont;     // glyph in FONTMAX2 (the hovered line)
+	int16 x, y;         // pen (glyph) or record position (sprite)
+	int index;          // glyph c - 0x20, or the sprite index
+	int line;           // the walk's line counter at the op
+	int record;         // the record the op belongs to (-1 none yet)
+};
+struct MenuWalk {
+	// In: the records of the previous draw (a sprite record keeps a non-zero
+	// x / y, FUN_004207c0); out: this draw's hit table.
+	Common::Array<MenuWalkRecord> records;
+	Common::Array<MenuWalkOp> ops;
+};
+// hoverLine: DAT_006cd850; toggleA / toggleB: DAT_004960a8 / DAT_004960ac.
+void walkMenuText(const byte *text, uint32 size, int menu, int hoverLine,
+                  int toggleA, int toggleB, MenuWalk &walk);
+// atlantis.exe FUN_004210c0: the first record strictly containing the
+// mouse, coordinates read as u16 (a negative x / y is never hit), sprite
+// records included; -1 for none (the original's 0xff).
+int menuWalkHit(const Common::Array<MenuWalkRecord> &records, int mx, int my);
+// The original's menu number of a SPRLIST menu file ("OPTMENU.TXT" → 2).
+int menuNumber(const char *fileName);
+
 struct MenuLayout {
 	Common::Array<MenuItem> items;
+	// The file's bytes as read, walked by walkMenuText on every draw, and the
+	// menu number the original gives it (the order of FUN_0041c838's table:
+	// MAINMENU 0 ... ERROR3 14; -1 unknown).  `walk` keeps the hit table
+	// between draws as the original's static table does.
+	Common::Array<byte> raw;
+	int menu;
+	mutable MenuWalk walk;
+
+	MenuLayout() : menu(-1) {}
 
 	// Parse the menu-text stream.  Returns false only when the buffer is
 	// unreadable; an empty / truncated file yields an empty layout and true.

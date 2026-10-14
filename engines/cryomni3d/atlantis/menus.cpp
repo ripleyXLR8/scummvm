@@ -300,6 +300,36 @@ void CryOmni3DEngine_Atlantis::renderMenuLayout(Graphics::ManagedSurface &dst,
         const MenuLayout &layout, int hoveredTextIdx,
         Common::Array<Common::Rect> &hitRectsOut) const {
 	hitRectsOut.clear();
+	if (layout.menu >= 0 && !layout.raw.empty()) {
+		// atlantis.exe FUN_0041fb6c: the text is walked byte by byte, sprites
+		// and glyphs blitted in file order, the hit table rebuilt.  The toggles
+		// are the options menu's DAT_004960a8 / DAT_004960ac: 1 shows the
+		// first option (the port's selected 0).
+		int flags[2] = { 0, 0 };
+		uint nt = 0;
+		for (uint i = 0; i < layout.items.size() && nt < 2; i++)
+			if (layout.items[i].kind == MenuItem::kToggle)
+				flags[nt++] = layout.items[i].selected == 0 ? 1 : 0;
+		walkMenuText(layout.raw.data(), layout.raw.size(), layout.menu, hoveredTextIdx,
+		             flags[0], flags[1], layout.walk);
+		for (const MenuWalkOp &op : layout.walk.ops) {
+			if (!op.sprite)
+				drawFontMaxText(dst, Common::String((char)(op.index + 0x20)), op.x, op.y, op.hoverFont);
+			else if (!op.altBank)
+				blitMenuSprite(dst, (uint)op.index, op.x, op.y);
+			// The /sprj= /sprr= /sprc= bank 0x006cd874 is never loaded by the
+			// exe (no write found, only the shutdown free in FUN_0041a5b0);
+			// no shipped file uses it.  [UNKNOWN] what such a blit would show.
+		}
+		for (const MenuWalkRecord &r : layout.walk.records) {
+			// FUN_004210c0's strict, u16 test as a half-open rect.
+			if (r.x < 0 || r.y < 0 || r.w <= 1 || r.h <= 1)
+				hitRectsOut.push_back(Common::Rect());
+			else
+				hitRectsOut.push_back(Common::Rect(r.x + 1, r.y + 1, r.x + r.w, r.y + r.h));
+		}
+		return;
+	}
 	hitRectsOut.resize(layout.items.size());
 
 	for (uint i = 0; i < layout.items.size(); i++) {
@@ -358,6 +388,8 @@ void CryOmni3DEngine_Atlantis::fadeScreenToBlack() {
 static int hitTestMenu(const MenuLayout &layout,
                        const Common::Array<Common::Rect> &rects,
                        const Common::Point &mouse) {
+	if (layout.menu >= 0 && !layout.raw.empty())
+		return menuWalkHit(layout.walk.records, mouse.x, mouse.y);
 	for (uint i = 0; i < layout.items.size(); i++) {
 		MenuItem::Kind k = layout.items[i].kind;
 		if (k != MenuItem::kText && k != MenuItem::kToggle)
@@ -1345,7 +1377,10 @@ bool CryOmni3DEngine_Atlantis::loadMenuLayout(const char *baseName,
 		warning("loadMenuLayout: cannot open SPRLIST\\%s", baseName);
 		return false;
 	}
-	return out.loadFromStream(*s);
+	if (!out.loadFromStream(*s))
+		return false;
+	out.menu = menuNumber(baseName);
+	return true;
 }
 
 uint CryOmni3DEngine_Atlantis::displayFilePicker(const Graphics::Surface *bgFrame,
