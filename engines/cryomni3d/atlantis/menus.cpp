@@ -706,6 +706,8 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 	struct Entry { int localSlot; Common::String name; };
 	Common::Array<Entry> saves;
 	int selected = -1;
+	int lastRowClick = -1;
+	uint32 lastRowClickMs = 0;
 	for (uint ch = 0; ch < kPlayerSlotStride; ch++) {
 		int abs = episodeSaveSlot((uint)_currentPlayer, ch);
 		Common::InSaveFile *in = _saveFileMan->openForLoading(getSaveStateName(abs));
@@ -795,6 +797,18 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 			waitMouseRelease();
 			if (rowHover >= 0) {
 				selected = rowHover;
+				// A double click on a row loads it (FUN_0041cf78: the window
+				// procedure sets 0x00496118 on WM_LBUTTONDBLCLK, the class
+				// has CS_DBLCLKS).  The interval is Windows' own setting;
+				// 500 ms is its default.
+				const uint32 now = g_system->getMillis();
+				if (rowHover == lastRowClick && now - lastRowClickMs <= 500 && selected < (int)saves.size()) {
+					result = (uint)episodeSaveSlot((uint)_currentPlayer, (uint)saves[selected].localSlot) + 1;
+					done = true;
+					break;
+				}
+				lastRowClick = rowHover;
+				lastRowClickMs = now;
 			} else if (btnHover == okIdx && selected >= 0) {
 				result = (uint)episodeSaveSlot((uint)_currentPlayer, (uint)saves[selected].localSlot) + 1;
 				done = true;
@@ -1069,16 +1083,13 @@ void CryOmni3DEngine_Atlantis::displaySoundMenu(const Graphics::ManagedSurface &
 			}
 			delete f;
 		}
-		// Wait for the next press (the original spins on its click flag).
-		bool prev = (getCurrentMouseButton() == 1);
-		while (!shouldAbort()) {
-			pollEvents();
-			bool now = (getCurrentMouseButton() == 1);
-			if (now && !prev)
-				break;
-			prev = now;
-			g_system->delayMillis(10);
-		}
+		// The original's wait for a click (FUN_0041db4c @ 0x0041dcb9,
+		// FUN_0041dcf8 @ 0x0041de65) is entered with the click flag 0x0049611c
+		// still set by the press that chose the button, and nothing clears
+		// it: the wait ends at once and the menu runs on while the sample
+		// plays (atlantis-re functions/ui-FUN_0041d5f4.md).  The original
+		// frees the sample's buffer right after starting it; what that plays
+		// is [UNKNOWN] — the port plays the sound.
 	};
 
 	Graphics::ManagedSurface surf(640, 480, fmt);

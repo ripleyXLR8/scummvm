@@ -505,6 +505,17 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		int pitchDelta = omni3dInvertY() ? -yDelta : yDelta;
 		double alpha = _omni3dMan.getAlpha() - xDelta / kLookYawDiv;
 		double beta  = _omni3dMan.getBeta()  + pitchDelta / kLookPitchDiv;
+		// F5 / F6 turn and F8 / F7 tilt the view by 0.034906 rad (2 degrees)
+		// on every poll they are held, when the left button is up
+		// (FUN_0041a298 @ 0x0041a33c..0x0041a3ba; floats 0x00bcb59c /
+		// 0x00bcb598).
+		if (getCurrentMouseButton() != 1) {
+			const uint8 k = _viewKeys.held;
+			if (k & 1) alpha = (float)(alpha + 0.034906);
+			if (k & 2) alpha = (float)(alpha - 0.034906);
+			if (k & 8) beta = (float)(beta + 0.034906);
+			if (k & 4) beta = (float)(beta - 0.034906);
+		}
 		while (alpha >= 2.0 * M_PI) alpha -= 2.0 * M_PI;
 		while (alpha < 0.0)         alpha += 2.0 * M_PI;
 		if (beta < -kWarpBetaLimit) beta = -kWarpBetaLimit;

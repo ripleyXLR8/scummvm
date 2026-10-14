@@ -133,6 +133,7 @@ const Graphics::Font *CryOmni3DEngine_Atlantis::subtitleFont() {
 
 CryOmni3DEngine_Atlantis::~CryOmni3DEngine_Atlantis() {
 	g_system->getTimerManager()->removeTimerProc(&musicFadeTimer);
+	g_system->getEventManager()->getEventDispatcher()->unregisterObserver(&_viewKeys);
 	delete[] _ixVideoBuffers;
 	delete _subtitleTTF;
 	stopAmbient();   // 0x004197a0, on the way out
@@ -403,6 +404,7 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	// FUN_0042f974); 0x00495e72 follows the music volume setting.
 	musicSyncVolume();
 	g_system->getTimerManager()->installTimerProc(&musicFadeTimer, 5000, this, "atlantis-music-fade");
+	g_system->getEventManager()->getEventDispatcher()->registerObserver(&_viewKeys, 1, false);
 
 	// Open the game's data archives.  The full game spans four discs
 	// (BIGCD1-4.BIG), all merged into one index.  Disc 1 is required; discs

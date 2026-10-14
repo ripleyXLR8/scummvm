@@ -27,6 +27,7 @@
 #include "common/hash-str.h"
 #include "common/hashmap.h"
 #include "common/path.h"
+#include "common/events.h"
 #include "common/mutex.h"
 #include "common/random.h"
 #include "common/rect.h"
@@ -115,6 +116,30 @@ enum AbortCommand {
 // cyclorama with mouse look.  Place transitions, CON scripting, dialog,
 // sprites, menus, saves and the F3DC mouth pipeline are layered on top in
 // subsequent commits.
+// F5..F8 held state (atlantis.exe FUN_0041a298 tests the keys' "down" bit
+// every poll: they are not edge-mode keys).
+class AtlantisViewKeys : public Common::EventObserver {
+public:
+	uint8 held = 0;   // bit 0 F5, 1 F6, 2 F7, 3 F8
+	bool notifyEvent(const Common::Event &event) override {
+		if (event.type != Common::EVENT_KEYDOWN && event.type != Common::EVENT_KEYUP)
+			return false;
+		int bit = -1;
+		switch (event.kbd.keycode) {
+		case Common::KEYCODE_F5: bit = 0; break;
+		case Common::KEYCODE_F6: bit = 1; break;
+		case Common::KEYCODE_F7: bit = 2; break;
+		case Common::KEYCODE_F8: bit = 3; break;
+		default: return false;
+		}
+		if (event.type == Common::EVENT_KEYDOWN)
+			held |= (uint8)(1 << bit);
+		else
+			held &= (uint8)~(1 << bit);
+		return false;   // not consumed
+	}
+};
+
 class CryOmni3DEngine_Atlantis : public CryOmni3DEngine {
 	friend class Atlantis_Toolbar;
 
@@ -268,6 +293,7 @@ private:
 	// True while the place loop runs its own arrival scan (FUN_00423ad8
 	// @ 0x00423b78), after which it clears ARRIVEEVUE (@ 0x00423be7).
 	bool _inPlaceArrivalScan = false;
+	AtlantisViewKeys _viewKeys;
 	bool _arrivalScanPending = false;
 	uint _arrivalFromVue = 0;
 	// atlantis.exe DAT_0049692c, LastVue: 1 at game start (0x004195fb) and
