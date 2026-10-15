@@ -224,7 +224,11 @@ void CryOmni3DEngine_Atlantis::drawSubjectSprite(Graphics::Surface &dst,
 //    cell top-left, then the icon (sprite = sujId) at the cell centre.
 //  - Layout and hit test from subject_menu.h (FUN_004261a0, FUN_004211f0):
 //    the clickable grid has n / 5 + 1 columns, fewer than the drawn ones
-//    from nine subjects on.  No hover highlight; right-click cancels.
+//    from nine subjects on.  No hover highlight.
+//  - FUN_00425828 waits for a left click only (0x004259b6..0x004259cc: the
+//    loop tests 0x0049611c, which FUN_0041a298 sets on a left-click edge; a
+//    right click only sets 0x00496120, and the bar toggle @ 0x0041a305 is
+//    skipped because 0x00496170 = 1).
 // Returns the subject byte FUN_00425828 reads for the clicked cell
 // (0x00425a87..): the subject id, 0 for a grid cell past the subjects, -1
 // outside the grid.
@@ -299,8 +303,6 @@ int CryOmni3DEngine_Atlantis::showSubjectMenu(const Common::Array<int> &sujIds) 
 			const int idx = SubjectMenu::hit((int)nOpts, gridX, gridY, click.x, click.y);
 			result = SubjectMenu::subject(ids, idx);
 			done = true;
-		} else if (getCurrentMouseButton() == 2) {
-			done = true;   // right-click cancels
 		}
 		g_system->delayMillis(10);
 	}
