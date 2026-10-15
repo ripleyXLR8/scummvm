@@ -250,6 +250,9 @@ int OgreGamePuzzle::run() {
 	int  result = 0;
 	bool prevButton = (_engine->getCurrentMouseButton() != 0);
 	int grabX = 0, grabY = 0;     // 0x007bebe8 / 0x007bebec
+	// 0x004960ec / 0x004960f0 as the previous frame left them, after the
+	// FUN_004439c4 clamp (0x00442178).
+	Common::Point lastPos(kScreenW / 2, kScreenH / 2);
 
 	// FUN_0044203c: a click (FUN_00443c3c), the board (FUN_00442b88), the
 	// cursor (FUN_004439c4), the present; it reads no key.
@@ -260,6 +263,13 @@ int OgreGamePuzzle::run() {
 
 		bool nowButton = (_engine->getCurrentMouseButton() == 1);
 		if (nowButton && !prevButton) {
+			// On the frame that raises the click flag FUN_0041a298 returns at
+			// 0x0041a2be without pumping messages, so the WM_MOUSEMOVE store
+			// (0x00419c14) does not run: the click test (0x0044215b..0x00442164)
+			// and the rest of that frame read the position the previous frame
+			// left, i.e. the one clamped by FUN_004439c4 while the hero is held.
+			// See atlantis-re: functions/puzzles-FUN_0044203c.md (FUN_00443c3c).
+			m = lastPos;
 			if (!_holding) {
 				if (_rules.pickUp(m.x, m.y)) {
 					// cyclo1; the grab offset is the mouse minus the piece.
@@ -298,6 +308,7 @@ int OgreGamePuzzle::run() {
 		OgreDraw::board(ev, _rules, _holding, m.x, m.y);
 		int cmx = m.x, cmy = m.y;
 		OgreDraw::cursor(ev, _holding, grabX, grabY, cmx, cmy);
+		lastPos = Common::Point(cmx, cmy);
 		play(working, ev);
 		presentFrame(working);
 		g_system->delayMillis(15);
