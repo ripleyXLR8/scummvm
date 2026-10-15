@@ -413,7 +413,7 @@ private:
 	// Pick the talking-head camera (2..5) for a dialog line: honour an explicit
 	// camN, else randomise like the original (avoiding the previous cam and any
 	// cam whose UBB resource is missing).  See atlantis.exe FUN_0042844c.
-	int pickDialCam(int persoId, int explicitCam, bool sethLine = false);
+	int pickDialCam(int persoId, int explicitCam, bool sethLine = false, bool offLine = false);
 	// Play one dialog line: stream its UBB talking-head video over the warp
 	// panorama (or just the panorama when off-camera), play the matching APC
 	// speech track and overlay the subtitle.  `spfBaseName` names the per-cam

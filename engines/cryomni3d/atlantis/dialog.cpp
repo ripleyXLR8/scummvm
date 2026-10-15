@@ -139,15 +139,18 @@ void CryOmni3DEngine_Atlantis::loadDialInitData() {
 // An explicit `camN` from a `[Speaker, X, Y, camN]` directive is honoured when
 // it is valid and available; otherwise we fall through to the random pick.
 // Returns 2..5.
-int CryOmni3DEngine_Atlantis::pickDialCam(int persoId, int explicitCam, bool sethLine) {
-	// atlantis.exe FUN_0042844c @ 0x004287c8..0x00428949 (off / off0 / off1
-	// lines skip it; the caller handles them):
+int CryOmni3DEngine_Atlantis::pickDialCam(int persoId, int explicitCam, bool sethLine, bool offLine) {
+	// atlantis.exe FUN_0042844c @ 0x004287c8..0x004289ea:
 	//  - "camN" at the end of the header: cam = N (out of 2..5 -> 2), used
 	//    even when that cam's INITDIAL UBB is "none";
+	//  - an off / off0 / off1 line draws nothing: the cam stays the last
+	//    one (0x0077290a);
 	//  - otherwise draw (clock & 3) + 2 until the cam differs from the last
-	//    one and its UBB is not "none" (0x004287f6); lines that do not start
-	//    with "Seth" draw a second time against the first draw (0x00428896);
-	//  - persoId 0x230 (560) is then forced to cam 2 (0x0042892e).
+	//    one and its UBB is not "none" (0x004287f6), then draw a second
+	//    time against the first draw: other lines at 0x00428896, Seth lines
+	//    at 0x00428979..0x004289e3, after the 0x230 check;
+	//  - persoId 0x230 (560) is forced to cam 2 (0x0042892e), before the
+	//    second draw of a Seth line.
 	// The draws read the millisecond clock (FUN_00451d0c), as the original's
 	// do.  With fewer than two usable cams the original would loop forever;
 	// the port stops after 64 draws.
@@ -167,16 +170,19 @@ int CryOmni3DEngine_Atlantis::pickDialCam(int persoId, int explicitCam, bool set
 		}
 		return cam;
 	};
-	int cam;
+	int cam = _lastDialCam >= 2 && _lastDialCam <= 5 ? _lastDialCam : 2;
+	const bool drawn = explicitCam == 0 && !offLine;
 	if (explicitCam != 0) {
 		cam = (explicitCam >= 2 && explicitCam <= 5) ? explicitCam : 2;
-	} else {
+	} else if (drawn) {
 		cam = draw(_lastDialCam);
 		if (!sethLine)
 			cam = draw(cam);
 	}
 	if (persoId == 0x230)
 		cam = 2;
+	if (drawn && sethLine)
+		cam = draw(cam);
 	return cam;
 }
 
@@ -410,13 +416,14 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 				explicitCam = 2;
 		}
 		const bool sethLine = item.line.speaker.hasPrefix("Seth");
-		int camNum = pickDialCam(persoId, explicitCam, sethLine);
+		const bool offFlag = tailIs("off", 3) || tailIs("off0", 4) || tailIs("off1", 4);
+		int camNum = pickDialCam(persoId, explicitCam, sethLine, offFlag);
 
 		// Off-camera variants (off / off0 / off1) play as voiceover: no head
 		// shot, view at the kept angles (below).  "off" (FUN_00430258)
 		// sets the warp FOV 75.137 (0x00430447), which is the port's FOV here
 		// anyway (each line restores its own), so nothing is changed.
-		const bool isOffCam = tailIs("off", 3) || tailIs("off0", 4) || tailIs("off1", 4);
+		const bool isOffCam = offFlag;
 		// off0 (FUN_004305e8): the subtitle is drawn over the screen as it
 		// stands, with no view redraw and no FOV reset.  off1 (FUN_00430884)
 		// is not used by any shipped CON file.

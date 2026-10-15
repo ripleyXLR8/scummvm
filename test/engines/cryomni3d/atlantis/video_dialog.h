@@ -286,6 +286,31 @@ public:
 		}
 		TS_ASSERT_EQUALS(notTwo, 0);
 	}
+
+	// FUN_0042844c @ 0x004287c8..0x004289ea: an off line draws nothing and
+	// keeps the last cam (0x0077290a); 0x230 still forces cam 2.  (The Seth
+	// line's second draw reads the clock, which the null OSystem does not
+	// advance, so it is not checked here.)
+	void test_off_line_keeps_cam() {
+		VideoPeek::Eng *e = VideoPeek::rawEngine();
+		new (&e->_dialInitData) Common::HashMap<int, VideoPeek::Eng::DialInitEntry>();
+		VideoPeek::Eng::DialInitEntry d;
+		d.camUBB[0] = "rhean1c2";
+		d.camUBB[1] = "rhean1c3";
+		d.camUBB[2] = "rhean1c4";
+		d.camUBB[3] = "rhean1c5";
+		e->_dialInitData[560] = d;
+		int moved = 0;
+		for (uint pass = 1; pass <= 32; pass++) {
+			e->_lastDialCam = 4;
+			if (e->pickDialCam(560, 0, false, true) != 2)   // 0x230 still forces 2
+				moved++;
+			e->_lastDialCam = 5;
+			if (e->pickDialCam(524, 0, false, true) != 5)
+				moved++;
+		}
+		TS_ASSERT_EQUALS(moved, 0);
+	}
 };
 
 class VideoDialogSubtitleTestSuite : public CxxTest::TestSuite {
