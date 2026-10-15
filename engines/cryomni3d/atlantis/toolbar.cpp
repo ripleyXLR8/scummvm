@@ -451,9 +451,9 @@ bool Atlantis_Toolbar::handleToolbarEvents(const Graphics::Surface *original) {
 			gameOver = true;
 			break;
 		}
-		// Port-only: Escape or Space closes the bar like the right button.
-		if (_engine->checkKeysPressed(2, Common::KEYCODE_ESCAPE, Common::KEYCODE_SPACE))
-			break;
+		// No key closes the bar: FUN_0041a298 never reads VK_SPACE, and its
+		// VK_ESCAPE branch needs 0x00496188 == 1 or 0x004960c4 == 0, while
+		// the bar loop keeps 0x004960c4 at 1.
 
 		// Scroll (0x0042cb83): x > 630 with y > 400, more than 9 records and
 		// first < count - 7; x < 5 with y > 400 and first > 0.

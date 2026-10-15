@@ -688,6 +688,9 @@ private:
 	// The next dialog line is an "off0" one: its subtitle goes over the
 	// screen as it is, the view is not redrawn (FUN_004305e8).
 	bool _dialKeepScreen = false;
+	// The next dialog line is played by FUN_00430258 (an "off" line, or a line
+	// without its .syc), which calls FUN_00425304 once before its wait loop.
+	bool _dialVoiceOff = false;
 	// atlantis.exe 0x00496188: set while a talking-head line plays; the place
 	// sprites then leave out the persos (id >= 0x200, FUN_00425304).
 	bool _spritesHideNpcs = false;

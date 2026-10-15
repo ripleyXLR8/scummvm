@@ -99,10 +99,15 @@ void SnakesPuzzle::winAnimation(Graphics::ManagedSurface &out) {
 		hidden = !hidden;
 		g_system->copyRectToScreen(out.getPixels(), out.pitch, 0, 0, kScreenW, kScreenH);
 		g_system->updateScreen();
-		const uint32 until = g_system->getMillis() + 500;
-		while (g_system->getMillis() < until && !_engine->shouldAbort()) {
+		// 100 increments of the tick counter (0x0043c341), counted from the
+		// tick in progress after the present: 495..500 ms with the phase.
+		const uint32 untilTick = g_system->getMillis() / 5 + 100;
+		for (;;) {
+			const uint32 now = g_system->getMillis();
+			if (now / 5 >= untilTick || _engine->shouldAbort())
+				break;
 			_engine->pollEvents();
-			g_system->delayMillis(10);
+			g_system->delayMillis(MIN<uint32>(10, untilTick * 5 - now));
 		}
 	}
 }

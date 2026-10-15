@@ -108,6 +108,16 @@ OgreGamePuzzle::OgreGamePuzzle(CryOmni3DEngine_Atlantis *engine)
 OgreGamePuzzle::~OgreGamePuzzle() {
 }
 
+void OgreGamePuzzle::playSound(const char *name) {
+	_sounds.push_back(_engine->playPuzzleSound(name));
+}
+
+void OgreGamePuzzle::stopSounds() {
+	for (uint i = 0; i < _sounds.size(); i++)
+		_engine->_mixer->stopHandle(_sounds[i]);
+	_sounds.clear();
+}
+
 // FUN_004422b8: two draws of the puzzle LCG per try until qx + qy == 10 --
 // one of (4,6) / (5,5) / (6,4), the corner region opposite the hero.
 void OgreGamePuzzle::placeQueen() {
@@ -199,7 +209,7 @@ void OgreGamePuzzle::play(Graphics::ManagedSurface &working, const OgreDraw::Eve
 			break;
 		case OgreEvent::kSound:
 			if (e.sound >= 1 && e.sound <= 5)
-				_engine->playPuzzleSound(kSounds[e.sound]);
+				playSound(kSounds[e.sound]);
 			break;
 		case OgreEvent::kPresent:
 			presentFrame(working);
@@ -253,14 +263,14 @@ int OgreGamePuzzle::run() {
 			if (!_holding) {
 				if (_rules.pickUp(m.x, m.y)) {
 					// cyclo1; the grab offset is the mouse minus the piece.
-					_engine->playPuzzleSound("CYCLO1");
+					playSound("CYCLO1");
 					grabX = m.x - OgreDraw::pieceX(_rules.p[0].x);
 					grabY = m.y - OgreDraw::pieceY(_rules.p[0].y);
 					_holding = true;
 					_rules.p[0].flag = 0;
 				}
 			} else if (_rules.drop(m.x, m.y)) {
-				_engine->playPuzzleSound("CYCLO2");
+				playSound("CYCLO2");
 				_moveCounter++;
 				_holding = false;
 				if (_moveCounter == 4) {
@@ -293,15 +303,21 @@ int OgreGamePuzzle::run() {
 		g_system->delayMillis(15);
 	}
 
-	// FUN_0044203c after the loop: the win (FUN_00443378(0)) or the loss
-	// (FUN_00442d78) sequence.
+	// FUN_0044203c after the loop: cyclo4 then the win sequence
+	// (FUN_00443378(0), @ 0x00442254..0x00442259), or cyclo6 then the loss
+	// sequence (FUN_00442d78, @ 0x00442281..0x00442286); each ends with
+	// FUN_0043d0e0, which stops every playing sample (0x00442265, 0x00442295).
 	if (result == kFinWin || result == kFinLose) {
 		OgreDraw::Events ev;
-		if (result == kFinWin)
+		if (result == kFinWin) {
+			playSound("CYCLO4");
 			OgreDraw::win(ev, _rules);
-		else
+		} else {
+			playSound("CYCLO6");
 			OgreDraw::lose(ev, _rules);
+		}
 		play(working, ev);
+		stopSounds();
 	}
 	if (result == 0)
 		result = kFinAbort;

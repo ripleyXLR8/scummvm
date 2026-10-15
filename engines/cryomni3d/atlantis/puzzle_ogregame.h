@@ -22,6 +22,7 @@
 #ifndef CRYOMNI3D_ATLANTIS_PUZZLE_OGREGAME_H
 #define CRYOMNI3D_ATLANTIS_PUZZLE_OGREGAME_H
 
+#include "audio/mixer.h"
 #include "common/array.h"
 #include "common/random.h"
 #include "common/scummsys.h"
@@ -72,6 +73,11 @@ private:
 	Common::Array<uint16>    _bgPixels;     // PUZCYCLO.TGA
 	bool _bgLoaded;
 
+	// The samples cyclo1..cyclo6 started by the puzzle, so that the exit can
+	// stop them all as FUN_0043d0e0 does.
+	Common::Array<Audio::SoundHandle> _sounds;
+	void playSound(const char *name);
+	void stopSounds();
 
 	void placeQueen();
 	void moveOgres(Graphics::ManagedSurface &working, int &result);

@@ -483,6 +483,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		// camNum=0 lands outside playSingleConLine's 2..5 range, so the FOV
 		// change is skipped while the line still plays as voiceover.
 		const int effCamNum = voiceOnly ? 0 : camNum;
+		_dialVoiceOff = voiceOnly && !_dialKeepScreen;
 		debugC(2, kDebugScript, "playConSection: speaker='%s' params='%s' persoId=%d "
 		         "cam=%d vid='%s' spf='%s' angle=(%d,%d)%s",
 		      item.line.speaker.c_str(), item.line.params.c_str(), persoId,
@@ -493,6 +494,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		                  effHasAngle, effAngleX, effAngleY, effCamNum,
 		                  /*interactiveDialog=*/sec.isCon,
 		                  (persoId > 0 && !voiceOnly && !vid.empty()) ? dialRow : -1);
+		_dialVoiceOff = false;
 		_gameVars["clicperso"] = 0;   // after every line (0x00428b39)
 	}
 	_gameVars["clicperso"] = savedClicPerso;   // 0x00428cb2
@@ -759,8 +761,11 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 
 	// A talking-head line (FUN_0042ee88) runs with 0x00496188 = 1 and calls
 	// FUN_00425304 every frame: the place sprites animate, the persos are not
-	// drawn.  The voice-only and off0 players do neither.
+	// drawn.  The voice-only player FUN_00430258 calls FUN_00425304 once
+	// (0x00430467, persos shown) before its wait loop, which does not; the
+	// off0 player FUN_004305e8 never calls it.
 	const bool talkingHead = (camNum != 0) && !_dialKeepScreen;
+	bool voiceOffStep = _dialVoiceOff && !talkingHead;
 
 #ifdef USE_HNM
 	// The 3D head drawn over the UBB, the animated mouth (FUN_0042ee88 step
@@ -808,8 +813,12 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 	}
 
 	auto drawFrame = [&]() {
-		if (talkingHead)
+		if (talkingHead) {
 			animateSprites();
+		} else if (voiceOffStep) {
+			animateSprites();
+			voiceOffStep = false;
+		}
 		const Graphics::Surface *warpView = _dialKeepScreen
 		    ? &keptScreen.rawSurface()
 		    : (_warpLoaded ? _omni3dMan.getSurface() : nullptr);
@@ -924,19 +933,12 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 		} else
 #endif
 		if (warpView) {
-			// No video: if an item was just given, overlay its icon on a copy
-			// of the panorama before showing it.
-			if (_dialogGivenObjSprite >= 0 && fmt.bytesPerPixel == 2) {
-				Graphics::Surface tmp;
-				tmp.create(warpView->w, warpView->h, fmt);
-				tmp.copyFrom(*warpView);
-				drawGivenObject(tmp);
-				g_system->copyRectToScreen(tmp.getPixels(), tmp.pitch, 0, 0, tmp.w, tmp.h);
-				tmp.free();
-			} else {
-				g_system->copyRectToScreen(warpView->getPixels(), warpView->pitch,
-				                           0, 0, warpView->w, warpView->h);
-			}
+			// No video: the panorama alone.  The given-object icon
+			// (0x0049619c) is drawn only by the talking-head loop of
+			// FUN_0042ee88 (0x0042f52d); the voice-only players FUN_00430258,
+			// FUN_004305e8 and FUN_00430884 never read it.
+			g_system->copyRectToScreen(warpView->getPixels(), warpView->pitch,
+			                           0, 0, warpView->w, warpView->h);
 		} else if (!emptyBackbufferCleared) {
 			Graphics::ManagedSurface clr(screenW, screenH, fmt);
 			clr.fillRect(Common::Rect(screenW, screenH), 0);
