@@ -389,7 +389,7 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 	}
 
 	uint spfFrameIdx = 0;
-	Graphics::Surface composite;  // per-frame scratch when sprites are active
+	Graphics::ManagedSurface composite;  // per-frame scratch when sprites are active
 	while (!shouldAbort() && !decoder->endOfVideo()) {
 		if (decoder->needsUpdate()) {
 			const Graphics::Surface *frame = decoder->decodeNextFrame();
@@ -398,7 +398,16 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 					setPalette(decoder->getPalette(), 0, 256);
 
 				const Graphics::Surface *toBlit = frame;
-				if (!spfStreams.empty() && fmt.bytesPerPixel >= 2) {
+				// The frame presenter FUN_0041b064 draws the SPF sprites
+				// (FUN_004256e8), then the following guests' portraits
+				// (FUN_0042bd08 @ 0x0041b192 on a 16-bit frame, FUN_0042bc58
+				// @ 0x0041b133 otherwise; both test the shown flag
+				// 0x0049613c and 0x00496138 == 0), then presents: the
+				// portraits stay over every frame of a move video or a
+				// cinematic.
+				// See atlantis-re: functions/scripts-guests.md.
+				const bool guestsOver = _guestsShown && _guests.count != 0;
+				if ((!spfStreams.empty() || guestsOver) && fmt.bytesPerPixel >= 2) {
 					// Composite the SPF sprites for this frame into a
 					// throwaway copy of the video frame.  The SPF pixel
 					// stream is RGB565, so this only happens when the
@@ -414,8 +423,10 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 						memcpy(composite.getBasePtr(0, row),
 						       frame->getBasePtr(0, row), rowBytes);
 					for (Common::SeekableReadStream *spf : spfStreams)
-						compositeSpfFrame(spf, spfFrameIdx, composite);
-					toBlit = &composite;
+						compositeSpfFrame(spf, spfFrameIdx, *composite.surfacePtr());
+					if (guestsOver)
+						drawGuests(composite);
+					toBlit = composite.surfacePtr();
 				}
 
 				g_system->copyRectToScreen(toBlit->getPixels(), toBlit->pitch,
