@@ -749,8 +749,8 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 #endif
 	if (subWidthBudget < 32) subWidthBudget = 32;
 
-	// The subtitle font (subtitleFont(): Liberation Sans for the original's
-	// GDI Arial 16).
+	// The subtitle font (subtitleFont(): the player's arial.ttf or Liberation
+	// Sans, at the 13 px Windows 98 renders the original's GDI Arial 16 at).
 	const Graphics::Font *guiFont = subtitleFont();
 	Common::Array<Common::String> subLines;
 	int subLineH = 0;

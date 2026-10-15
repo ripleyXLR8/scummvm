@@ -121,8 +121,21 @@ const Graphics::Font *CryOmni3DEngine_Atlantis::subtitleFont() {
 	if (!_subtitleFontTried) {
 		_subtitleFontTried = true;
 #ifdef USE_FREETYPE2
-		_subtitleTTF = Graphics::loadTTFFontFromArchive("LiberationSans-Regular.ttf", 16,
-		                                                 Graphics::kTTFSizeModeCell);
+		// atlantis.exe FUN_0041ae20: CreateFontA(16, ..., "Arial"), a cell height
+		// of 16, which Windows 98 renders at 13 pixels per em without smoothing
+		// (atlantis-re experiments/2026-10-15-90-win98-subtitle-glyphs.md).  The
+		// size is given in pixels: Liberation Sans has no VDMX table, so cell mode
+		// would compute 14.  Arial is the player's own (arial.ttf with the game
+		// files, as the Buried and ZVision engines do); otherwise Liberation Sans,
+		// metric-compatible with it.
+		if (Common::SeekableReadStream *arial = SearchMan.createReadStreamForMember("arial.ttf"))
+			_subtitleTTF = Graphics::loadTTFFont(arial, DisposeAfterUse::YES, 13,
+			                                     Graphics::kTTFSizeModeCharacter, 0, 0,
+			                                     Graphics::kTTFRenderModeMonochrome);
+		if (!_subtitleTTF)
+			_subtitleTTF = Graphics::loadTTFFontFromArchive("LiberationSans-Regular.ttf", 13,
+			                                                 Graphics::kTTFSizeModeCharacter, 0, 0,
+			                                                 Graphics::kTTFRenderModeMonochrome);
 #endif
 		if (!_subtitleTTF)
 			debugC(1, kDebugScript, "subtitleFont: LiberationSans unavailable, using the GUI font");
