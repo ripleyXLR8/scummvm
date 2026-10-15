@@ -4,6 +4,7 @@
 #include "common/memstream.h"
 #include "common/stream.h"
 
+#include "cryomni3d/atlantis/menu_layout.h"
 #include "cryomni3d/atlantis/saveload_format.h"
 
 #include "../../../system/null_osystem.h"
@@ -257,5 +258,90 @@ public:
 			TSM_ASSERT_EQUALS(key.c_str(),
 			    AtlantisTest::md5Hex((const byte *)name.c_str(), name.size()), golden[key]);
 		}
+	}
+
+	// The LOAD picker FUN_0041cf78 run whole under emulation (golden
+	// ui_load_picker.txt, atlantis-re tools/emu/ui_load_picker.py,
+	// experiment 2026-10-16-04):
+	//  - S / K: the scrollbar drag for every file count 0..128 and every
+	//    mouse y 0..479 with the track latched and the button down (knob y,
+	//    list offset, the y the knob is drawn at), and the knob x;
+	//  - T: the title of every chapter 2..86 after a row click (FONTMIN2
+	//    blits at y 0x50).
+	// Port: loadPickerScrollInit / loadPickerScrollFrame, and
+	// fontMinBlits(kFontMinNameField) at x (640 - fontMinLoadListWidth) / 2
+	// on epiEpisodeName, as displaySavePicker draws them.
+	void test_load_picker_vs_original() {
+		using namespace CryOmni3D::Atlantis;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("ui_saves: no game data configured, skipping");
+			return;
+		}
+		Common::Array<Common::String> lines;
+		TS_ASSERT(AtlantisTest::loadGoldenLines("ui_load_picker.txt", lines));
+		Common::Array<byte> epi;
+		TS_ASSERT(UiSaves::readBigMember("SPRLIST\\EPI.TXT", epi));
+		uint sRows = 0, kRows = 0, tRows = 0, bad = 0;
+		LoadPickerScroll sb;
+		int curCount = -1;
+		for (uint li = 0; li < lines.size(); li++) {
+			const Common::String &l = lines[li];
+			if (l.hasPrefix("K ")) {
+				int count = 0;
+				char kx[16];
+				if (sscanf(l.c_str(), "K %d %15s", &count, kx) != 2)
+					continue;
+				kRows++;
+				LoadPickerScroll k;
+				loadPickerScrollInit(count, k);
+				const int want = atoi(kx);
+				// knobX 0: the record keeps the x of LOADMENU.TXT (600).
+				if ((k.knobX != 0 ? k.knobX : 600) != want) {
+					bad++;
+					warning("load picker: %s, port knob x %d", l.c_str(), k.knobX);
+				}
+			} else if (l.hasPrefix("S ")) {
+				int count = 0, y = 0, ky = 0, off = 0;
+				char blit[16];
+				if (sscanf(l.c_str(), "S %d %d %d %d %15s", &count, &y, &ky, &off, blit) != 5)
+					continue;
+				sRows++;
+				if (count != curCount) {
+					// The harness's first frame: mouse at y 200, nothing latched.
+					curCount = count;
+					loadPickerScrollInit(count, sb);
+					loadPickerScrollFrame(sb, false, false, 200);
+				}
+				loadPickerScrollFrame(sb, true, true, y);
+				if (sb.knobY != ky || sb.offset != off || atoi(blit) != ky) {
+					bad++;
+					if (bad < 10)
+						warning("load picker: %s, port knob %d offset %d", l.c_str(), sb.knobY, sb.offset);
+				}
+			} else if (l.hasPrefix("T ")) {
+				// "T <chapter> <x|None>:" (None: an empty EPI line, no title).
+				int ch = 0;
+				if (sscanf(l.c_str(), "T %d", &ch) != 1)
+					continue;
+				tRows++;
+				const Common::String title = epiEpisodeName(epi.data(), epi.size(), (uint)ch);
+				const int px = (640 - fontMinLoadListWidth(title)) / 2;
+				Common::Array<FontMinBlit> blits;
+				fontMinBlits(kFontMinNameField, title, px, 0x50, blits);
+				Common::String got;
+				for (uint b = 0; b < blits.size(); b++)
+					got += Common::String::format(" %u@%d,%d", blits[b].idx, blits[b].x, blits[b].y);
+				const char *colon = strchr(l.c_str(), ':');
+				const Common::String want(colon ? colon + 1 : "");
+				if (got != want) {
+					bad++;
+					warning("load picker: chapter %d: port%s, original%s", ch, got.c_str(), want.c_str());
+				}
+			}
+		}
+		TS_ASSERT_EQUALS(kRows, 129u);
+		TS_ASSERT_EQUALS(sRows, 129u * 480u);
+		TS_ASSERT_EQUALS(tRows, 85u);
+		TS_ASSERT_EQUALS(bad, 0u);
 	}
 };

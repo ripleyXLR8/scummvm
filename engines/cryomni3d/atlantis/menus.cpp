@@ -771,19 +771,28 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 		return saveSlotExists(slot) ? (uint)slot + 1 : 0;
 	};
 
-	const int maxScroll = MAX(0, (int)saves.size() - kVisible);
-	int scroll = 0;
-
-	// Scrollbar track (LOADMENU /spr=13 thumb) — interactive Y span [123,338].
-	const int kBarTop = 123, kBarBot = 338, kBarH = kBarBot - kBarTop;
-	const int kBarX0 = 595, kBarX1 = 640;
-	const bool scrollable = maxScroll > 0;
-	int thumbItem = -1;
-	for (uint i = 0; i < layout.items.size(); i++)
-		if (layout.items[i].kind == MenuItem::kSprite && layout.items[i].sprIdx == 13) {
+	// FUN_0041cf78 step 4: the scrollbar (loadPickerScroll*, menu_layout.h).
+	LoadPickerScroll sb;
+	loadPickerScrollInit((int)saves.size(), sb);
+	int thumbItem = -1, trackItem = -1;
+	for (uint i = 0; i < layout.items.size(); i++) {
+		if (layout.items[i].kind != MenuItem::kSprite)
+			continue;
+		if (layout.items[i].sprIdx == 13 && thumbItem < 0)
 			thumbItem = (int)i;
-			break;
-		}
+		else if (layout.items[i].sprIdx == 4 && trackItem < 0)
+			trackItem = (int)i;   // record 1, /spr=4
+	}
+	// The record latched by WM_LBUTTONDOWN (0x00419c47: 0x006cd844 = the
+	// hover record): the track when the press starts strictly inside its
+	// rectangle (FUN_004210c0's test); released by WM_LBUTTONUP.
+	bool trackLatched = false;
+	bool wasDown = false;
+	// The chosen row's title (0x00612080), drawn at y 0x50 with the name
+	// field renderer FUN_00420f60, x = (640 - its load-list width) / 2
+	// (0x0041d431..0x0041d44d, 0x0041d4a8).
+	Common::String title;
+	int titleX = 0;
 
 	Graphics::ManagedSurface surf(640, 480, fmt);
 	Common::Array<Common::Rect> hitRects;
@@ -791,6 +800,15 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 	clearKeys();
 	showMouse(true);
 	setArrowCursor();
+
+	// What the caller does once the picker ends on OK, RESTART EPISODE or a
+	// double click: it reloads the checkpoint of the player's chapter byte
+	// (FUN_0041c838 @ 0x0041c9bc.., FUN_0042de5c), and FUN_0042de5c starts a
+	// new game at chapter 1 when that file does not exist.
+	auto reloadResult = [&]() -> uint {
+		const uint slot = byteSlot();
+		return slot != 0 ? slot : kSavePickerNewGame;
+	};
 
 	uint result = 0;
 	bool done = false;
@@ -801,11 +819,10 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 		if (k.keycode == Common::KEYCODE_ESCAPE) {
 			result = 0;
 			break;
-		} else if ((k.keycode == Common::KEYCODE_RETURN || k.keycode == Common::KEYCODE_KP_ENTER)
-		        && byteSlot() != 0) {
+		} else if (k.keycode == Common::KEYCODE_RETURN || k.keycode == Common::KEYCODE_KP_ENTER) {
 			// Port keys (the original reads none here): Enter acts as OK,
 			// Up / Down as a row click.
-			result = byteSlot();
+			result = reloadResult();
 			done = true;
 			break;
 		} else if (k.keycode == Common::KEYCODE_UP && selected > 0) {
@@ -813,12 +830,24 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 		} else if (k.keycode == Common::KEYCODE_DOWN && selected + 1 < (int)saves.size()) {
 			chooseRow(++selected);
 		}
-		if (selected >= 0) {
-			if (selected < scroll) scroll = selected;
-			else if (selected >= scroll + kVisible) scroll = selected - kVisible + 1;
+		if (selected >= 0 && (k.keycode == Common::KEYCODE_UP || k.keycode == Common::KEYCODE_DOWN)) {
+			title = saves[selected].name;
+			titleX = (640 - fontMinLoadListWidth(title)) / 2;
 		}
 
 		Common::Point mouse = getMousePos();
+		const bool down = getCurrentMouseButton() == 1;
+		const bool press = down && !wasDown;
+		if (press && trackItem >= 0) {
+			const MenuItem &t = layout.items[trackItem];
+			trackLatched = t.hx < mouse.x && mouse.x < t.hx + t.w && t.hy < mouse.y && mouse.y < t.hy + t.h;
+		}
+		if (!down)
+			trackLatched = false;
+		wasDown = down;
+		loadPickerScrollFrame(sb, trackLatched, down, mouse.y);
+		const int scroll = sb.offset;
+
 		int rowHover = -1;
 		{
 			const int g = menuGridHit(45, 108, 400, 22, 1, kVisible, true, mouse.x, mouse.y);
@@ -829,54 +858,55 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 		if (btnHover != restartIdx && btnHover != okIdx && btnHover != cancelIdx)
 			btnHover = -1;
 
-		bool draggingBar = false;
-		if (scrollable && getCurrentMouseButton() == 1 &&
-		        mouse.x >= kBarX0 && mouse.x <= kBarX1 &&
-		        mouse.y >= kBarTop && mouse.y <= kBarBot) {
-			scroll = CLIP((mouse.y - kBarTop) * maxScroll / kBarH, 0, maxScroll);
-			draggingBar = true;
-		}
-		if (!draggingBar && getCurrentMouseButton() == 1) {
-			waitMouseRelease();
+		if (press && !trackLatched) {
 			if (rowHover >= 0) {
 				selected = rowHover;
 				chooseRow(selected);
+				title = saves[selected].name;
+				titleX = (640 - fontMinLoadListWidth(title)) / 2;
 				// A double click on a row loads it (FUN_0041cf78: the window
 				// procedure sets 0x00496118 on WM_LBUTTONDBLCLK, the class
 				// has CS_DBLCLKS).  The interval is Windows' own setting;
 				// 500 ms is its default.
 				const uint32 now = g_system->getMillis();
-				if (rowHover == lastRowClick && now - lastRowClickMs <= 500 && selected < (int)saves.size()) {
-					result = (uint)episodeSaveSlot((uint)_currentPlayer, (uint)saves[selected].localSlot) + 1;
+				if (rowHover == lastRowClick && now - lastRowClickMs <= 500) {
+					waitMouseRelease();
+					result = reloadResult();
 					done = true;
 					break;
 				}
 				lastRowClick = rowHover;
 				lastRowClickMs = now;
-			} else if (btnHover == okIdx && byteSlot() != 0) {
-				result = byteSlot();
+			} else if (btnHover == okIdx) {
+				// Record 6 ends the picker; the caller reloads.
+				waitMouseRelease();
+				result = reloadResult();
 				done = true;
 				break;
 			} else if (btnHover == restartIdx) {
 				// Record 5 stores the current chapter 0x00772909 in the
-				// player's chapter byte, then the caller reloads it.
-				int slot = episodeSaveSlot((uint)_currentPlayer, _currentCONChapter);
-				if (havePlayer)
+				// player's chapter byte once per listed file (0x0041d522..,
+				// so not at all without a file), then the caller reloads.
+				waitMouseRelease();
+				if (havePlayer && !saves.empty())
 					_playerChapter[_currentPlayer] = (int)_currentCONChapter;
-				if (saveSlotExists(slot)) {
-					result = (uint)slot + 1;
-					done = true;
-					break;
-				}
+				result = reloadResult();
+				done = true;
+				break;
 			} else if (btnHover == cancelIdx) {
+				waitMouseRelease();
 				result = 0;
 				break;
 			}
 		}
 
-		if (thumbItem >= 0)
-			layout.items[thumbItem].hy = scrollable
-			    ? kBarTop + (maxScroll > 0 ? scroll * kBarH / maxScroll : 0) : -100;
+		if (thumbItem >= 0) {
+			// The knob is drawn at its stored record position (FUN_0041fb6c
+			// keeps a non-zero stored x / y).
+			if (sb.knobX != 0)
+				layout.items[thumbItem].hx = sb.knobX;
+			layout.items[thumbItem].hy = sb.knobY;
+		}
 
 		surf.blitFrom(bg);
 		renderMenuLayout(surf, layout, btnHover, hitRects);
@@ -885,6 +915,8 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 			drawPlayerText(surf, saves[entry].name, kListX, kListY0 + i * kRowStep,
 			               entry == rowHover, kFontMinLoadList);
 		}
+		if (!title.empty())
+			drawPlayerText(surf, title, titleX, 0x50, true, kFontMinNameField);
 		g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
 		musicUpdate();
 		g_system->updateScreen();
@@ -1377,7 +1409,7 @@ uint CryOmni3DEngine_Atlantis::displayInGameMenu() {
 	MenuLayout layout;
 	loadMenuLayout("MAINMENU.TXT", layout);
 
-	enum Action { kNone = 0, kContinue = 1, kLoad = 3, kQuit = 5, kOptions = 6 };
+	enum Action { kNone = 0, kContinue = 1, kLoad = 3, kQuit = 5, kOptions = 6, kNewGame = 7 };
 	static const int kMainMenuActions[] = { kLoad, kOptions, kQuit };
 	Common::Array<int> actions;
 	actions.resize(layout.items.size());
@@ -1458,6 +1490,11 @@ uint CryOmni3DEngine_Atlantis::displayInGameMenu() {
 			if (act == kLoad) {
 				Common::String dummy;
 				uint slot = displaySavePicker(false, dummy);
+				if (slot == kSavePickerNewGame) {
+					retval = kNewGame;
+					done = true;
+					break;
+				}
 				if (slot > 0) {
 					_loadedSave = slot;
 					retval = kLoad;
@@ -1485,6 +1522,8 @@ uint CryOmni3DEngine_Atlantis::displayInGameMenu() {
 		return 40;
 	if (retval == kLoad)
 		return 28;   // _loadedSave is set; the caller reloads it
+	if (retval == kNewGame)
+		return 27;   // the checkpoint to reload is missing: a new game
 	return 0;
 }
 
@@ -1596,6 +1635,8 @@ uint CryOmni3DEngine_Atlantis::displayOptions() {
 			if (retval == 28) {
 				Common::String dummy;
 				uint slot = displayFilePicker(nullptr, false, dummy);
+				if (slot == kSavePickerNewGame)
+					return 27;
 				if (slot > 0) {
 					_loadedSave = slot;
 					return 28;

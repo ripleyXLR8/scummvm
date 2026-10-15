@@ -557,6 +557,10 @@ private:
 	// LOAD screen: the player's per-episode saves listed by EPI.TXT name, plus
 	// RESTART EPISODE / OK / Cancel and a draggable scrollbar.  Returns the
 	// 1-based slot to load, or 0 on cancel.  (saveMode/outSaveName reserved.)
+	// 0 = Cancel, slot + 1 = load that save, kSavePickerNewGame = the
+	// checkpoint to reload does not exist (FUN_0042de5c then starts a new
+	// game at chapter 1).
+	static const uint kSavePickerNewGame = 0xffffffffu;
 	uint displaySavePicker(bool saveMode, Common::String &outSaveName);
 	uint displayFilePicker(const Graphics::Surface *bgFrame, bool saveMode,
 	                       Common::String &saveName);

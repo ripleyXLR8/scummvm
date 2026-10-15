@@ -518,6 +518,10 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				actionId = 66666;
 				exit = true;
 				_abortCommand = kAbortLoadGame;
+			} else if (act == 27) {          // the checkpoint to reload is missing
+				actionId = 66666;
+				exit = true;
+				_abortCommand = kAbortNewGame;
 			} else if (shouldAbort()) {
 				actionId = 66666;
 				exit = true;

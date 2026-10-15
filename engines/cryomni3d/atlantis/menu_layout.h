@@ -157,6 +157,31 @@ enum FontMinRenderer {
 void fontMinBlits(FontMinRenderer r, const Common::String &text, int x, int y,
                   Common::Array<FontMinBlit> &out);
 
+// Width FUN_00420b48 records for a load-list row (0x00611e80): the sum of
+// the pen advances of fontMinBlits(kFontMinLoadList), the +6 steps included.
+int fontMinLoadListWidth(const Common::String &text);
+
+// atlantis.exe FUN_0041cf78, the LOAD picker's scrollbar (0x0041d1f3..
+// 0x0041d24b at entry, 0x0041d273..0x0041d2e6 each frame).  The knob
+// (record 4, /spr=13) starts at y 0x7b, the list at offset 0.  With 11 files
+// or fewer the knob x is 0xffce (off-screen) and the knob never moves; else
+// step = 0xd7 / (count - 10).  While the track (record 1) is latched (the
+// record under the pointer at WM_LBUTTONDOWN), the button is down and
+// 0x7b < mouse y < 0x152: knob y = mouse y - 10, offset = (knob y - 0x7b) /
+// step as a byte, and knob y 0x7b, offset 0 when mouse y - 10 < 0x7b.  The
+// offset is not clamped to count - 11.
+// See atlantis-re: functions/ui-FUN_0041cf78.md step 4,
+// experiments/2026-10-16-04-load-picker.md.
+struct LoadPickerScroll {
+	bool dragOn = false;   // EBP-0x14
+	int step = 1;          // EBP-0x28
+	int knobX = 0;         // record 4 x when moved off-screen (0xffce), else 0 = the text's
+	int knobY = 0x7b;      // record 4 y, 0x00612774
+	uint8 offset = 0;      // 0x00496605
+};
+void loadPickerScrollInit(int count, LoadPickerScroll &s);
+void loadPickerScrollFrame(LoadPickerScroll &s, bool trackLatched, bool buttonDown, int mouseY);
+
 // atlantis.exe FUN_004211f0: the cell under (mx, my) of a cols x rows grid
 // at (x0, y0) with cells cellW x cellH, bounds INCLUSIVE on both sides (so
 // the far edge column / row gives an index past the grid); column-major

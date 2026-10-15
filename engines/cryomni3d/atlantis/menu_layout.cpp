@@ -245,6 +245,45 @@ void fontMinBlits(FontMinRenderer r, const Common::String &text, int x, int y,
 	}
 }
 
+int fontMinLoadListWidth(const Common::String &text) {
+	// FUN_00420b48 @ 0x00420c57..0x00420c7e: width[target] += the advance of
+	// each byte, 6 for glyph 0x20.
+	int w = 0;
+	for (uint i = 0; i < text.size(); i++) {
+		const byte c = (byte)text[i];
+		const uint8 idx = (c < 0x20) ? 0x20 : (uint8)(c - 0x20);
+		w += (idx == 0x20) ? 6 : fontMinAdvance(idx);
+	}
+	return w;
+}
+
+void loadPickerScrollInit(int count, LoadPickerScroll &s) {
+	s.offset = 0;
+	s.knobY = 0x7b;
+	s.knobX = 0;
+	if (count <= 11) {
+		s.knobX = (int16)0xffce;
+		s.dragOn = false;
+		s.step = 1;
+	} else {
+		s.dragOn = true;
+		s.step = 0xd7 / (count - 10);
+	}
+}
+
+void loadPickerScrollFrame(LoadPickerScroll &s, bool trackLatched, bool buttonDown, int mouseY) {
+	if (!trackLatched || !buttonDown || !s.dragOn)
+		return;
+	if (mouseY <= 0x7b || mouseY >= 0x152)
+		return;
+	s.knobY = (uint16)(mouseY - 10);
+	s.offset = (uint8)((s.knobY - 0x7b) / s.step);
+	if (mouseY - 10 < 0x7b) {
+		s.knobY = 0x7b;
+		s.offset = 0;
+	}
+}
+
 int menuGridHit(int x0, int y0, int cellW, int cellH, int cols, int rows, bool colMajor,
                 int mx, int my) {
 	if (mx < x0 || mx > x0 + cols * cellW || my < y0 || my > y0 + rows * cellH)
