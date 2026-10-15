@@ -40,6 +40,7 @@
 #include "cryomni3d/omni3d.h"
 
 #include "cryomni3d/atlantis/engine.h"
+#include "cryomni3d/atlantis/video_skip.h"
 #include "cryomni3d/atlantis/sprite_blend.h"
 
 namespace CryOmni3D {
@@ -430,11 +431,12 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			exit = true;
 		}
 
-		// Right-click or Space opens the inventory toolbar; Escape leaves the
-		// warp (run() turns this into a quit for now — the in-game menu lands
-		// with the menus layer).
+		// A right click opens the inventory bar (FUN_0041a298 toggles
+		// 0x004960c4, the warp loop opens the bar @ 0x0041c6d2); Escape opens
+		// the in-game menu under the conditions of escapeOpensMenu.  Space is
+		// not read by FUN_0041a298.
 		Common::KeyCode kc = getNextKey().keycode;
-		bool barRequested = !exit && (getCurrentMouseButton() == 2 || kc == Common::KEYCODE_SPACE);
+		bool barRequested = !exit && getCurrentMouseButton() == 2;
 		// In bow mode the request only lowers the bow and is dropped
 		// (0x0041c6af..0x0041c6c8: FUN_0042d368, 0x004960c4 = 0).
 		if (barRequested && _bowMode) {
@@ -496,7 +498,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				pollEvents();
 				g_system->delayMillis(10);
 			}
-		} else if (kc == Common::KEYCODE_ESCAPE) {
+		} else if (kc == Common::KEYCODE_ESCAPE && escapeOpensMenu()) {
 			// Open the in-game menu (resume / load / quit).
 			g_system->lockMouse(false);
 			showMouse(true);   // the warp cursor may be hidden
@@ -729,6 +731,20 @@ bool CryOmni3DEngine_Atlantis::npcPanoHitTest(const Common::Point &pan,
 		return false;
 	outPersoId = (int)id;
 	return true;
+}
+
+// FUN_0041a298's Escape (0x0041a3c0) then the warp loop's test
+// (0x0041c5f7): the menu opens with no talking head, bow mode off, no bar
+// request and OBJETENMAIN 0.  A right click in the same poll opens the bar
+// instead (handled before this test).
+bool CryOmni3DEngine_Atlantis::escapeOpensMenu() const {
+	VideoSkipState s;
+	s.bowMode = _bowMode;
+	s.objectInHand = _inventory.selectedObject() != nullptr ||
+	                 _gameVars.getValOrDefault("objetenmain", 0) != 0;
+	s.sectionPlay = _sectionPlay;
+	videoSkipPoll(s, false, false, true);
+	return inGameMenuOpens(s);
 }
 
 } // End of namespace Atlantis

@@ -80,6 +80,16 @@ inline bool videoSkipFades(const VideoSkipState &s, bool cinemaMode) {
 	return cinemaMode && (s.click || s.menuRequest);
 }
 
+// The warp loop FUN_0041bfa0 opens the in-game menu FUN_0041c838 after its
+// poll when the menu is requested (0x00496138, set by Escape above), no bar
+// is requested and bow mode is off (0x0041c5f7..0x0041c618).  The same
+// FUN_0041a298 rules apply: videoSkipPoll models that poll.
+// See atlantis-re: functions/ui-FUN_0041c838.md,
+// experiments/2026-10-16-07-ingame-menu.md.
+inline bool inGameMenuOpens(const VideoSkipState &s) {
+	return s.menuRequest && !s.barRequest && !s.bowMode;
+}
+
 } // End of namespace Atlantis
 } // End of namespace CryOmni3D
 

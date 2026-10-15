@@ -736,6 +736,8 @@ private:
 	// 0x00425d2c..0x00425d82): a right click then does not toggle the bar
 	// request (FUN_0041a298 @ 0x0041a305).
 	bool _sectionPlay = false;
+	// Escape in the warp loop opens the in-game menu (navigation.cpp).
+	bool escapeOpensMenu() const;
 	// IncPerso count (atlantis.exe 0x0077290d, saved in the .gam at 0x11e):
 	// lines starting with "Seth" take their INITDIAL row from 512 + it.
 	uint8 _incPersoCount = 0;

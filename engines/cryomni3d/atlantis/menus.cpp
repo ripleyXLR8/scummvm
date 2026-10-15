@@ -1437,15 +1437,19 @@ uint CryOmni3DEngine_Atlantis::displayInGameMenu() {
 	g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
 	g_system->updateScreen();
 
+	// FUN_0041c838 step 3: the loop runs until a left click, whatever is
+	// under the pointer (0x0049611c); Escape and the right button change no
+	// outcome (FUN_0041a298 may clear 0x00496124 on Escape, which the menu
+	// sets back to 1 after the loop, 0x0041c998).  Step 4: the record under
+	// the pointer (FUN_004210c0(0)) runs its entry once, and the menu ends
+	// whatever the entry did: 0 load, 1 options, 2 quit; no record resumes.
+	// See atlantis-re: functions/ui-FUN_0041c838.md,
+	// experiments/2026-10-16-07-ingame-menu.md.
 	uint retval = kContinue;
-	bool done = false;
-	while (!done && !shouldAbort()) {
+	uint prevButton = getCurrentMouseButton();
+	while (!shouldAbort()) {
 		pollEvents();
-
-		if (getNextKey().keycode == Common::KEYCODE_ESCAPE) {
-			retval = kContinue;
-			break;
-		}
+		getNextKey();   // no key is read by the menu loop
 
 		Common::Point mouse = getMousePos();
 		int newHover = hitTestMenu(layout, hitRects, mouse);
@@ -1456,60 +1460,31 @@ uint CryOmni3DEngine_Atlantis::displayInGameMenu() {
 			g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
 		}
 
-		if (getCurrentMouseButton() == 1 && hovered >= 0) {
-			int act = actions[hovered];
+		const uint button = getCurrentMouseButton();
+		const bool press = button == 1 && prevButton != 1;
+		prevButton = button;
+		if (press) {
+			const int act = hovered >= 0 ? actions[hovered] : kNone;
 			waitMouseRelease();
 			if (act == kQuit) {
+				// FUN_0041ec7c: OK (record 3) quits, Cancel resumes.
 				if (confirmQuit(bg)) {
-					// Credits slideshow before signalling quit — only this
-					// explicit QUIT GAME button runs it; other quit paths
-					// (Escape dismiss, window close, GMM Quit) bypass the
-					// outro by design.
 					playQuitOutro();
 					retval = kQuit;
-					done = true;
-					break;
 				}
-				// Cancelled — repaint the in-game menu and stay.
-				hovered = -1;
-				surf.blitFrom(bg);
-				renderMenuLayout(surf, layout, -1, hitRects);
-				g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
-				g_system->updateScreen();
-				continue;
-			}
-			if (act == kOptions) {
+			} else if (act == kOptions) {
 				displayOptionsMenu(bg);
-				hovered = -1;
-				surf.blitFrom(bg);
-				renderMenuLayout(surf, layout, -1, hitRects);
-				g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
-				g_system->updateScreen();
-				continue;
-			}
-			if (act == kLoad) {
+			} else if (act == kLoad) {
 				Common::String dummy;
 				uint slot = displaySavePicker(false, dummy);
 				if (slot == kSavePickerNewGame) {
 					retval = kNewGame;
-					done = true;
-					break;
-				}
-				if (slot > 0) {
+				} else if (slot > 0) {
 					_loadedSave = slot;
 					retval = kLoad;
-					done = true;
-					break;
 				}
-				// Cancelled — repaint and stay in the menu.
-				hovered = -1;
-				surf.blitFrom(bg);
-				renderMenuLayout(surf, layout, -1, hitRects);
-				g_system->copyRectToScreen(surf.getPixels(), surf.pitch, 0, 0, 640, 480);
-				g_system->updateScreen();
-				continue;
 			}
-			debugC(1, kDebugScript, "displayInGameMenu: action %d not handled", act);
+			break;
 		}
 
 		musicUpdate();
