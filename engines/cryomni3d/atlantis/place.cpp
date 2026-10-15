@@ -118,6 +118,7 @@ void CryOmni3DEngine_Atlantis::setupWAMByName(const Common::String &wamName) {
 		return;
 	}
 	_wam.loadStream(*s);
+	recordPlaceTable();
 	_currentWAMName = wamName;
 	loadAmbientCentres();   // FUN_00431580, last step of the WAM loader
 	// Each WAM references its own SPW/SPF lists; reload them so the new
@@ -166,6 +167,7 @@ void CryOmni3DEngine_Atlantis::doPlaceChange() {
 	_currentPlace = nextPlace;
 	_currentPlaceId = _nextPlaceId;
 	_nextPlaceId = uint(-1);
+	_vueVarOverride = -1;   // `Vue` follows the place again
 	_dialogGivenObjSprite = -1;   // any pending given-item overlay ends here
 
 	// Load the panoramic cyclo HNM and point the viewer at it.
@@ -525,6 +527,58 @@ void CryOmni3DEngine_Atlantis::stopAmbient() {
 	if (_ambient.active())
 		_ambient.stopAll(*_ambientOut);
 	_ambientOut->stopAll();
+}
+
+void CryOmni3DEngine_Atlantis::recordPlaceTable() {
+	const Common::Array<AtlantisPlace> &places = _wam.getPlaces();
+	if (_placeTableSlots.size() < places.size())
+		_placeTableSlots.resize(places.size());
+	for (uint r = 0; r < places.size(); r++) {
+		const Common::Array<AtlantisTransition> &t = places[r].transitions;
+		Common::Array<AtlantisTransition> &slots = _placeTableSlots[r];
+		if (slots.size() < t.size())
+			slots.resize(t.size());
+		for (uint i = 0; i < t.size(); i++)
+			slots[i] = t[i];
+	}
+}
+
+AtlantisTransition CryOmni3DEngine_Atlantis::placeTableEntry(uint record, uint i) const {
+	if (record < _placeTableSlots.size() && i < _placeTableSlots[record].size())
+		return _placeTableSlots[record][i];
+	// Never written in this run: the zeroed table of a fresh start (empty
+	// name, destination 0, angles 0).
+	AtlantisTransition t;
+	t.dstPlaceId = 0;
+	t.flags = 0;
+	t.srcAlpha = t.srcBeta = t.dstAlpha = t.dstBeta = 0.0f;
+	return t;
+}
+
+void CryOmni3DEngine_Atlantis::transitionAfterDepartureVue(uint transitionIndex) {
+	// atlantis.exe FUN_00423ad8 after a departure section that ran Vue=N
+	// without AbortDepart (CHAPI062 /864; atlantis-re
+	// experiments/2026-10-15-08-chapi062-864.md): the Vue= handler has
+	// already pointed the place record 0x006cd7a8 at N and loaded its
+	// panorama, and the loop goes on with the index i of the clicked
+	// transition of the place left: TESTTIME1 and Time1 restart
+	// (@ 0x00423e8d), the turn FUN_004212cc(i), then the video
+	// "ubb_vue\" + the name of entry i of N's record, a stale slot past N's
+	// transition count.  An empty name has no '.', so FUN_00422f2c returns -1
+	// and no video plays (the fresh-start case).  FUN_00421b4c then enters N
+	// again.
+	_gameVars["testtime1"] = 0;
+	_conClocks.time1Start = g_system->getMillis();
+	_conClocks.time1Offset = 0;
+	if (!_currentPlace)
+		return;
+	const uint record = uint(_currentPlace - _wam.getPlaces().begin());
+	const AtlantisTransition t = placeTableEntry(record, transitionIndex);
+	turnToTransition(t.srcAlpha, t.srcBeta);
+	if (t.videoName.contains('.'))
+		playTransitionVideo(t.videoName, _currentPlaceId, _currentPlaceId, kTransitionFrameMs);
+	_omni3dMan.setAlpha(t.dstAlpha);
+	_omni3dMan.setBeta(t.dstBeta);
 }
 
 } // End of namespace Atlantis

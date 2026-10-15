@@ -341,7 +341,7 @@ void CryOmni3DEngine_Atlantis::runSelScan() {
 	for (ConSection &sec : _conScript.sections()) {
 		if (!sec.isEntry || sec.isCon || sec.isTimer)
 			continue;
-		if (!evalSelSection(sec, 0, (int)_currentPlaceId))
+		if (!evalSelSection(sec, 0, vueVariable()))
 			continue;
 		debugC(1, kDebugScript, "runSelScan: section %d", sec.id);
 		playConSection(sec);
@@ -451,6 +451,8 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 	// skips the transition.
 	if (key == "abortdepart") {
 		_nextPlaceId = uint(-1);
+		if (value != 0)
+			_departAborted = true;
 		return;
 	}
 
@@ -732,7 +734,7 @@ bool CryOmni3DEngine_Atlantis::runConTimers() {
 		for (ConSection &sec : _conScript.sections()) {
 			if (!sec.isEntry || !sec.isTimer || sec.timerNum != timer)
 				continue;
-			if (!evalSelSection(sec, 0, (int)_currentPlaceId))
+			if (!evalSelSection(sec, 0, vueVariable()))
 				continue;
 			debugC(1, kDebugScript, "runConTimers: /tim%d section %d", timer, sec.id);
 			// A timer run counts as a play (flag 0x00496174).
@@ -769,6 +771,8 @@ void CryOmni3DEngine_Atlantis::enterPlaceFromScript(uint placeId) {
 		_lastVue = from;
 	_nextPlaceId = placeId;
 	doPlaceChange();
+	if (_currentPlaceId != placeId)
+		_vueVarOverride = (int)placeId;   // place not found: `Vue` = N anyway
 	_gameVars["arriveevue"] = (int)from;
 	_gameVars["clicperso"] = 0;
 	_arrivalScanPending = true;
@@ -864,7 +868,7 @@ void CryOmni3DEngine_Atlantis::runConClick() {
 	struct Ctx {
 		static bool test(const ConSection &sec, void *ctx) {
 			const CryOmni3DEngine_Atlantis *e = (const CryOmni3DEngine_Atlantis *)ctx;
-			return e->evalSelSection(sec, 0, (int)e->_currentPlaceId);
+			return e->evalSelSection(sec, 0, e->vueVariable());
 		}
 	};
 	int idx = findConClickEntry(_conScript, _conPlayCounters, &Ctx::test, this);
@@ -941,7 +945,7 @@ void CryOmni3DEngine_Atlantis::runDepartureSelSections(int departZone) {
 	for (ConSection &sec : _conScript.sections()) {
 		if (!sec.isEntry || sec.isCon || sec.isTimer)
 			continue;
-		if (!evalSelSection(sec, departZone, (int)_currentPlaceId))
+		if (!evalSelSection(sec, departZone, vueVariable()))
 			continue;
 		debugC(1, kDebugScript, "runDepartureSelSections: zone=%d firing section %d",
 		      departZone, sec.id);
@@ -1091,7 +1095,7 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 		// under the pointer (set by the warp loop's caller).
 		if (!conEntryAllowed(sec, _conPlayCounters))
 			continue;
-		if (!evalSelSection(sec, 0, (int)_currentPlaceId))
+		if (!evalSelSection(sec, 0, vueVariable()))
 			continue;
 
 		const bool hasSuj = sec.sujId != 0 || !sec.sujIds.empty();

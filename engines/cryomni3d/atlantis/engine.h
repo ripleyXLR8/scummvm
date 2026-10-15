@@ -301,6 +301,27 @@ private:
 	AtlantisViewKeys _viewKeys;
 	bool _arrivalScanPending = false;
 	uint _arrivalFromVue = 0;
+	// The CON `Vue` variable when it differs from the current place: a
+	// script Vue=N whose place is not in the loaded WAM keeps the place
+	// (FUN_00421b4c finds no record) but stores N in `Vue`
+	// (@ 0x0042a723..0x0042a72c), e.g. CHAPI005 /113 (Vue=171 in ATLAN1.WAM).
+	// -1 when `Vue` is the current place.
+	int _vueVarOverride = -1;
+	int vueVariable() const { return _vueVarOverride >= 0 ? _vueVarOverride : (int)_currentPlaceId; }
+	// AbortDepart was set by the departure /sel scan in progress.
+	bool _departAborted = false;
+	// atlantis.exe place table 0x006ce274: one record per WAM place, by its
+	// position in the WAM.  FUN_00421ebc writes each record's transitions
+	// [0, count) and clears nothing, so an entry past the count keeps what an
+	// earlier WAM of the run wrote there (atlantis-re
+	// experiments/2026-10-15-08-chapi062-864.md).  Kept for the whole process:
+	// FUN_004239f4's memsets (load, new game) do not cover it.
+	Common::Array<Common::Array<AtlantisTransition> > _placeTableSlots;
+	void recordPlaceTable();
+	// Entry i of record r as the original reads it (zeroed if never written).
+	AtlantisTransition placeTableEntry(uint record, uint i) const;
+	// The place loop after a departure section whose Vue= entered a place.
+	void transitionAfterDepartureVue(uint transitionIndex);
 	// atlantis.exe DAT_0049692c, LastVue: 1 at game start (0x004195fb) and
 	// after a load (0x0042e285); the place being left on a transition
 	// (FUN_00423ad8 @ 0x00423dcf) and on a script Vue= outside loading

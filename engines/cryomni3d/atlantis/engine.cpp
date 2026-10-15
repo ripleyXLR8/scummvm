@@ -757,14 +757,21 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 			// LastVue = the place being left (0x00423dcf), before the
 			// departure scan.
 			_lastVue = _currentPlaceId;
+			// FUN_00423ad8's i: the first transition of the place whose
+			// destination is the zone (checked by findTransition above).
+			uint transitionIndex = 0;
+			while (_currentPlace->transitions[transitionIndex].dstPlaceId != (uint16)zone)
+				transitionIndex++;
+			_departAborted = false;
 			runDepartureSelSections((int)actionId);
 			if (_arrivalScanPending) {
 				// A Vue= inside a departure section already entered its place
-				// (CHAPI005 /113, CHAPI062 /864, CHAPI077 /010).  Which
-				// transition video the original then plays is not established
-				// (atlantis-re: experiments/2026-10-12-15-con-vue.md); none is
-				// played here.
+				// (CHAPI005 /113, CHAPI062 /864, CHAPI077 /010).  Game over and
+				// AbortDepart end the move; otherwise the place loop goes on
+				// with the turn and video of entry i of the new place's record.
 				_nextPlaceId = uint(-1);
+				if (!shouldAbort() && !_departAborted && _gameVars.getValOrDefault("gameover", 0) == 0)
+					transitionAfterDepartureVue(transitionIndex);
 				continue;
 			}
 			if (!shouldAbort() && _nextPlaceId != uint(-1)) {
