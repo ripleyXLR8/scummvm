@@ -323,6 +323,10 @@ bool CryOmni3DEngine_Atlantis::loadCycloHNM(const Common::String &name) {
 
 	delete decoder;
 	_warpLoaded = true;
+	// FUN_0044a424 ends with the pointer at (0x140, 0x140), without
+	// SetCursorPos (0x0044a70b / 0x0044a715); see warp_pointer.h.
+	_warpPointer.panoramaLoaded();
+	markWarpPointerMouse();
 	debugC(1, kDebugScript, "loadCycloHNM: %s (%dx%d)", name.c_str(), _warpSurface.w, _warpSurface.h);
 	return true;
 #else

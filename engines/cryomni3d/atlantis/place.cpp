@@ -182,6 +182,7 @@ void CryOmni3DEngine_Atlantis::doPlaceChange() {
 	_omni3dMan.setBetaMinConstraint(-M_PI / 4.);
 	_omni3dMan.setBetaMaxConstraint( M_PI / 4.);
 	setMousePos(Common::Point(320, 240));
+	markWarpPointerMouse();   // the port's own warp is no mouse motion
 
 	debugC(1, kDebugScript, "doPlaceChange: at place %u (%s)",
 	      _currentPlaceId, nextPlace->cycloHnm.c_str());

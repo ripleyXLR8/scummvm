@@ -55,6 +55,7 @@
 #include "cryomni3d/atlantis/toolbar.h"
 #include "cryomni3d/atlantis/warp_cursor.h"
 #include "cryomni3d/atlantis/warp_momentum.h"
+#include "cryomni3d/atlantis/warp_pointer.h"
 #include "cryomni3d/atlantis/wam_parser.h"
 
 namespace CryOmni3D {
@@ -305,6 +306,19 @@ private:
 	bool _inPlaceArrivalScan = false;
 	AtlantisViewKeys _viewKeys;
 	WarpMomentum _warpMomentum;   // 0x00496984 / 0x00496988
+	WarpPointer _warpPointer;     // 0x004960ec / 0x004960f0, 0x0049698c / 0x00496990
+	// The system mouse position when the port last wrote _warpPointer from
+	// outside the warp look (warp exit, panorama load): a different position
+	// at the next warp entry is a mouse motion in between (WM_MOUSEMOVE).
+	Common::Point _warpPointerMouseMark;
+	void markWarpPointerMouse() { _warpPointerMouseMark = getMousePos(); }
+	// The mouse moved since the mark: the pointer is the last mouse position.
+	void syncWarpPointerMouse() {
+		const Common::Point m = getMousePos();
+		if (m != _warpPointerMouseMark)
+			_warpPointer.mouseMoved(m);
+		_warpPointerMouseMark = m;
+	}
 	bool _arrivalScanPending = false;
 	uint _arrivalFromVue = 0;
 	// The CON `Vue` variable when it differs from the current place: a
@@ -642,8 +656,9 @@ private:
 	void restartConTimer(int timer, int value);
 	void rebaseConClocks();
 	// FUN_0042be3c: run the first matching /tim1, then /tim2, entry while
-	// TestTime1 / TestTime2 is set.  True if a section played.
-	bool runConTimers();
+	// TestTime1 / TestTime2 is set.  True if a section played.  fromWarp:
+	// called by the warp loop, whose pointer the section's mouse starts at.
+	bool runConTimers(bool fromWarp = false);
 	Common::HashMap<Common::String, int> _gameVars;
 	ConVariableNames _conVarNames;             // VARIAS.CON, for conditions
 	// /con play counters (atlantis.exe 0x006cc6cc), one byte per section:

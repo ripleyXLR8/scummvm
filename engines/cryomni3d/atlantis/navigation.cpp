@@ -240,6 +240,11 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 	bool exit = false;
 	uint actionId = 0;
 
+	// The loop takes the pointer where the caller left it (0x0041bfa0 entry
+	// block): a mouse motion since the port last wrote it (warp exit, panorama
+	// load) is the WM_MOUSEMOVE that set it in the original (warp_pointer.h).
+	syncWarpPointerMouse();
+
 	showMouse(true);
 	setMousePos(Common::Point(320, 240));
 
@@ -279,17 +284,14 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 	ambientEnterPlace();
 
 	// The pointer 0x004960ec / 0x004960f0 that FUN_00422bb0 / FUN_00422d5c
-	// hit-test at the exit (0x0041c71e).  The loop recentres it at (320, 240)
-	// only when alpha or beta differs from the previous frame's (0x0049698c /
-	// 0x00496990, @ 0x0041c2c1..0x0041c33e); otherwise it stays where the
-	// mouse moved it.  At entry the original keeps it where the caller left
-	// it; where callers leave it is not established (atlantis-re
-	// functions/graphics-FUN_0041bfa0.md), so the port starts it at the
-	// centre as before.  The system pointer stays pinned for the relative
-	// look.
-	Common::Point warpPtr(320, 240);
-	float prevAlpha = (float)_omni3dMan.getAlpha();
-	float prevBeta = (float)_omni3dMan.getBeta();
+	// hit-test at the exit (0x0041c71e) is _warpPointer.pos.  The loop
+	// recentres it at (320, 240) only when alpha or beta differs from the
+	// previous frame's (0x0049698c / 0x00496990, kept across loops and -1.0
+	// at start-up, @ 0x0041c2c1..0x0041c33e); otherwise it stays where the
+	// caller or the mouse left it: (320, 320) after a panorama load, the
+	// last mouse position after a dialog or a video (atlantis-re
+	// functions/graphics-FUN_0041bfa0.md, experiments/2026-10-15-70).  The
+	// system pointer stays pinned for the relative look.
 
 	while (!leftButtonPressed && !exit) {
 		pollEvents();
@@ -323,7 +325,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		actionId = 0;
 		int centrePerso = 0;
 		if (_currentPlace && _warpLoaded) {
-			Common::Point pan = hitTestPoint(_omni3dMan.mapMouseCoords(warpPtr));
+			Common::Point pan = hitTestPoint(_omni3dMan.mapMouseCoords(_warpPointer.pos));
 			npcPanoHitTest(pan, centrePerso);
 			actionId = _currentPlace->hitTest(pan.x, pan.y);
 		}
@@ -379,6 +381,10 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		if (clicked && centrePerso >= 0x100) {
 			g_system->lockMouse(false);
 			showMouse(true);   // the warp cursor may be hidden
+			// The original leaves the loop with the mouse at the pointer; the
+			// dialog's mouse motions set the pointer (WM_MOUSEMOVE).
+			setMousePos(_warpPointer.pos);
+			markWarpPointerMouse();
 			// FUN_004278a0 starts the click animation (0x004278b5).
 			_warpCursor.clickAnim = true;
 			// ClicZone = the zone under the pointer: the warp loop returns it
@@ -390,6 +396,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			else
 				interactNPC(centrePerso);
 			_gameVars["cliczone"] = 0;
+			syncWarpPointerMouse();   // the last mouse position, if it moved
 			if (shouldAbort()) {
 				actionId = 66666;
 				exit = true;
@@ -399,10 +406,11 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				actionId = 66666;
 				exit = true;
 			} else {
+				// No recentre: the loop is entered again with the pointer the
+				// dialog left (experiments/2026-10-15-70 entry 2).
 				g_system->lockMouse(true);
 				takeMouseRelative();
 				setMousePos(Common::Point(320, 240));
-				warpPtr = Common::Point(320, 240);
 				_dialogGivenObjSprite = -1;   // the conversation ended
 				_warpCursorShown = kWarpCursorUnset;   // dialog changed the cursor
 				// Drain the skip click the dialog ended on so it isn't read as
@@ -479,7 +487,9 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			g_system->lockMouse(true);
 			takeMouseRelative();
 			setMousePos(Common::Point(320, 240));
-			warpPtr = Common::Point(320, 240);
+			// FUN_0042c098 closes the bar with SetCursorPos(320, 240) and the
+			// pointer at (320, 240) (@ 0x0042c275).
+			_warpPointer.recentre();
 			_warpCursorShown = kWarpCursorUnset;   // re-apply the warp cursor next frame
 			curHeldObj = nullptr;
 			while (getCurrentMouseButton() != 0 && !shouldAbort()) {
@@ -493,7 +503,12 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			// FUN_0041c838 lowers the music by the current percentage while
 			// it runs (@ 0x0041c88a) and raises it at the end (@ 0x0041cb7d).
 			musicDuck(false);
+			// The menu FUN_0041c838 does not write the pointer: its mouse
+			// motions do (WM_MOUSEMOVE).
+			setMousePos(_warpPointer.pos);
+			markWarpPointerMouse();
 			uint act = displayInGameMenu();
+			syncWarpPointerMouse();
 			musicUnduck();
 			if (act == 40) {                 // quit
 				actionId = 66666;
@@ -511,7 +526,6 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				g_system->lockMouse(true);
 				takeMouseRelative();
 				setMousePos(Common::Point(320, 240));
-				warpPtr = Common::Point(320, 240);
 				_warpCursorShown = kWarpCursorUnset;
 				curHeldObj = nullptr;
 			}
@@ -538,26 +552,24 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			if (k & 8) beta = (float)(beta + 0.034906);
 			if (k & 4) beta = (float)(beta - 0.034906);
 		}
-		// The pointer follows the mouse, and goes back to the centre when the
-		// view moved (FUN_0041bfa0 step 5).
-		warpPtr.x = CLIP<int>(warpPtr.x + xDelta, 0, 639);
-		warpPtr.y = CLIP<int>(warpPtr.y - yDelta, 0, 479);
-		if ((float)alpha != prevAlpha || (float)beta != prevBeta)
-			warpPtr = Common::Point(320, 240);
+		const float newAlpha = (float)alpha, newBeta = (float)beta;
 		while (alpha >= 2.0 * M_PI) alpha -= 2.0 * M_PI;
 		while (alpha < 0.0)         alpha += 2.0 * M_PI;
 		if (beta < -kWarpBetaLimit) beta = -kWarpBetaLimit;
 		if (beta >  kWarpBetaLimit) beta =  kWarpBetaLimit;
 		_omni3dMan.setAlpha(alpha);
 		_omni3dMan.setBeta(beta);
-		prevAlpha = (float)alpha;
-		prevBeta = (float)beta;
+		// The pointer follows the mouse, and goes back to the centre when the
+		// new (unclamped) angles differ from the previous frame's (FUN_0041bfa0
+		// step 5, @ 0x0041c2bb..0x0041c363).
+		_warpPointer.frame(xDelta, -yDelta, newAlpha, newBeta, (float)alpha, (float)beta);
 		// Keep angle vars in sync for CON conditions (AngleWarpX<N).
 		_gameVars["anglewarpx"] = (int)(alpha * 180.0 / M_PI);
 		_gameVars["anglewarpy"] = (int)(beta  * 180.0 / M_PI);
 
 		// Timer sections (atlantis.exe FUN_0041bfa0 @ 0x0041c369).
-		if (!exit && runConTimers()) {
+		if (!exit && runConTimers(true)) {
+			syncWarpPointerMouse();   // the section's last mouse position
 			if (shouldAbort()) {
 				actionId = 66666;
 				exit = true;
@@ -572,7 +584,6 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				g_system->lockMouse(true);
 				takeMouseRelative();
 				setMousePos(Common::Point(320, 240));
-				warpPtr = Common::Point(320, 240);
 				_dialogGivenObjSprite = -1;
 				_warpCursorShown = kWarpCursorUnset;
 				while (getCurrentMouseButton() != 0 && !shouldAbort()) {
@@ -624,6 +635,9 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 
 	g_system->lockMouse(false);
 	showMouse(false);
+	// The mouse at the pointer; motions from here on set it (WM_MOUSEMOVE).
+	setMousePos(_warpPointer.pos);
+	markWarpPointerMouse();
 
 	// Drain the click that ended the loop.
 	while (getCurrentMouseButton() != 0 && !shouldAbort()) {

@@ -29,6 +29,7 @@
 #include "cryomni3d/atlantis/sprite_anim.h"
 #include "cryomni3d/atlantis/wam_parser.h"
 #include "cryomni3d/atlantis/warp_momentum.h"
+#include "cryomni3d/atlantis/warp_pointer.h"
 #include "common/archive.h"
 #include "common/fs.h"
 #include "../../../system/null_osystem.h"
@@ -567,5 +568,48 @@ public:
 		}
 		TS_ASSERT_DELTA(alpha, 1.04999983f, 1e-6f);   // d / 600 in total
 		TS_ASSERT_DELTA(beta, 0.249999985f, 1e-6f);   // beta - (-40) / 800
+	}
+
+	// The warp pointer across loops (atlantis-re functions/graphics-FUN_0041bfa0.md,
+	// experiments/2026-10-15-70): the image values (0, 0) and -1.0
+	// (0x004960ec, 0x0049698c), (0x140, 0x140) after a panorama load
+	// (FUN_0044a424 @ 0x0044a70b / 0x0044a715), the step-5 recentre only when
+	// the angles change (0x0041c2bb..0x0041c363).
+	void test_warp_pointer() {
+		using CryOmni3D::Atlantis::WarpPointer;
+		WarpPointer p;
+		TS_ASSERT_EQUALS(p.pos, Common::Point(0, 0));
+		TS_ASSERT_EQUALS(p.prevAlpha, -1.0f);
+		TS_ASSERT_EQUALS(p.prevBeta, -1.0f);
+		// The first loop of a session: any view differs from -1.0.
+		p.panoramaLoaded();
+		TS_ASSERT_EQUALS(p.pos, Common::Point(320, 320));
+		TS_ASSERT(p.frame(0, 0, 0.0f, 0.0f, 0.0f, 0.0f));
+		TS_ASSERT_EQUALS(p.pos, Common::Point(320, 240));
+		// A motion that does not turn the view moves the pointer.
+		TS_ASSERT(!p.frame(15, -7, 0.0f, 0.0f, 0.0f, 0.0f));
+		TS_ASSERT_EQUALS(p.pos, Common::Point(335, 233));
+		// A checkpoint reload at the same angles: the loop keeps (320, 320).
+		p.panoramaLoaded();
+		TS_ASSERT(!p.frame(0, 0, 0.0f, 0.0f, 0.0f, 0.0f));
+		TS_ASSERT_EQUALS(p.pos, Common::Point(320, 320));
+		// After a dialog the last mouse position, kept while the view rests.
+		p.mouseMoved(Common::Point(500, 400));
+		TS_ASSERT(!p.frame(0, 0, 0.0f, 0.0f, 0.0f, 0.0f));
+		TS_ASSERT_EQUALS(p.pos, Common::Point(500, 400));
+		// The pointer is clamped to the screen.
+		TS_ASSERT(!p.frame(400, 400, 0.0f, 0.0f, 0.0f, 0.0f));
+		TS_ASSERT_EQUALS(p.pos, Common::Point(639, 479));
+		// Momentum moves the view: recentred; the stored angles are the
+		// frame's end ones (after the pitch clamp), the test uses the new.
+		TS_ASSERT(p.frame(0, 0, 0.01f, 0.9f, 0.01f, 0.785398f));
+		TS_ASSERT_EQUALS(p.pos, Common::Point(320, 240));
+		TS_ASSERT_EQUALS(p.prevBeta, 0.785398f);
+		p.mouseMoved(Common::Point(10, 20));
+		TS_ASSERT(p.frame(0, 0, 0.01f, 0.9f, 0.01f, 0.785398f));   // 0.9 != 0.785398
+		// The bar close recentres.
+		p.mouseMoved(Common::Point(10, 20));
+		p.recentre();
+		TS_ASSERT_EQUALS(p.pos, Common::Point(320, 240));
 	}
 };

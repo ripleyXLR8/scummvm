@@ -729,7 +729,7 @@ bool CryOmni3DEngine_Atlantis::barFrameTick(bool &played) {
 	       _gameVars.getValOrDefault("exit", 0) != 0;
 }
 
-bool CryOmni3DEngine_Atlantis::runConTimers() {
+bool CryOmni3DEngine_Atlantis::runConTimers(bool fromWarp) {
 	bool played = false;
 	for (int timer = 1; timer <= 2; timer++) {
 		if (_gameVars.getValOrDefault(timer == 1 ? "testtime1" : "testtime2", 0) == 0)
@@ -743,6 +743,11 @@ bool CryOmni3DEngine_Atlantis::runConTimers() {
 			// A timer run counts as a play (flag 0x00496174).
 			bumpConPlayCounter(sec.id);
 			g_system->lockMouse(false);   // leave the warp's mouse-look for the dialog
+			// The mouse at the warp pointer; the section's motions set it.
+			if (fromWarp) {
+				setMousePos(_warpPointer.pos);
+				markWarpPointerMouse();
+			}
 			playConSection(sec);
 			played = true;
 			break;
