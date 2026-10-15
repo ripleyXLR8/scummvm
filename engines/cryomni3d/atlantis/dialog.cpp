@@ -321,7 +321,7 @@ int CryOmni3DEngine_Atlantis::showSubjectMenu(const Common::Array<int> &sujIds) 
 // Play a fired CON section: run its /set commands and dialog lines in source
 // order, then follow any /go redirect.  The game-over screen and the F3DC
 // mouth pipeline layer on as their subsystems land.
-void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView::Angles *chainEntry) {
+void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView::Walk *chain) {
 	// Hide the cursor for the duration of the section; restore it after.
 	bool cursorWasVisible = showMouse(false);
 
@@ -346,13 +346,15 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 	// the end (0x00428cb2); in between it is cleared after every dialog line
 	// (0x00428b39), so only the first line of a section entered with a
 	// ClicPerso uses it, the others resolve the speaker by name.
-	const int savedClicPerso = _gameVars.getValOrDefault("clicperso", 0);
 	// ... and the view angles (0x00428483 / 0x0042848b), set back at the end.
 	// A /go continues the same walk (FUN_00425c04 returns the target header
-	// to FUN_0042844c), so the target keeps these.
-	DialogView::Angles entry = {_omni3dMan.getAlpha(), _omni3dMan.getBeta()};
-	if (chainEntry)
-		entry = *chainEntry;
+	// to FUN_0042844c), so the target keeps both, and ClicPerso stays as the
+	// lines left it (0 after a line) until the end of the walk.
+	DialogView::Walk walk = {{_omni3dMan.getAlpha(), _omni3dMan.getBeta()},
+	                         _gameVars.getValOrDefault("clicperso", 0)};
+	if (chain)
+		walk = *chain;
+	DialogView::Angles &entry = walk.entry;
 	// A /set(gameover=N) with N != 0 ends the section (atlantis.exe FUN_0042844c
 	// breaks the line loop once the GameOver variable goes non-zero); the lines
 	// that follow feed the game-over screen instead of playing as dialog.
@@ -431,10 +433,11 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 
 		Common::String vid;
 		Common::String spfBase;
-		// The INITDIAL row of the video (0x0077290c): the perso for other
-		// lines, 512 + the IncPerso count for lines starting with "Seth"
-		// (FUN_0042844c @ 0x004284d2 / 0x00428924; FUN_0042ee88).
-		const int dialRow = sethLine ? 0x200 + _incPersoCount : persoId;
+		// The INITDIAL row of the video (0x0077290c, dialog_view.h): 512 +
+		// the IncPerso count for a Seth line, else 512 + ClicPerso's low
+		// byte, also for a ClicPerso below 0x200 (CHAPI056 /744 Anna with
+		// ClicPerso 329 plays row 585) or 0.
+		const int dialRow = DialogView::dialRow(sethLine && !isOffCam, persoId, _incPersoCount);
 		// FUN_0042ee88 step 3: a line whose wav\ata<NNNN><letter>.syc is
 		// missing (FUN_0042f9e8 fails) is played voice-only by FUN_00430258,
 		// as an `off` line: FOV 75.137 and the view redrawn at the angles left
@@ -442,13 +445,17 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 		// player's own unless the header gives explicit angles
 		// (0x00428aec..0x00428b0e); no UBB, no head, persos shown.
 		bool noSyc = false;
-		if (persoId > 0 && !isOffCam) {
+		if (!isOffCam) {
 			Common::ScopedPtr<Common::SeekableReadStream> syc(openBigFileStream(kFileTypeSound,
 			    Common::String::format("ATA%04d%c.SYC", sec.id, (char)('A' + lineIdx))));
 			noSyc = !syc;
 		}
 		const bool voiceOnly = isOffCam || noSyc;
-		if (persoId > 0 && !voiceOnly) {
+		// A row without its INITDIAL record leaves an empty UBB name: the
+		// original then opens "dialog\perso\", which cryo.dll's
+		// _GL_FileOpen@8 fails on (error dialog or quit, experiment
+		// 2026-10-15-92); the port plays the voice over the panorama.
+		if (!voiceOnly) {
 			Common::HashMap<int, DialInitEntry>::const_iterator it =
 			    _dialInitData.find(dialRow);
 			if (it != _dialInitData.end()) {
@@ -475,7 +482,8 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 		// non-Seth path (0x0042896e).
 		const DialogView::Angles kept = {_omni3dMan.getAlpha(), _omni3dMan.getBeta()};
 		const DialogView::Line view = DialogView::lineView(kept, sethLine && !isOffCam, persoId,
-		    item.line.hasAngle, item.line.angleX * M_PI / 180.0, item.line.angleY * M_PI / 180.0);
+		    item.line.hasAngle, item.line.angleX * M_PI / 180.0, item.line.angleY * M_PI / 180.0,
+		    _omni3dMan.betaLimit());
 		if (view.entryUpdate)
 			entry = kept;   // 0x004289ef..0x004289fc, 0x00428aa6..0x00428ab3
 		if (_warpLoaded) {
@@ -496,7 +504,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 		                  spfBase,
 		                  /*hasAngle=*/false, 0, 0, effCamNum,
 		                  /*interactiveDialog=*/sec.isCon,
-		                  (persoId > 0 && !voiceOnly && !vid.empty()) ? dialRow : -1);
+		                  (!voiceOnly && !vid.empty()) ? dialRow : -1);
 		_dialVoiceOff = false;
 		_gameVars["clicperso"] = 0;   // after every line (0x00428b39)
 		// FUN_00451915(0x00bcb59c, 0x00bcb598) after every line (0x00428b5e).
@@ -505,11 +513,12 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 			_omni3dMan.setBeta(view.kept.beta);
 		}
 	}
-	_gameVars["clicperso"] = savedClicPerso;   // 0x00428cb2
 	// A /go target runs in the same walk of the original (below): the end
-	// of the walk, with its angle restore, comes after the target.
+	// of the walk, with its ClicPerso and angle restores, comes after it.
 	const bool chainGo = _currentCONChapter == entryChapter && sec.gotoId > 0 && !shouldAbort() &&
 	                     pendingGameOver == 0 && _abortCommand == kAbortNoAbort;
+	if (!chainGo)
+		_gameVars["clicperso"] = walk.clicPerso;   // 0x00428cb2
 	// The view goes back to the entry angles, except an axis whose
 	// ANGLEWARPX / ANGLEWARPY is non-zero: that one keeps the current angle
 	// and the variable is cleared (0x00428ccc..0x00428d68).  The warp loop
@@ -576,8 +585,9 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 					break;
 				}
 			}
-			playConSection(target, &entry);
+			playConSection(target, &walk);
 		} else {
+			_gameVars["clicperso"] = walk.clicPerso;
 			restoreEntry();
 		}
 	}

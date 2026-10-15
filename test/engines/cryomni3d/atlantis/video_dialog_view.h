@@ -40,7 +40,7 @@ class VideoDialogViewTestSuite : public CxxTest::TestSuite {
 		for (int i = 0; i < n; i++) {
 			const L &l = lines[i];
 			DialogView::Line v = DialogView::lineView(kept, l.seth && !l.off, l.perso,
-			    l.hasAngle, rad(l.x), rad(l.y));
+			    l.hasAngle, rad(l.x), rad(l.y), rad(50) * 0.9);
 			if (v.entryUpdate)
 				entry = kept;
 			const DialogView::Angles &shown = l.off ? v.kept : v.view;
@@ -91,5 +91,28 @@ public:
 			{false, false, 520, false, 0, 0, 30, 0},    // [Agathe,cam3]
 		};
 		walk("CHAPI016 /206", lines, ARRAYSIZE(lines), 30, 5);
+	}
+
+	// CHAPI033 /450 A [SoldatF1,0,128]: FUN_00451915 clamps the header pitch
+	// to 0.9 x 50 degrees; the clamped angle is kept (emulated: 0/45).
+	void test_chapi033_450_pitch_clamp() {
+		static const L lines[] = {
+			{false, false, 604, true, 0, 128, 0, 45},   // [SoldatF1,0,128]
+		};
+		walk("CHAPI033 /450", lines, ARRAYSIZE(lines), 30, 5);
+	}
+
+	// The INITDIAL row (0x0077290c): ClicPerso's low byte for other lines
+	// (0x00428924), the IncPerso count for Seth lines (0x00428a91).
+	// Emulated rows: CHAPI056 /744 A [Anna] with ClicPerso 329 -> 585,
+	// CHAPI065 /901 A [Sorciere] with ClicPerso 323 -> 579, CHAPI016 Agatha
+	// clicked as 539 -> 539, Seth with IncPerso 2 -> 514.
+	void test_dial_row() {
+		using CryOmni3D::Atlantis::DialogView::dialRow;
+		TS_ASSERT_EQUALS(dialRow(false, 329, 0), 585);
+		TS_ASSERT_EQUALS(dialRow(false, 323, 0), 579);
+		TS_ASSERT_EQUALS(dialRow(false, 539, 0), 539);
+		TS_ASSERT_EQUALS(dialRow(true, 520, 2), 514);
+		TS_ASSERT_EQUALS(dialRow(false, 0, 0), 512);
 	}
 };

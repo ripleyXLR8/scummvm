@@ -49,6 +49,30 @@ struct Line {
 	bool entryUpdate;     // the section-end angles become `kept` before the line
 };
 
+// What FUN_0042844c carries along one walk, through /go targets too
+// (FUN_00425c04 hands the target back to the same loop).
+struct Walk {
+	Angles entry;         // EBP-0xc / EBP-8, restored at the end of the walk
+	int clicPerso;        // ClicPerso at the start of the walk (0x004284c2), restored at its end
+};
+
+// The INITDIAL row (0x0077290c) of a line: the IncPerso count for a Seth
+// line (0x00428a91); otherwise ClicPerso's low byte (0x00428924, the byte
+// store of `local_40`), so a ClicPerso below 0x200 still picks row
+// 0x200 + (ClicPerso & 0xff).  FUN_0042ee88 indexes the table with it.
+inline int dialRow(bool sethPath, int clicPerso, uint8 incPerso) {
+	return 0x200 + (sethPath ? incPerso : (clicPerso & 0xff));
+}
+
+inline double clampBeta(double b, double betaMax) {
+	// FUN_00451915: beta kept when -max <= beta <= max, else the limit.
+	if (b > betaMax)
+		return betaMax;
+	if (b < -betaMax)
+		return -betaMax;
+	return b;
+}
+
 inline double wrapAlpha(double a) {
 	// FUN_00451915 @ 0x00451915: alpha >= 2 pi -> alpha - 2 pi, < 0 -> + 2 pi.
 	const double twoPi = 2.0 * M_PI;
@@ -62,9 +86,9 @@ inline double wrapAlpha(double a) {
 // kept: the angles before the line.  sethPath: the header starts with "Seth"
 // and has no off / off0 / off1 flag (0x00428949..0x0042896c).  clicPerso:
 // ClicPerso after the speaker lookup.  hasAngle, x, y: explicit header angles
-// (radians).
+// (radians); betaMax: FUN_00451915's pitch limit.
 inline Line lineView(const Angles &kept, bool sethPath, int clicPerso,
-                     bool hasAngle, double x, double y) {
+                     bool hasAngle, double x, double y, double betaMax) {
 	Line l;
 	l.view = kept;
 	l.kept = kept;
@@ -84,7 +108,7 @@ inline Line lineView(const Angles &kept, bool sethPath, int clicPerso,
 	if (hasAngle) {
 		// 0x00428afc..0x00428b0e: FUN_00451915(X, Y) writes the globals too.
 		l.view.alpha = wrapAlpha(x);
-		l.view.beta = y;
+		l.view.beta = clampBeta(y, betaMax);
 		l.kept = l.view;
 	}
 	return l;

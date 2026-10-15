@@ -373,8 +373,8 @@ private:
 	bool evalSelSection(const ConSection &sec, int departZone, int currentVue) const;
 	// Execute a fired section's body (its /set commands and /go redirect; the
 	// dialog lines are played once the dialog layer lands).
-	// chainEntry: the walk's entry angles, carried into a /go target.
-	void playConSection(ConSection &sec, const DialogView::Angles *chainEntry = nullptr);
+	// chain: the walk's entry angles and ClicPerso, carried into a /go target.
+	void playConSection(ConSection &sec, const DialogView::Walk *chain = nullptr);
 	// Fire the first matching arrival/departure /sel section, in file order.
 	void runArrivalSelSections(int arrivedVue, int fromVue);
 	void runDepartureSelSections(int departZone);

@@ -52,6 +52,10 @@ public:
 	// pi as FUN_0045179a stores it at 0x00bcb594 (a float).
 	static float exePi();
 
+	// FUN_00451915's pitch limit: 0.9 (0x004befe0) x the vertical limit
+	// 0x00bcab58 set by FUN_0045179a.
+	double betaLimit() const { return (double)_vfovF * 0.9; }
+
 protected:
 	void updateImageCoords() override;
 
