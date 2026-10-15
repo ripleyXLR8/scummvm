@@ -145,7 +145,16 @@ void CrabPuzzle::present() {
 }
 
 void CrabPuzzle::playSound(int slot) {
-	_engine->playPuzzleSound(slot == 0 ? "CRABE1" : "CRABE2");
+	if (slot == 0) {
+		// FUN_0043ce80: the click sound plays on sample 0x006cc560 only when
+		// its status is 2 or 8 (done or stopped); while the previous click
+		// still plays, the sound is dropped.
+		if (_engine->_mixer->isSoundHandleActive(_click))
+			return;
+		_click = _engine->playPuzzleSound("CRABE1");
+		return;
+	}
+	_engine->playPuzzleSound("CRABE2");
 }
 
 void CrabPuzzle::playComment(int n) {
@@ -158,6 +167,7 @@ bool CrabPuzzle::commentBusy() {
 }
 
 void CrabPuzzle::stopSounds() {
+	_engine->_mixer->stopHandle(_click);
 	_engine->_mixer->stopHandle(_comment);
 }
 

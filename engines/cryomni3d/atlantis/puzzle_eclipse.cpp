@@ -173,7 +173,9 @@ void EclipsePuzzle::playSound(const char *name, bool wait) {
 	delete apcFile;
 
 	Audio::SoundHandle handle;
-	_engine->_mixer->playStream(Audio::Mixer::kSFXSoundType, &handle, apc);
+	// Pan 0x40, volume 0x6e (FUN_0043d150 in FUN_0044154c's set-up).
+	_engine->_mixer->playStream(Audio::Mixer::kSFXSoundType, &handle, apc, -1,
+	                            CryOmni3DEngine_Atlantis::kPuzzleSampleVolume, 0);
 	_handles.push_back(handle);
 	if (wait) {
 		while (!_engine->shouldAbort() &&

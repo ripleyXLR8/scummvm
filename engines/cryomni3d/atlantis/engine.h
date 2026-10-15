@@ -176,6 +176,10 @@ public:
 	// Play WAV\<name>.APC once (puzzle sound effects).
 	// Plays WAV\<name>.APC once; the handle answers "still playing".
 	Audio::SoundHandle playPuzzleSound(const char *name);
+	// Every puzzle's sample set-up (FUN_0043cb8c, FUN_0043d150, FUN_0043d204)
+	// gives its Miles samples pan 0x40 and volume 0x6e; Miles volumes map
+	// onto the mixer as AtlantisAmbientOutput::setVolume does (v * 255 / 127).
+	static const byte kPuzzleSampleVolume = (byte)(0x6e * Audio::Mixer::kMaxChannelVolume / 127);
 	// FUN_00432178's ambient part (place.cpp), at the end of a warp or bar frame.
 	void ambientFrame();
 	// The puzzle-cursor animation 0x00496ea8 (mode), 0x00496eaa (frame),

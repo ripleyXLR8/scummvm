@@ -204,7 +204,9 @@ Audio::SoundHandle CryOmni3DEngine_Atlantis::playPuzzleSound(const char *name) {
 	}
 	apc->finish();
 	delete apcFile;
-	_mixer->playStream(Audio::Mixer::kSFXSoundType, &handle, apc);
+	// Pan 0x40 (centre, balance 0) and volume 0x6e from the puzzle's sample
+	// set-up (FUN_0043cb8c / FUN_0043d150 / FUN_0043d204).
+	_mixer->playStream(Audio::Mixer::kSFXSoundType, &handle, apc, -1, kPuzzleSampleVolume, 0);
 	return handle;
 }
 
