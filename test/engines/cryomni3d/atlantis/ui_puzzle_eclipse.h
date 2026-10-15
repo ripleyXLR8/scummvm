@@ -121,6 +121,22 @@ public:
 
 	// The single winning configuration: lever-1 offset 34, lever-2 offset 35
 	// from the starting position (sun record 4 at frame 1, moon record 5 at 71).
+	// FUN_00441b2c (atlantis-re functions/puzzles-FUN_0044154c.md, STATIC @
+	// 0x00441b44..0x00441ba1): the exit cursor over 0 <= x < 0xa0 or
+	// 0x21c < x < 0x280, with 0 <= y < 0xdc.
+	void test_exit_cursor_zones() {
+		using CryOmni3D::Atlantis::EclipseRules;
+		TS_ASSERT(EclipseRules::overExit(0, 0));
+		TS_ASSERT(EclipseRules::overExit(0x9f, 0xdb));
+		TS_ASSERT(!EclipseRules::overExit(0xa0, 0));
+		TS_ASSERT(!EclipseRules::overExit(0, 0xdc));
+		TS_ASSERT(!EclipseRules::overExit(0x21c, 10));
+		TS_ASSERT(EclipseRules::overExit(0x21d, 10));
+		TS_ASSERT(EclipseRules::overExit(0x27f, 0xdb));
+		TS_ASSERT(!EclipseRules::overExit(0x280, 10));
+		TS_ASSERT(!EclipseRules::overExit(320, 100));
+	}
+
 	void test_win_state() {
 		UiEclipse::PortCopy::Puzzle p;
 		for (int i = 0; i < 34; i++) p.click(180, 400);

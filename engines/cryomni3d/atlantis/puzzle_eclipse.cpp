@@ -196,8 +196,7 @@ int EclipsePuzzle::run() {
 
 	g_system->lockMouse(false);
 	_engine->setMousePos(Common::Point(kScreenW / 2, kScreenH / 2));
-	_engine->setArrowCursor();
-	_engine->showMouse(true);
+	_engine->showMouse(false);   // FUN_00441b2c draws the cursor into the frame
 
 	// FUN_0044154c's loop: the click, the exit test, a frame, then the win
 	// test.  It reads no key.  0x007bebf0, the highlight counter, is 0
@@ -209,7 +208,15 @@ int EclipsePuzzle::run() {
 	}
 	int  result = kFinPuzzleAbort;
 	bool prevButton = (_engine->getCurrentMouseButton() != 0);
-	auto present = [&]() {
+	auto present = [&](bool cursor) {
+		// FUN_00441b2c (0x00441b2c..0x00441c5d), after the render: over the
+		// two exit zones CURSEURS (0x006cd8b8) frame 11 at the mouse into
+		// the work buffer, elsewhere FUN_0042d558 (frame 6).
+		if (cursor) {
+			const Common::Point m = _engine->getMousePos();
+			if (const SprSprite *spr = _engine->cursorSprite(EclipseRules::overExit(m.x, m.y) ? 11 : 6))
+				drawSprSprite(*working.surfacePtr(), *spr, m.x, m.y);
+		}
 		g_system->copyRectToScreen(working.getPixels(), working.pitch, 0, 0, kScreenW, kScreenH);
 		g_system->updateScreen();
 	};
@@ -237,7 +244,7 @@ int EclipsePuzzle::run() {
 		}
 
 		renderFrame(working);
-		present();
+		present(true);
 		g_system->delayMillis(15);
 
 		if (_rules.isWin()) {
@@ -245,11 +252,16 @@ int EclipsePuzzle::run() {
 			// from 0 (the highlight pulses on bit 1); then FUN_0043d0e0
 			// stops every playing sample, LION3 included.
 			playSound("LION3", false);
+			// FUN_00441724 calls neither FUN_00441b2c nor FUN_0042d558;
+			// what its FUN_0041afd0 shows of a cursor is not established,
+			// so the port keeps the system arrow there as before.
+			_engine->setArrowCursor();
+			_engine->showMouse(true);
 			_frameCounter = 0;
 			for (int f = 0; f < kWinAnimFrames && !_engine->shouldAbort(); f++) {
 				_engine->pollEvents();
 				renderFrame(working);
-				present();
+				present(false);
 				_frameCounter++;
 				// [UNKNOWN] the animation has no timer of its own.
 				g_system->delayMillis(40);
@@ -263,6 +275,7 @@ int EclipsePuzzle::run() {
 	debugC(1, kDebugScript, "EclipsePuzzle::run: levers L1=(r2=%d,r5=%d,r6=%d) L2=(r3=%d,r4=%d) result=%d",
 	      _rules.r[2].curr, _rules.r[5].curr, _rules.r[6].curr,
 	      _rules.r[3].curr, _rules.r[4].curr, result);
+	_engine->showMouse(true);
 	g_eclipseMemory.valid = true;
 	g_eclipseMemory.curr0 = _rules.r[0].curr;
 	g_eclipseMemory.curr1 = _rules.r[1].curr;

@@ -93,10 +93,16 @@ public:
 
 	// A click (FUN_00441cd8): the two top-corner exits, or a lever that
 	// steps its records once up (upper half) or down.
-	Click click(int mx, int my) {
+	// The two exit zones, tested with the same bounds by FUN_00441cd8 step 1
+	// and by the cursor FUN_00441b2c (0x00441b44..0x00441ba1).
+	static bool overExit(int mx, int my) {
 		const bool inExitL = mx >= 0 && mx < 0xa0 && my >= 0 && my < 0xdc;
 		const bool inExitR = mx >= 0x21d && mx < 0x280 && my >= 0 && my < 0xdc;
-		if (inExitL || inExitR)
+		return inExitL || inExitR;
+	}
+
+	Click click(int mx, int my) {
+		if (overExit(mx, my))
 			return kClickExit;
 		if (my < 0x172 + 1 || my >= 0x1e0)
 			return kClickNone;
