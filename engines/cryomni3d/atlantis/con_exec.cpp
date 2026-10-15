@@ -1148,11 +1148,16 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 	// and the object leaves the hand.
 	// The port's ObjetEnMain is the inventory selection (liveValue).
 	if (_inventory.selectedObject() != nullptr) {
+		// FUN_00425cf4 sets 0x00496170 around its scan and play.
+		_sectionPlay = true;
 		runConClick();
+		_sectionPlay = false;
 		_gameVars["objetenmain"] = 0;
 		_inventory.setSelectedObject(nullptr);
 		return;
 	}
+	// FUN_00425828 @ 0x004258c4: 0x00496170 = 1 up to its end (0x00425b7a).
+	_sectionPlay = true;
 	// New conversation: forget the previous cam.
 	_lastDialCam = 0;
 
@@ -1173,8 +1178,10 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 	int chosen = -1;
 	if (persoHasMenu) {
 		chosen = showSubjectMenu(sujs);
-		if (shouldAbort())
+		if (shouldAbort()) {
+			_sectionPlay = false;
 			return;
+		}
 	}
 
 	ConSection *play = nullptr;
@@ -1211,6 +1218,7 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 		playConSection(*play);
 	}
 
+	_sectionPlay = false;
 	_gameVars["clicperso"] = 0;
 }
 

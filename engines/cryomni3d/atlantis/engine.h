@@ -731,6 +731,11 @@ private:
 	// Chapter 34 bow mode (atlantis.exe 0x00496164): ARCWARP.SPR at
 	// (0x2e, 0x79), frame _arrowFrame (0x0049619d) while an arrow flies.
 	bool _bowMode = false;
+	// A CON section plays from a click (atlantis.exe 0x00496170, set by
+	// FUN_00425828 @ 0x004258c4..0x00425b7a and FUN_00425cf4 @
+	// 0x00425d2c..0x00425d82): a right click then does not toggle the bar
+	// request (FUN_0041a298 @ 0x0041a305).
+	bool _sectionPlay = false;
 	// IncPerso count (atlantis.exe 0x0077290d, saved in the .gam at 0x11e):
 	// lines starting with "Seth" take their INITDIAL row from 512 + it.
 	uint8 _incPersoCount = 0;
