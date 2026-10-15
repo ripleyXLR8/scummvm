@@ -78,6 +78,21 @@ struct SubjectMenu {
 			return -1;
 		return idx < (int)ids.size() ? ids[idx] : 0;
 	}
+
+	// FUN_004264a8 (0x004264a8..0x0042658c): a /suj list fits when one of
+	// its numbers is enabled for the NPC and equals the chosen subject.  No
+	// enabled id is 0, so the subject 0 of an empty grid cell never fits.
+	static bool listFits(const Common::Array<int> &list, const Common::Array<int> &enabled,
+	                     int chosen) {
+		for (uint i = 0; i < list.size(); i++) {
+			if (list[i] != chosen)
+				continue;
+			for (uint k = 0; k < enabled.size(); k++)
+				if (enabled[k] == chosen)
+					return true;
+		}
+		return false;
+	}
 };
 
 } // End of namespace Atlantis

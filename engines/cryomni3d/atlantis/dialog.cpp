@@ -225,7 +225,9 @@ void CryOmni3DEngine_Atlantis::drawSubjectSprite(Graphics::Surface &dst,
 //  - Layout and hit test from subject_menu.h (FUN_004261a0, FUN_004211f0):
 //    the clickable grid has n / 5 + 1 columns, fewer than the drawn ones
 //    from nine subjects on.  No hover highlight; right-click cancels.
-// Returns the chosen option index, or -1 on cancel.
+// Returns the subject byte FUN_00425828 reads for the clicked cell
+// (0x00425a87..): the subject id, 0 for a grid cell past the subjects, -1
+// outside the grid.
 int CryOmni3DEngine_Atlantis::showSubjectMenu(const Common::Array<int> &sujIds) {
 	const int kScreenW = 640, kScreenH = 480;
 	const uint nOpts = sujIds.size();
@@ -292,10 +294,10 @@ int CryOmni3DEngine_Atlantis::showSubjectMenu(const Common::Array<int> &sujIds) 
 			}
 			// FUN_004211f0 from x = 450: n / 5 + 1 columns, so from nine
 			// subjects on the last drawn column is not clickable; an index
-			// past the subjects reads an empty slot (none).
+			// past the subjects reads an empty slot, subject 0 (Quirk 5 of
+			// atlantis-re functions/scripts-FUN_00425828.md).
 			const int idx = SubjectMenu::hit((int)nOpts, gridX, gridY, click.x, click.y);
-			if (idx >= 0 && idx < (int)nOpts)
-				result = idx;
+			result = SubjectMenu::subject(ids, idx);
 			done = true;
 		} else if (getCurrentMouseButton() == 2) {
 			done = true;   // right-click cancels

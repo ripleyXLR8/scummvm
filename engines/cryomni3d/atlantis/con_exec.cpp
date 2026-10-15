@@ -52,6 +52,7 @@
 #include "cryomni3d/atlantis/puzzle_snakes.h"
 #include "cryomni3d/atlantis/puzzle_taquin.h"
 #include "cryomni3d/atlantis/puzzle_throne.h"
+#include "cryomni3d/atlantis/subject_menu.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
@@ -1073,17 +1074,18 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 	// first that fits plays (0x00425abe..0x00425b75): an entry with no /suj
 	// line always fits; one with a /suj line fits when the perso has no
 	// subjects, or when its list holds the chosen subject (FUN_004264a8); a
-	// cancelled menu stops the walk at the first /suj entry.
+	// click outside the grid (-1) stops the walk at the first /suj entry; an
+	// empty grid cell gives subject 0, which no list holds, so the walk goes
+	// on to the first eligible entry without a /suj line.
 	Common::Array<int> sujs;
 	for (uint8 s : _subjects.subjects(persoId))
 		sujs.push_back(s);
 	const bool persoHasMenu = !sujs.empty();
 	int chosen = -1;
 	if (persoHasMenu) {
-		int idx = showSubjectMenu(sujs);
+		chosen = showSubjectMenu(sujs);
 		if (shouldAbort())
 			return;
-		chosen = (idx >= 0) ? sujs[(uint)idx] : -1;
 	}
 
 	ConSection *play = nullptr;
@@ -1105,10 +1107,7 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 		}
 		if (chosen == -1)
 			break;
-		bool holds = (sec.sujId == chosen);
-		for (int s : sec.sujIds)
-			if (s == chosen) { holds = true; break; }
-		if (holds) {
+		if (SubjectMenu::listFits(sec.sujIds, sujs, chosen)) {
 			play = &sec;
 			break;
 		}

@@ -75,4 +75,35 @@ public:
 		for (uint i = 0; i < out.size() && i < want.size(); i++)
 			TS_ASSERT_EQUALS(out[i], want[i]);
 	}
+
+	// FUN_00425828 Quirk 5 + FUN_004264a8 (atlantis-re
+	// functions/scripts-FUN_00425828.md, STATIC): with 5 subjects the grid
+	// has 2 x 4 cells; the cells past the subjects give subject 0, which no
+	// /suj list holds, so the walk goes on to an entry without /suj.
+	void test_empty_cell_subject_zero() {
+		using CryOmni3D::Atlantis::SubjectMenu;
+		Common::Array<int> ids;
+		for (int i = 0; i < 5; i++)
+			ids.push_back(i + 1);
+		Common::Array<SubjectMenu::Draw> d;
+		int gx, gy;
+		SubjectMenu::draws(ids, d, gx, gy);
+		// Column 1, row 1 (cell 5): no subject drawn there.
+		const int idx = SubjectMenu::hit(5, gx, gy, gx + 75, gy + 75);
+		TS_ASSERT_EQUALS(idx, 5);
+		TS_ASSERT_EQUALS(SubjectMenu::subject(ids, idx), 0);
+		// Outside the grid: -1, the walk stops at the first /suj entry.
+		TS_ASSERT_EQUALS(SubjectMenu::subject(ids, SubjectMenu::hit(5, gx, gy, 10, 10)), -1);
+
+		Common::Array<int> list;
+		list.push_back(1);
+		list.push_back(3);
+		TS_ASSERT(SubjectMenu::listFits(list, ids, 3));
+		TS_ASSERT(!SubjectMenu::listFits(list, ids, 2));
+		TS_ASSERT(!SubjectMenu::listFits(list, ids, 0));
+		// A listed number that is not enabled for the NPC does not fit.
+		Common::Array<int> enabled;
+		enabled.push_back(1);
+		TS_ASSERT(!SubjectMenu::listFits(list, enabled, 3));
+	}
 };
