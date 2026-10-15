@@ -119,4 +119,36 @@ public:
 		for (uint i = 0; i < out.size() && i < want.size(); i++)
 			TS_ASSERT_EQUALS(out[i], want[i]);
 	}
+
+	// FUN_00442360's slide frame, read in the disassembly (STATIC,
+	// 0x00442681..0x0044295e; atlantis-re functions/puzzles-FUN_0044203c.md):
+	// background, hero frame 0 unshifted, queen frame 1 only with flag 1,
+	// the ogres in record order with the sliding one at (px, py), frame 2.
+	void test_slide_frame() {
+		using namespace OgreDrawTest;
+		using CryOmni3D::Atlantis::OgreDraw;
+		using CryOmni3D::Atlantis::OgreRules;
+		OgreRules r;
+		Common::Array<Ev> ev;
+		TS_ASSERT_EQUALS(OgreDraw::kSlideFrames, 60);
+		// Ogre A (record 2) sliding, hero on the queen's cell (no shift).
+		records(r, 4, 6, 4, 6, 6, 6, 0, 6);
+		OgreDraw::slideFrame(ev, r, 2, 0x71 + 6 * 60 - 7, 0x1d + 6 * 60);
+		TS_ASSERT_EQUALS(line("slide", ev),
+		                 "slide: bg | P 353 389 0 | P 466 389 2 | P 113 389 2 | bg | present");
+		// Ogre B (record 3) sliding; ogre A first; hero hidden still drawn;
+		// queen with flag 1 drawn frame 1.
+		records(r, 1, 1, 2, 2, 3, 3, 0, 6, 0);
+		r.p[1].flag = 1;
+		ev.clear();
+		OgreDraw::slideFrame(ev, r, 3, 120, 380);
+		TS_ASSERT_EQUALS(line("slide", ev),
+		                 "slide: bg | P 173 89 0 | P 233 149 1 | P 293 209 2 | P 120 380 2 | bg | present");
+		// An ogre with flag 0 is not drawn; the sliding one always is.
+		records(r, 1, 1, 2, 2, 3, 3, 0, 6);
+		r.p[3].flag = 0;
+		ev.clear();
+		OgreDraw::slideFrame(ev, r, 2, 300, 200);
+		TS_ASSERT_EQUALS(line("slide", ev), "slide: bg | P 173 89 0 | P 300 200 2 | bg | present");
+	}
 };

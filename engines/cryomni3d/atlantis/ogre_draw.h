@@ -87,6 +87,30 @@ public:
 				sprite(ev, 'P', pieceX(r.p[i].x), pieceY(r.p[i].y), MIN(i, 2));
 	}
 
+	// FUN_00442360, one frame of an ogre's slide (0x00442681..0x0044295e):
+	// the background, the hero frame 0 at his cell (no shift, whatever his
+	// flag), the queen frame 1 when her flag is 1, the ogres 2..o-1 with flag
+	// 1, ogre o frame 2 at (px, py), the ogres o+1..3 with flag 1, all frame
+	// 2; then the copy to the screen and the present (no wait).  The turn
+	// plays cyclo3 (sample 0x007739c8, @ 0x0044265d) and draws 60 such
+	// frames, px, py starting at the ogre's cell and moving by the step
+	// (sx, sy) after each frame.
+	static void slideFrame(Events &ev, const OgreRules &r, int o, int px, int py) {
+		background(ev);
+		sprite(ev, 'P', pieceX(r.p[0].x), pieceY(r.p[0].y), 0);
+		if (r.p[1].flag == 1)
+			sprite(ev, 'P', pieceX(r.p[1].x), pieceY(r.p[1].y), 1);
+		for (int i = 2; i < o; i++)
+			if (r.p[i].flag == 1)
+				sprite(ev, 'P', pieceX(r.p[i].x), pieceY(r.p[i].y), 2);
+		sprite(ev, 'P', px, py, 2);
+		for (int i = o + 1; i < 4; i++)
+			if (r.p[i].flag == 1)
+				sprite(ev, 'P', pieceX(r.p[i].x), pieceY(r.p[i].y), 2);
+		present(ev, 0);
+	}
+	static const int kSlideFrames = 60;   // 0x0044266e: cmp 0x3c
+
 	// FUN_004439c4.  Held: the hero follows the mouse minus the grab offset,
 	// kept in [0x5a, 0x1f4] x [0x16, 0x190] by moving the system cursor.
 	// Free: CURSEURS frame 11 outside x 0x32..0x24e, else the standard cursor.
@@ -190,11 +214,13 @@ private:
 		ev.push_back(e);
 	}
 	static void background(Events &ev) { ev.push_back(event(OgreEvent::kBackground)); }
+public:
 	static void sound(Events &ev, int n) {
 		OgreEvent e = event(OgreEvent::kSound);
 		e.sound = n;
 		ev.push_back(e);
 	}
+private:
 	// The frame copy to the surface (FUN_00410f36 again), the present
 	// (FUN_0041afd0) and the busy wait.
 	static void present(Events &ev, int ticks) {

@@ -136,22 +136,24 @@ void OgreGamePuzzle::moveOgres(Graphics::ManagedSurface &working, int &result) {
 		if (ogre.flag == 1) {
 			int sx, sy;
 			_rules.ogreStep(o, sx, sy);
-			// The exe slides the ogre 60 frames, one pixel per frame, even
-			// for a zero step, then takes the new cell.
-			const int fromX = ogre.x * kCellSize + kBoardX;
-			const int fromY = ogre.y * kCellSize + kBoardY;
-			ogre.flag = 0;   // port-only: hidden from the board while it slides
-			for (int step = 5; step <= kCellSize && !_engine->shouldAbort();
-			     step += 5) {
+			// The exe empties the old cell, plays cyclo3 (sample 0x007739c8,
+			// FUN_0043ca28 @ 0x0044265d), then slides the ogre 60 frames, one
+			// step (sx, sy) per frame, even for a zero step, and takes the
+			// new cell (0x00442968).  [UNKNOWN] the frames have no wait in the
+			// exe; the port keeps its own 10 ms pace (atlantis-re
+			// decisions/0013-unpaced-loops.md).
+			const int fromX = OgreDraw::pieceX(ogre.x);
+			const int fromY = OgreDraw::pieceY(ogre.y);
+			OgreDraw::Events ev;
+			OgreDraw::sound(ev, 3);
+			play(working, ev);
+			for (int i = 0; i < OgreDraw::kSlideFrames && !_engine->shouldAbort(); i++) {
 				_engine->pollEvents();
-				renderBoard(working);
-				if (kFrameOgre < (int)_pieceFrames.size())
-					blitFrame(working, _pieceFrames[kFrameOgre],
-					          fromX + sx * step, fromY + sy * step);
-				presentFrame(working);
+				ev.clear();
+				OgreDraw::slideFrame(ev, _rules, o, fromX + sx * i, fromY + sy * i);
+				play(working, ev);
 				g_system->delayMillis(10);
 			}
-			ogre.flag = 1;
 			_rules.moveOgre(o, sx, sy);
 		}
 		if (ogre.x == _rules.p[0].x && ogre.y == _rules.p[0].y) {
