@@ -228,8 +228,11 @@ void CryOmni3DEngine_Atlantis::executeTransition(uint nextPlaceId) {
 			      nextPlaceId, wamName.c_str(), dstPlaceId);
 			setupWAMByName(wamName);
 			// _wam._places was cleared; _currentPlace is now a dangling pointer.
+			// The place id stays the one being left: FUN_00423ad8 stores
+			// ARRIVEEVUE = 0x006cd7c0 (0x00423def..0x00423df4) before the swap
+			// FUN_00422ad0, so gameStep's arrival scan takes it as the origin.
+			// See atlantis-re: experiments/2026-10-16-01-subwam-arrivee.md.
 			_currentPlace   = nullptr;
-			_currentPlaceId = uint(-1);
 			_nextPlaceId    = dstPlaceId;
 			return;
 		}

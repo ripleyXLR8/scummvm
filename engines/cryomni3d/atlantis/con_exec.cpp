@@ -1006,7 +1006,8 @@ void CryOmni3DEngine_Atlantis::runArrivalSelSections(int arrivedVue, int fromVue
 	// work), or the LastVue of a chapter change, 0 included: FUN_00427634
 	// copies LastVue as it is (0x0042777d) and FUN_0042a100 scans after it
 	// (0x0042a60e) with no test.  A negative origin is the port's unknown
-	// place (uint(-1) after a sub-WAM swap): the arrived place stands for it.
+	// place (no place entered yet): the arrived place stands for it.  A move
+	// into a sub-WAM passes the place left, as any other move (0x00423def).
 	_gameVars["arriveevue"] = (fromVue >= 0) ? fromVue : arrivedVue;
 
 	// Single /sel pool, file order, first match fires (atlantis.exe

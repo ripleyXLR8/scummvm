@@ -429,6 +429,76 @@ public:
 		}
 		TS_ASSERT_EQUALS(mismatches, 0u);
 	}
+
+	// ArriveeVue after a move into a sub-WAM: FUN_00423ad8 stores the place
+	// being left (0x00423def), as on any move; the port used the arrived
+	// place.  Golden scripts_subwam_arrival.txt (atlantis-re
+	// tools/emu/scripts_subwam_arrival.py, experiment 2026-10-16-01): every
+	// /sel line reading ARRIVEEVUE whose value changes for a reachable
+	// sub-WAM move, with the original evaluator's 64 state bits for both
+	// origins.  The port's ConEvaluator, given the place left (what
+	// executeTransition now keeps), must give the original's bits; given the
+	// destination, the old port's.
+	void test_subwam_arrival_vs_original() {
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("sub-WAM arrival: no game data configured, skipped");
+			return;
+		}
+		Common::Array<Common::String> golden;
+		TS_ASSERT(AtlantisTest::loadGoldenLines("scripts_subwam_arrival.txt", golden));
+		ScriptsTest::Big big;
+		Common::Array<char> varias;
+		TS_ASSERT(big.get("SCENAR\\VARIAS.CON", varias));
+		Common::Array<Common::String> varNames;
+		{
+			Common::String cur;
+			for (uint i = 0; i <= varias.size(); i++) {
+				const char ch = i < varias.size() ? varias[i] : '\n';
+				if (ch == '\r' || ch == '\n') {
+					if (!cur.empty()) {
+						cur.toLowercase();
+						varNames.push_back(cur);
+					}
+					cur.clear();
+				} else {
+					cur += ch;
+				}
+			}
+		}
+		uint rows = 0, mismatches = 0;
+		for (uint g = 0; g < golden.size(); g++) {
+			int chapter = 0, src = 0, dst = 0, lineIdx = 0;
+			if (sscanf(golden[g].c_str(), "D chapter %d move %d->%d line %d", &chapter, &src, &dst, &lineIdx) != 4)
+				continue;
+			const uint o = golden[g].find(" orig="), p = golden[g].find(" port=");
+			TS_ASSERT(o != Common::String::npos && p != Common::String::npos);
+			const Common::String origBits = golden[g].substr(o + 6, 64), oldBits = golden[g].substr(p + 6, 64);
+			Common::Array<char> data;
+			TS_ASSERT(big.get(Common::String::format("SCENAR\\CHAPI%03d.CON", chapter), data));
+			Common::Array<Common::String> lines;
+			ScriptsTest::condLines(data, lines);
+			TS_ASSERT((uint)lineIdx < lines.size());
+			if ((uint)lineIdx >= lines.size())
+				continue;
+			Common::String fixedBits, prevBits;
+			for (uint k = 0; k < 64; k++) {
+				ScriptsTest::VarState st;
+				ScriptsTest::makeState((uint)lineIdx, k, varNames, lines[lineIdx], st);
+				st.vars["vue"] = dst;
+				st.vars["arriveevue"] = src;      // the place left (the fix)
+				fixedBits += ScriptsTest::portEval(lines[lineIdx], st) ? '1' : '0';
+				st.vars["arriveevue"] = dst;      // the place arrived at (before)
+				prevBits += ScriptsTest::portEval(lines[lineIdx], st) ? '1' : '0';
+			}
+			rows++;
+			if (fixedBits != origBits || prevBits != oldBits) {
+				mismatches++;
+				warning("sub-WAM arrival: %s", golden[g].c_str());
+			}
+		}
+		TS_ASSERT_EQUALS(rows, 17u);
+		TS_ASSERT_EQUALS(mismatches, 0u);
+	}
 };
 
 #endif
