@@ -519,10 +519,7 @@ void CryOmni3DEngine_Atlantis::ambientEnterPlace() {
 	const AtlantisPlace *place = _wam.findPlaceById((uint16)_currentPlaceId);
 	if (!place)
 		return;
-	if (!_ambientOut) {
-		_ambientOut = new AtlantisAmbientOutput(_mixer);
-		_ambient.setClock(&ambientClock, nullptr);
-	}
+	milesSamples();
 	AmbientLoadCtx ctx = { this, _ambientOut, &_wam.getAmbientObjects() };
 	_ambient.enterPlace(*_ambientOut, *place, _wam.getAmbientObjects(), &ambientLoadVariant, &ctx);
 }
@@ -575,13 +572,23 @@ void CryOmni3DEngine_Atlantis::ambientVideoFrame() {
 	                    _conClocks.chapterTime(g_system->getMillis()));
 }
 
-// FUN_00431e98.
+// The six Miles samples (FUN_00430bf0 / FUN_00430d20 at start-up).
+AtlantisAmbientOutput &CryOmni3DEngine_Atlantis::milesSamples() {
+	if (!_ambientOut) {
+		_ambientOut = new AtlantisAmbientOutput(_mixer);
+		_ambient.setClock(&ambientClock, nullptr);
+	}
+	return *_ambientOut;
+}
+
+// FUN_00431e98, called when 0x00496980 == 1: AIL_stop_sample on the samples
+// of the place's records only, so a sample that was playing reads 8 and the
+// puzzles' players skip it (miles_samples.h); the others keep their status.
 void CryOmni3DEngine_Atlantis::stopAmbient() {
 	if (!_ambientOut)
 		return;
 	if (_ambient.active())
 		_ambient.stopAll(*_ambientOut);
-	_ambientOut->stopAll();
 }
 
 void CryOmni3DEngine_Atlantis::recordPlaceTable() {

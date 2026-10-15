@@ -108,14 +108,14 @@ OgreGamePuzzle::OgreGamePuzzle(CryOmni3DEngine_Atlantis *engine)
 OgreGamePuzzle::~OgreGamePuzzle() {
 }
 
+// FUN_0043ca28 on the shared Miles samples.
 void OgreGamePuzzle::playSound(const char *name) {
-	_sounds.push_back(_engine->playPuzzleSound(name));
+	_engine->playPuzzleSound(name);
 }
 
+// FUN_0043d0e0.
 void OgreGamePuzzle::stopSounds() {
-	for (uint i = 0; i < _sounds.size(); i++)
-		_engine->_mixer->stopHandle(_sounds[i]);
-	_sounds.clear();
+	_engine->stopPuzzleSamples();
 }
 
 // FUN_004422b8: two draws of the puzzle LCG per try until qx + qy == 10 --

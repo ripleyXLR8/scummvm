@@ -22,6 +22,7 @@
 #include "cryomni3d/atlantis/puzzle_eclipse.h"
 
 #include "cryomni3d/atlantis/engine.h"
+#include "cryomni3d/atlantis/miles_samples.h"
 
 #include "audio/audiostream.h"
 #include "audio/decoders/apc.h"
@@ -149,47 +150,22 @@ void EclipsePuzzle::renderFrame(Graphics::ManagedSurface &out) {
 
 }
 
-// Open WAV/<name>.APC, queue and play.  When `wait`, blocks until the
-// sound finishes (used for the win sound which leads straight to puzzle
-// exit).  Click sounds fire-and-forget.
+// FUN_0043ca28 on the shared Miles samples (the sound may be dropped).
+// When `wait`, blocks until the sound finishes.
 void EclipsePuzzle::playSound(const char *name, bool wait) {
-	Common::String fname = Common::String::format("%s.APC", name);
-	Common::SeekableReadStream *apcFile =
-	    _engine->openBigFileStream(kFileTypeSound, fname);
-	if (!apcFile) {
-		warning("EclipsePuzzle: cannot open WAV\\%s", fname.c_str());
-		return;
-	}
-	Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*apcFile);
-	if (!apc) { delete apcFile; return; }
-	int64 remaining = apcFile->size() - apcFile->pos();
-	if (remaining > 0) {
-		byte *buf = new byte[remaining];
-		apcFile->read(buf, (uint32)remaining);
-		apc->queuePacket(new Common::MemoryReadStream(buf, remaining,
-		                                              DisposeAfterUse::YES));
-	}
-	apc->finish();
-	delete apcFile;
-
-	Audio::SoundHandle handle;
-	// Pan 0x40, volume 0x6e (FUN_0043d150 in FUN_0044154c's set-up).
-	_engine->_mixer->playStream(Audio::Mixer::kSFXSoundType, &handle, apc, -1,
-	                            CryOmni3DEngine_Atlantis::kPuzzleSampleVolume, 0);
-	_handles.push_back(handle);
-	if (wait) {
+	const int slot = _engine->playPuzzleSound(name);
+	if (wait && slot >= 0) {
 		while (!_engine->shouldAbort() &&
-		       _engine->_mixer->isSoundHandleActive(handle)) {
+		       _engine->puzzleSampleStatus((uint)slot) == MilesSampleStatus::kPlaying) {
 			_engine->pollEvents();
 			g_system->delayMillis(15);
 		}
 	}
 }
 
+// FUN_0043d0e0.
 void EclipsePuzzle::stopSounds() {
-	for (uint i = 0; i < _handles.size(); i++)
-		_engine->_mixer->stopHandle(_handles[i]);
-	_handles.clear();
+	_engine->stopPuzzleSamples();
 }
 
 int EclipsePuzzle::run() {

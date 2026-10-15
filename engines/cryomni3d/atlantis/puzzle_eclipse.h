@@ -72,8 +72,7 @@ private:
 	// asynchronous playback).  `name` is "LION1" / "LION2" / "LION3".
 	// `wait` blocks until the sound finishes (used for the win sound).
 	void playSound(const char *name, bool wait);
-	void stopSounds();                        // FUN_0043d0e0: the puzzle's samples
-	Common::Array<Audio::SoundHandle> _handles;
+	void stopSounds();                        // FUN_0043d0e0
 };
 
 } // namespace Atlantis

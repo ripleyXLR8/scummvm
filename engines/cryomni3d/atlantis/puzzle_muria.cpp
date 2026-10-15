@@ -123,6 +123,11 @@ void MuriaPuzzle::playSound(int slot) {
 		_engine->playPuzzleSound(kNames[slot]);
 }
 
+// FUN_0043d0e0.
+void MuriaPuzzle::stopSounds() {
+	_engine->stopPuzzleSamples();
+}
+
 void MuriaPuzzle::scriptHook() {
 	// FUN_0043faf0: FLAGTEMP3 = 1021 + slot, then FUN_004277c8 runs the
 	// first /sel entry that holds (CHAPI069 and 070 react to 1021..1024).

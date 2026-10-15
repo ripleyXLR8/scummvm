@@ -29,6 +29,7 @@
 #include "common/hashmap.h"
 
 #include "cryomni3d/atlantis/ambient_sounds.h"
+#include "cryomni3d/atlantis/miles_samples.h"
 
 namespace Common {
 class SeekableReadStream;
@@ -58,7 +59,9 @@ inline int8 milesPanBalance(uint8 pan) {
 	return (int8)((p < 63) ? far - 127 : 127 - far);
 }
 
-// The six Miles sample handles of the ambient sounds on the ScummVM mixer.
+// The six Miles sample handles of the ambient sounds on the ScummVM mixer,
+// which the puzzles' sound effects share (FUN_0043ca28, FUN_0043cd60,
+// FUN_0043ce80, FUN_0043cf70) with their statuses (miles_samples.h).
 // FUN_00430d20 sets them up as 16-bit mono at 22050 Hz and nothing changes
 // that, so every variant plays at 22050 Hz whatever its header says (two
 // 16000 Hz waves are heard 1.38 times fast in the original too).
@@ -79,10 +82,18 @@ public:
 	void release(uint object) override;
 	void stopAll();
 
+	// AIL_set_sample_address + AIL_start_sample of another sound on the slot
+	// (a puzzle effect, the options' channel test): `s` is played with the
+	// mixer volume and balance given (the slot's pan / volume are set by the
+	// caller through setPan / setVolume when they are the original's).
+	void playOn(uint slot, Audio::AudioStream *s, byte mixerVolume, int8 balance);
+	// The statuses as AIL_sample_status returns them.
+	void statuses(int st[AmbientSounds::kSlots]);
+
 private:
 	Audio::Mixer *_mixer;
 	Audio::SoundHandle _handles[AmbientSounds::kSlots];
-	bool _started[AmbientSounds::kSlots];
+	MilesSampleStatus _miles;
 	uint8 _pan[AmbientSounds::kSlots], _volume[AmbientSounds::kSlots];
 	Common::HashMap<uint, Common::Array<byte> > _pcm;   // object * 4 + variant -> LE s16
 };

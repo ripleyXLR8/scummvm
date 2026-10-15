@@ -36,6 +36,7 @@
 #include "audio/mixer.h"
 
 #include "cryomni3d/objects.h"
+#include "cryomni3d/atlantis/ambient_output.h"
 #include "cryomni3d/atlantis/con_eval.h"
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/inventory.h"
@@ -183,18 +184,54 @@ int CryOmni3DEngine_Atlantis::resolveSpeakerPersoId(const Common::String &speake
 	return persoId;
 }
 
-Audio::SoundHandle CryOmni3DEngine_Atlantis::playPuzzleSound(const char *name) {
-	Audio::SoundHandle handle;
+int CryOmni3DEngine_Atlantis::playPuzzleSound(const char *name, PuzzleSamplePlayer player) {
+	// FUN_0043c8d8 read the file at the puzzle's set-up; the record's size
+	// is the decoded PCM size from the APC header (FUN_00417cb4: samples at
+	// +0xc times 2, or 4 when +0x1c & 1), which the players test.
 	Common::String fname = Common::String::format("%s.APC", name);
 	Common::SeekableReadStream *apcFile = openBigFileStream(kFileTypeSound, fname);
 	if (!apcFile) {
 		warning("playPuzzleSound: cannot open WAV\\%s", fname.c_str());
-		return handle;
+		return -1;
 	}
+	const int64 start = apcFile->pos();
+	apcFile->seek(start + 0xc);
+	const uint32 samples = apcFile->readUint32LE();
+	apcFile->seek(start + 0x1c);
+	const int32 bytes = (int32)(samples * ((apcFile->readUint32LE() & 1) ? 4 : 2));
+	apcFile->seek(start);
+
+	AtlantisAmbientOutput &out = milesSamples();
+	int st[AmbientSounds::kSlots];
+	out.statuses(st);
+	int slot = -1;
+	switch (player) {
+	case kPlayCa28:
+		slot = MilesSampleStatus::slotCa28(st, bytes);
+		break;
+	case kPlayCd60:
+		slot = MilesSampleStatus::slotCd60(st, bytes);
+		break;
+	case kPlayCe80:
+		slot = MilesSampleStatus::slotCe80(st, bytes);
+		break;
+	case kPlayCf70:
+		// FUN_0043cf70: AIL_stop_sample, then the start, on sample 1
+		out.stop(1);
+		slot = 1;
+		break;
+	}
+	if (slot < 0) {
+		debugC(1, kDebugMusic, "playPuzzleSound: %s (%d bytes) dropped, statuses %d %d %d",
+		       name, bytes, st[0], st[1], st[2]);
+		delete apcFile;
+		return -1;
+	}
+
 	Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*apcFile);
 	if (!apc) {
 		delete apcFile;
-		return handle;
+		return -1;
 	}
 	int64 remaining = apcFile->size() - apcFile->pos();
 	if (remaining > 0) {
@@ -206,8 +243,21 @@ Audio::SoundHandle CryOmni3DEngine_Atlantis::playPuzzleSound(const char *name) {
 	delete apcFile;
 	// Pan 0x40 (centre, balance 0) and volume 0x6e from the puzzle's sample
 	// set-up (FUN_0043cb8c / FUN_0043d150 / FUN_0043d204).
-	_mixer->playStream(Audio::Mixer::kSFXSoundType, &handle, apc, -1, kPuzzleSampleVolume, 0);
-	return handle;
+	out.setPan((uint)slot, 0x40);
+	out.setVolume((uint)slot, 0x6e);
+	out.playOn((uint)slot, apc, kPuzzleSampleVolume, 0);
+	return slot;
+}
+
+int CryOmni3DEngine_Atlantis::puzzleSampleStatus(uint slot) {
+	return milesSamples().status(slot);
+}
+
+void CryOmni3DEngine_Atlantis::stopPuzzleSamples() {
+	// FUN_0043d0e0 (0x0043d0f8..0x0043d145)
+	AtlantisAmbientOutput &out = milesSamples();
+	for (uint i = 0; i < 4; i++)
+		out.stop(i);
 }
 
 void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
@@ -312,6 +362,33 @@ void CryOmni3DEngine_Atlantis::playPuzzle(int puzzleId) {
 	}
 	default:
 		debugC(1, kDebugScript, "playPuzzle: no handler for puzzle %d, auto-win", puzzleId);
+		break;
+	}
+	// FUN_0043d0e0 at the puzzles' exits, the last call before the return
+	// (call sites 0x00438ec8 .. 0x00447819): puzzles 0, 2, 15 and 16 make
+	// it themselves (after their end sequences); the hens (FUN_004441e8)
+	// only on the leave (@ 0x00444429), not on the win (0x0044443d ..
+	// 0x00444450); the taquins 7 and 14 (FUN_0044659c, FUN_00446830) never.
+	// A sound still playing then reads 8 and the next puzzle's players skip
+	// its sample (atlantis-re functions/puzzles-FUN_0043d28c.md, sample pools).
+	switch (puzzleId) {
+	case 1:
+		if (finPuzzle != 255)
+			stopPuzzleSamples();
+		break;
+	case 3:
+	case 4:
+	case 5:
+	case 6:
+	case 8:
+	case 9:
+	case 10:
+	case 11:
+	case 12:
+	case 13:
+		stopPuzzleSamples();
+		break;
+	default:
 		break;
 	}
 	_gameVars["finpuzzle"] = finPuzzle;

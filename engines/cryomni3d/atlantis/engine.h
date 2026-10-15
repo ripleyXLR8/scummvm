@@ -174,9 +174,23 @@ public:
 	const SprSprite *cursorSprite(uint idx) const {
 		return (idx < _cursorSprites.size() && !_cursorSprites[idx].pixels.empty()) ? &_cursorSprites[idx] : nullptr;
 	}
-	// Play WAV\<name>.APC once (puzzle sound effects).
-	// Plays WAV\<name>.APC once; the handle answers "still playing".
-	Audio::SoundHandle playPuzzleSound(const char *name);
+	// The puzzles' sound players, on the six Miles samples they share with
+	// the ambient sounds (miles_samples.h).
+	enum PuzzleSamplePlayer {
+		kPlayCa28,   // FUN_0043ca28: samples 0 / 1 (short) or 2, status 2
+		kPlayCd60,   // FUN_0043cd60: samples 0..2, status 2 (FUN_00438bf0)
+		kPlayCe80,   // FUN_0043ce80: sample 0, status 2 or 8 (crab click)
+		kPlayCf70    // FUN_0043cf70: stop and start sample 1 (crab comments)
+	};
+	// Plays WAV\<name>.APC once with `player`'s choice of sample; returns
+	// the slot, or -1 when the original drops the sound.
+	int playPuzzleSound(const char *name, PuzzleSamplePlayer player = kPlayCa28);
+	// AIL_sample_status of Miles sample `slot` (0..5).
+	int puzzleSampleStatus(uint slot);
+	// FUN_0043d0e0: AIL_stop_sample on samples 0..3 (status != 0, always).
+	void stopPuzzleSamples();
+	// The six Miles samples (created on first use).
+	class AtlantisAmbientOutput &milesSamples();
 	// Every puzzle's sample set-up (FUN_0043cb8c, FUN_0043d150, FUN_0043d204)
 	// gives its Miles samples pan 0x40 and volume 0x6e; Miles volumes map
 	// onto the mixer as AtlantisAmbientOutput::setVolume does (v * 255 / 127).

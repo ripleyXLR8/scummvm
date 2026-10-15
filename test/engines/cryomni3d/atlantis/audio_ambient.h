@@ -16,6 +16,7 @@
 
 #include "cryomni3d/atlantis/ambient_output.h"
 #include "cryomni3d/atlantis/ambient_sounds.h"
+#include "cryomni3d/atlantis/miles_samples.h"
 
 namespace AudioAmbient {
 
@@ -75,6 +76,22 @@ static AtlantisPlace place(uint16 id, const uint8 *ids, uint n) {
 	}
 	return p;
 }
+
+// A sample output with the Miles statuses (miles_samples.h); `active` is
+// whether the slot's sound is still heard (the mixer's handle).
+class MilesOut : public AmbientSampleOutput {
+public:
+	MilesSampleStatus miles;
+	bool active[AmbientSounds::kSlots];
+	MilesOut() { for (uint i = 0; i < AmbientSounds::kSlots; i++) active[i] = false; }
+	int status(uint slot) override { return miles.status(slot, active[slot]); }
+	void start(uint slot, uint, uint, bool) override { miles.started(slot); active[slot] = true; }
+	void stop(uint slot) override { miles.stopped(slot, active[slot]); active[slot] = false; }
+	void setPan(uint, uint8) override {}
+	void setVolume(uint, uint8) override {}
+	void release(uint) override {}
+	void statuses(int *st) { for (uint i = 0; i < AmbientSounds::kSlots; i++) st[i] = status(i); }
+};
 
 } // End of namespace AudioAmbient
 
@@ -305,6 +322,99 @@ public:
 	// 0 for 63 / 64, -10000 for 0.  Expected balances: 127 x the far
 	// channel's amplitude 10^(cB / 2000), to the nearest step, computed
 	// outside the port (Python, math.trunc / log10).
+	// The six Miles samples shared by the ambient sounds and the puzzles'
+	// players, against experiments/2026-10-15-71 (DYN, Wine) and the
+	// players' disassembly (FUN_0043ca28, FUN_0043cd60, FUN_0043ce80).
+	void test_miles_sample_pools() {
+		using namespace AudioAmbient;
+		typedef MilesSampleStatus M;
+		// Statuses: 2 at start-up; 4 while playing, 2 once done; a stop
+		// makes a playing sample 8 and leaves 2 or 8 as they are.
+		MilesOut out;
+		int st[AmbientSounds::kSlots];
+		out.statuses(st);
+		for (uint i = 0; i < AmbientSounds::kSlots; i++)
+			TS_ASSERT_EQUALS(st[i], (int)M::kDone);
+		out.start(0, 0, 0, false);
+		TS_ASSERT_EQUALS(out.status(0), (int)M::kPlaying);
+		out.active[0] = false;                  // the sound ended
+		TS_ASSERT_EQUALS(out.status(0), (int)M::kDone);
+		out.stop(0);
+		TS_ASSERT_EQUALS(out.status(0), (int)M::kDone);
+		out.start(0, 0, 0, false);
+		out.stop(0);
+		TS_ASSERT_EQUALS(out.status(0), (int)M::kStopped);
+		out.stop(0);
+		TS_ASSERT_EQUALS(out.status(0), (int)M::kStopped);
+		out.start(0, 0, 0, false);              // only a start changes 8
+		TS_ASSERT_EQUALS(out.status(0), (int)M::kPlaying);
+
+		// Muria from MURIA.WAM place 1 (two ambient sounds on samples 0, 1),
+		// run 175609: both playing at the puzzle entry, FUN_00431e98 leaves
+		// them at 8 and every short effect is dropped.
+		AmbientSounds a;
+		Clock c;
+		a.setClock(&Clock::fn, &c);
+		MilesOut amb;
+		Common::Array<AtlantisAmbientObject> objs;
+		objs.push_back(object(1, 25, 25, 25, 25, 4));
+		objs.push_back(object(2, 25, 25, 25, 25, 4));
+		const uint8 both[] = { 1, 2 };
+		TS_ASSERT(a.enterPlace(amb, place(1, both, 2), objs));
+		amb.start(0, 0, 0, false);
+		amb.start(1, 1, 0, false);
+		a.stopAll(amb);
+		amb.statuses(st);
+		TS_ASSERT_EQUALS(st[0], (int)M::kStopped);
+		TS_ASSERT_EQUALS(st[1], (int)M::kStopped);
+		TS_ASSERT_EQUALS(M::slotCa28(st, 6464), -1);    // MURIA2
+		TS_ASSERT_EQUALS(M::slotCa28(st, 12036), -1);   // MURIA5
+		// Run 175227, second puzzle: only sample 0 was playing; sample 1 is used.
+		TS_ASSERT(a.enterPlace(amb, place(1, both, 2), objs));
+		amb.start(0, 0, 0, false);
+		amb.start(1, 1, 0, false);
+		amb.active[1] = false;                  // sample 1 had finished
+		a.stopAll(amb);
+		amb.statuses(st);
+		TS_ASSERT_EQUALS(st[0], (int)M::kStopped);
+		TS_ASSERT_EQUALS(st[1], (int)M::kDone);
+		TS_ASSERT_EQUALS(M::slotCa28(st, 6464), 1);
+		// The ambient player restarts 8 at the place (FUN_00432178: 2 or 8).
+		TS_ASSERT(a.enterPlace(amb, place(1, both, 2), objs));
+		a.frame(amb, place(1, both, 2), objs, AtlantisCentrePos(), 0.0f, 0.0f, 0);
+		TS_ASSERT_EQUALS(amb.status(0), (int)M::kPlaying);
+		TS_ASSERT_EQUALS(amb.status(1), (int)M::kPlaying);
+
+		// The hens at place 52 (no ambient sound), run 173556: POULE2 still
+		// playing on sample 2 at the exit, FUN_0043d0e0 makes it 8, and the
+		// next run's long sounds (POULE1 22230, POULE2 41150 bytes) are dropped.
+		MilesOut hens;
+		hens.statuses(st);
+		TS_ASSERT_EQUALS(M::slotCa28(st, 22230), 2);
+		hens.start(2, 0, 0, false);
+		for (uint i = 0; i < 4; i++)            // FUN_0043d0e0
+			hens.stop(i);
+		hens.statuses(st);
+		TS_ASSERT_EQUALS(st[2], (int)M::kStopped);
+		TS_ASSERT_EQUALS(st[0], (int)M::kDone);
+		TS_ASSERT_EQUALS(M::slotCa28(st, 22230), -1);
+		TS_ASSERT_EQUALS(M::slotCa28(st, 41150), -1);
+		TS_ASSERT_EQUALS(M::slotCa28(st, 19999), 0);   // under 0x4e20: samples 0 / 1
+
+		// FUN_0043cd60: refuses over 120000 bytes, else samples 0..2 in status 2.
+		const int s822[6] = { 8, 2, 2, 2, 2, 2 };
+		TS_ASSERT_EQUALS(M::slotCd60(s822, 120001), -1);
+		TS_ASSERT_EQUALS(M::slotCd60(s822, 120000), 1);
+		const int s884[6] = { 8, 8, 4, 2, 2, 2 };
+		TS_ASSERT_EQUALS(M::slotCd60(s884, 100), -1);
+		// FUN_0043ce80: sample 0 when 2 or 8, never another.
+		TS_ASSERT_EQUALS(M::slotCe80(s884, 100), 0);
+		const int s42[6] = { 4, 2, 2, 2, 2, 2 };
+		TS_ASSERT_EQUALS(M::slotCe80(s42, 100), -1);
+		TS_ASSERT_EQUALS(M::slotCa28(s42, 100), 1);
+		TS_ASSERT_EQUALS(M::slotCa28(s42, 0), -1);     // an empty record
+	}
+
 	void test_miles_pan_balance() {
 		static const int8 kWant[128] = {
 			-127, -125, -123, -121, -119, -117, -115, -113, -111, -109, -107, -105, -103, -101, -99, -97,

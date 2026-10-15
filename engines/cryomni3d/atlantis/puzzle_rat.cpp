@@ -117,7 +117,7 @@ void RatPuzzle::playSound(int slot) {
 		"FLIP19", "FLIP20", "FLIP21", "FLIP22", "FLIP23", "FLIP24", "FLIP25", "FLIP26"
 	};
 	if (slot >= 0 && slot < (int)ARRAYSIZE(kNames))
-		_engine->playPuzzleSound(kNames[slot]);
+		_engine->playPuzzleSound(kNames[slot], CryOmni3DEngine_Atlantis::kPlayCd60);   // FUN_0043cd60
 }
 
 int RatPuzzle::randomValue() {

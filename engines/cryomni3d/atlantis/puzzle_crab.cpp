@@ -23,6 +23,7 @@
 #include "common/textconsole.h"
 
 #include "cryomni3d/atlantis/engine.h"
+#include "cryomni3d/atlantis/miles_samples.h"
 #include "cryomni3d/atlantis/puzzle_crab.h"
 #include "cryomni3d/atlantis/sprite_decode.h"
 
@@ -147,28 +148,29 @@ void CrabPuzzle::present() {
 void CrabPuzzle::playSound(int slot) {
 	if (slot == 0) {
 		// FUN_0043ce80: the click sound plays on sample 0x006cc560 only when
-		// its status is 2 or 8 (done or stopped); while the previous click
-		// still plays, the sound is dropped.
-		if (_engine->_mixer->isSoundHandleActive(_click))
-			return;
-		_click = _engine->playPuzzleSound("CRABE1");
+		// its status is 2 or 8 (done or stopped); while sample 0 plays (the
+		// previous click, or a sound FUN_0043ca28 put there) it is dropped.
+		_engine->playPuzzleSound("CRABE1", CryOmni3DEngine_Atlantis::kPlayCe80);
 		return;
 	}
-	_engine->playPuzzleSound("CRABE2");
+	_engine->playPuzzleSound("CRABE2");   // FUN_0043ed98 -> FUN_0043ca28
 }
 
+// FUN_0043cf70: AIL_stop_sample and AIL_start_sample on sample 0x006cc564.
 void CrabPuzzle::playComment(int n) {
 	if (n >= 1 && n <= 26)
-		_comment = _engine->playPuzzleSound(kComments[n - 1]);
+		_engine->playPuzzleSound(kComments[n - 1], CryOmni3DEngine_Atlantis::kPlayCf70);
 }
 
+// The waits test sample 0x006cc564 for status 2 or 8 (FUN_0043d6b0, ...).
 bool CrabPuzzle::commentBusy() {
-	return _engine->_mixer->isSoundHandleActive(_comment);
+	const int st = _engine->puzzleSampleStatus(1);
+	return st != MilesSampleStatus::kDone && st != MilesSampleStatus::kStopped;
 }
 
+// FUN_0043d0e0.
 void CrabPuzzle::stopSounds() {
-	_engine->_mixer->stopHandle(_click);
-	_engine->_mixer->stopHandle(_comment);
+	_engine->stopPuzzleSamples();
 }
 
 int CrabPuzzle::rand32767() {

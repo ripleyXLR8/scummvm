@@ -51,6 +51,7 @@ protected:
 	void drawSprite(char bank, int x, int y, int frame) override;
 	void present() override;
 	void playSound(int slot) override;
+	void stopSounds() override;
 	void scriptHook() override;
 	bool aborted() const override;
 

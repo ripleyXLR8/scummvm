@@ -40,6 +40,7 @@
 #include "graphics/surface.h"
 
 #include "cryomni3d/atlantis/subtitle_layout.h"
+#include "cryomni3d/atlantis/ambient_output.h"
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/sprite_blend.h"
 
@@ -1109,9 +1110,11 @@ void CryOmni3DEngine_Atlantis::displaySoundMenu(const Graphics::ManagedSurface &
 	// WAV\VAGUE_10.APC hard left or right and block, screen frozen, until the
 	// next press.  The original frees the sample after the click rather than
 	// stopping it; a short wave simply plays out, so we leave it running too.
-	Audio::SoundHandle testHandle;
+	// It plays on Miles sample 0x006cc564, one of the six the ambient sounds
+	// and the puzzles share (miles_samples.h): AIL_stop_sample then
+	// AIL_start_sample on it (ui-FUN_0041d5f4.md steps 4 and 6).
 	auto channelTest = [&](bool rightChannel) {
-		_mixer->stopHandle(testHandle);   // AIL_stop_sample before reuse
+		milesSamples().stop(1);
 		Common::SeekableReadStream *f = openBigFileStream(kFileTypeSound, "VAGUE_10.APC");
 		if (f) {
 			Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*f);
@@ -1124,9 +1127,8 @@ void CryOmni3DEngine_Atlantis::displaySoundMenu(const Graphics::ManagedSurface &
 					                                              DisposeAfterUse::YES));
 				}
 				apc->finish();
-				_mixer->playStream(Audio::Mixer::kSFXSoundType, &testHandle, apc, -1,
-				                   Audio::Mixer::kMaxChannelVolume,
-				                   rightChannel ? 127 : -127);
+				milesSamples().playOn(1, apc, Audio::Mixer::kMaxChannelVolume,
+				                      rightChannel ? 127 : -127);
 			}
 			delete f;
 		}

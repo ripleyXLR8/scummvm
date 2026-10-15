@@ -36,7 +36,6 @@ namespace Atlantis {
 
 AtlantisAmbientOutput::AtlantisAmbientOutput(Audio::Mixer *mixer) : _mixer(mixer) {
 	for (uint i = 0; i < AmbientSounds::kSlots; i++) {
-		_started[i] = false;
 		_pan[i] = 0x40;   // FUN_00430d20: pan 0x40, volume 0
 		_volume[i] = 0;
 	}
@@ -87,14 +86,17 @@ bool AtlantisAmbientOutput::load(uint object, uint variant, Common::SeekableRead
 }
 
 int AtlantisAmbientOutput::status(uint slot) {
-	if (_started[slot] && _mixer->isSoundHandleActive(_handles[slot]))
-		return kPlaying;
-	return _started[slot] ? kDone : kStopped;
+	return _miles.status(slot, _mixer->isSoundHandleActive(_handles[slot]));
+}
+
+void AtlantisAmbientOutput::statuses(int st[AmbientSounds::kSlots]) {
+	for (uint i = 0; i < AmbientSounds::kSlots; i++)
+		st[i] = status(i);
 }
 
 void AtlantisAmbientOutput::start(uint slot, uint object, uint variant, bool loopForever) {
 	_mixer->stopHandle(_handles[slot]);
-	_started[slot] = false;
+	_miles.started(slot);   // without a buffer the slot reads done at once
 	if (!_pcm.contains(object * 4 + variant))
 		return;
 	const Common::Array<byte> &pcm = _pcm[object * 4 + variant];
@@ -110,13 +112,19 @@ void AtlantisAmbientOutput::start(uint slot, uint object, uint variant, bool loo
 	_mixer->playStream(Audio::Mixer::kSFXSoundType, &_handles[slot], s, -1,
 	                   (byte)(_volume[slot] * Audio::Mixer::kMaxChannelVolume / 127),
 	                   milesPanBalance(_pan[slot]));
-	_started[slot] = true;
 	debugC(1, kDebugMusic, "ambient: slot %u plays object %u variant %u%s", slot, object, variant,
 	       loopForever ? " (loop)" : "");
 }
 
 void AtlantisAmbientOutput::stop(uint slot) {
+	_miles.stopped(slot, _mixer->isSoundHandleActive(_handles[slot]));
 	_mixer->stopHandle(_handles[slot]);
+}
+
+void AtlantisAmbientOutput::playOn(uint slot, Audio::AudioStream *s, byte mixerVolume, int8 balance) {
+	_mixer->stopHandle(_handles[slot]);
+	_mixer->playStream(Audio::Mixer::kSFXSoundType, &_handles[slot], s, -1, mixerVolume, balance);
+	_miles.started(slot);
 }
 
 // Miles pan 0 (left) .. 127 (right) onto the mixer's balance with the law of
@@ -138,10 +146,8 @@ void AtlantisAmbientOutput::release(uint object) {
 }
 
 void AtlantisAmbientOutput::stopAll() {
-	for (uint i = 0; i < AmbientSounds::kSlots; i++) {
-		_mixer->stopHandle(_handles[i]);
-		_started[i] = false;
-	}
+	for (uint i = 0; i < AmbientSounds::kSlots; i++)
+		stop(i);
 }
 
 } // End of namespace Atlantis

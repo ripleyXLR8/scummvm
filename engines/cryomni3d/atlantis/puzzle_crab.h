@@ -65,8 +65,6 @@ private:
 	int                      _picture;
 	Common::Array<PuzzleSpr> _frames;        // CRABE.SPR
 	Graphics::ManagedSurface _working;
-	Audio::SoundHandle       _comment;
-	Audio::SoundHandle       _click;     // sample 0x006cc560 (FUN_0043ce80)
 	bool _loaded;
 	bool _prevButton;
 	bool _bgDone;   // the first background call of a pass restores it

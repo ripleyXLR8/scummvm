@@ -73,9 +73,7 @@ private:
 	Common::Array<uint16>    _bgPixels;     // PUZCYCLO.TGA
 	bool _bgLoaded;
 
-	// The samples cyclo1..cyclo6 started by the puzzle, so that the exit can
-	// stop them all as FUN_0043d0e0 does.
-	Common::Array<Audio::SoundHandle> _sounds;
+	// cyclo1..cyclo6 through FUN_0043ca28; stopSounds is FUN_0043d0e0.
 	void playSound(const char *name);
 	void stopSounds();
 
