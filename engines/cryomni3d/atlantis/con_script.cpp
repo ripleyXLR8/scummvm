@@ -534,6 +534,19 @@ int findConClickEntry(const ConScript &script, const Common::Array<byte> &counte
 	return -1;
 }
 
+int findSelEntry(const ConScript &script, ConEntryTest test, void *ctx) {
+	const Common::Array<ConSection> &secs = script.sections();
+	for (uint i = 0; i < secs.size(); i++) {
+		const ConSection &sec = secs[i];
+		// /sel entries have no play counter.
+		if (!sec.isEntry || sec.isCon || sec.isTimer)
+			continue;
+		if (test(sec, ctx))
+			return (int)i;
+	}
+	return -1;
+}
+
 bool ConScript::gotoSection(int id, ConSection &out) const {
 	const ConText t(_text);
 	int32 pos = findHeader(t, id);

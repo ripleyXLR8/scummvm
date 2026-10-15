@@ -590,6 +590,10 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 			if (_currentDisc != 1)
 				changeDisc(0);
 			changeChapter(1);             // new game (also the fallback)
+			// FUN_0042de5c with no checkpoint: LastVue = 1 (0x0042e285), then
+			// ARRIVEEVUE = LastVue (FUN_00427634 @ 0x0042777d), whatever the
+			// /INIT Vue= of chapter 1 did.
+			_arrivalAfterLoad = true;
 		}
 
 		gameStep();
@@ -674,6 +678,16 @@ void CryOmni3DEngine_Atlantis::playTestDialogLine() {
 	warning("Atlantis: dialog line %d%c played", section, letter);
 }
 
+bool CryOmni3DEngine_Atlantis::takeArrivalAfterLoad(int &arrivee) {
+	// The first arrival scan after a chapter load (loadGame, the new game):
+	// ARRIVEEVUE = LastVue, no scan when it is 0.  Every other scan keeps
+	// the origin it was given.
+	if (!_arrivalAfterLoad)
+		return true;
+	_arrivalAfterLoad = false;
+	return arrivalAfterChapterLoad(_lastVue, arrivee);
+}
+
 void CryOmni3DEngine_Atlantis::gameStep() {
 	while (!_abortCommand) {
 		// The place loop FUN_00423ad8 returns as soon as Exit is set
@@ -687,15 +701,16 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 		// CON /set(vue=N)), then run its arrival /sel sections — which may
 		// chain on by setting _nextPlaceId again (the chapter intro flow).
 		if (_nextPlaceId != uint(-1)) {
-			uint fromVue = _currentPlaceId;
+			int arrivee = (int)_currentPlaceId;
+			const bool scan = takeArrivalAfterLoad(arrivee);
 			doPlaceChange();
 			_arrivalScanPending = false;
 			// Music persists across places — only startmusik/stopmusik (run
 			// by the new place's arrival CON sections, if any) change it.
 			musicUpdate();
-			if (_currentPlace) {
+			if (_currentPlace && scan) {
 				_inPlaceArrivalScan = true;   // FUN_00423ad8's own scan
-				runArrivalSelSections((int)_currentPlaceId, (int)fromVue);
+				runArrivalSelSections((int)_currentPlaceId, arrivee);
 				_inPlaceArrivalScan = false;
 			}
 		} else if (_arrivalScanPending) {
@@ -703,10 +718,12 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 			// the place loop now runs its arrival scan (atlantis.exe
 			// FUN_00423ad8 @ 0x00423b48).
 			_arrivalScanPending = false;
+			int arrivee = (int)_arrivalFromVue;
+			const bool scan = takeArrivalAfterLoad(arrivee);
 			musicUpdate();
-			if (_currentPlace) {
+			if (_currentPlace && scan) {
 				_inPlaceArrivalScan = true;
-				runArrivalSelSections((int)_currentPlaceId, (int)_arrivalFromVue);
+				runArrivalSelSections((int)_currentPlaceId, arrivee);
 				_inPlaceArrivalScan = false;
 			}
 		}

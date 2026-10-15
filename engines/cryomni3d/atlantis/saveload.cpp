@@ -458,8 +458,9 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	// FUN_0042de5c restores LastVue from the checkpoint (a successful load
 	// jumps over the stores of 1 at 0x0042e285 / 0x0042e29e, which are for a
 	// missing file: @ 0x0042e247); its chapter change FUN_00427634 copies
-	// LastVue into ArriveeVue (0x0042777d) for the place loop's arrival scan.
-	// Saves before ext v8 did not keep it: 1, the earlier behaviour.
+	// LastVue into ArriveeVue (0x0042777d) for the place loop's arrival scan
+	// (_arrivalAfterLoad below; the current place set here is not the scan's
+	// origin).  Saves before ext v8 did not keep it: 1, the earlier behaviour.
 	_lastVue = savedLastVue >= 0 ? (uint)savedLastVue : 1;
 	_currentPlaceId = 1;
 	_omni3dMan.setAlpha(alpha);
@@ -529,6 +530,9 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 
 	_nextPlaceId = placeId;
 	_arrivalScanPending = false;   // VUE = the loaded place (0x0042777d area)
+	// The place loop's first arrival scan reads ARRIVEEVUE = the restored
+	// LastVue, and does not run when it is 0 (0x00423b48): see gameStep.
+	_arrivalAfterLoad = true;
 
 	// Restore the music selection last: loadConScript above may have run
 	// musicStop(); musicUpdate() picks the saved track back up on the next

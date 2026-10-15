@@ -312,6 +312,123 @@ public:
 			TS_WARN(Common::String::format("scripts_con_eval: %u files differ:", mismatches) + list);
 		TS_ASSERT_EQUALS(mismatches, 0u);
 	}
+
+	// The place loop's first arrival scan after a chapter load, for the 74
+	// original checkpoints and the new game (no checkpoint): ArriveeVue and
+	// the /sel section fired.  Expected: FUN_0042de5c then the head of
+	// FUN_00423ad8 (ARRIVEEVUE != 0 @ 0x00423b48, FUN_00427548,
+	// FUN_004280f8) run under emulation, golden scripts_arrival_after_load.txt
+	// (atlantis-re tools/emu/scripts_arrival_after_load.py, experiment
+	// 2026-10-15-93).  Port: arrivalAfterChapterLoad (the rule gameStep
+	// applies after loadGame and the new game), findSelEntry and the real
+	// ConEvaluator on the variables and inventory the original scan read.
+	void test_arrival_after_load_vs_original() {
+		using namespace CryOmni3D::Atlantis;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("arrival after load: no game data configured, skipped");
+			return;
+		}
+		Common::Array<Common::String> lines;
+		TS_ASSERT(AtlantisTest::loadGoldenLines("scripts_arrival_after_load.txt", lines));
+		const ConVariableNames &names = ScriptsTest::variasNames();
+		TS_ASSERT(!names.empty());
+		if (lines.empty() || names.empty())
+			return;
+		ScriptsTest::Big big;
+		Common::HashMap<Common::String, Common::String> varsLine, invLine;
+		Common::Array<Common::String> ckLines;
+		for (uint i = 0; i < lines.size(); i++) {
+			const Common::String &l = lines[i];
+			if (l.hasPrefix("CK "))
+				ckLines.push_back(l);
+			else if (l.hasPrefix("VARS ") || l.hasPrefix("INV ")) {
+				const bool isVars = l.hasPrefix("VARS ");
+				Common::String rest = l.substr(isVars ? 5 : 4);
+				uint sp = rest.findFirstOf(' ');
+				Common::String key = sp == Common::String::npos ? rest : rest.substr(0, sp);
+				Common::String val = sp == Common::String::npos ? Common::String() : rest.substr(sp + 1);
+				(isVars ? varsLine : invLine)[key] = val;
+			}
+		}
+		TS_ASSERT_EQUALS(ckLines.size(), 75u);
+		uint mismatches = 0;
+		for (uint i = 0; i < ckLines.size(); i++) {
+			// CK paN chapter C vue V lastvue L arriveevue A sel S alt 1 sel S'
+			char name[16];
+			int chapter = 0, vue = 0, lastVue = 0, arriveeOrig = 0;
+			char selOrig[16];
+			if (sscanf(ckLines[i].c_str(), "CK %15s chapter %d vue %d lastvue %d arriveevue %d sel %15s",
+			           name, &chapter, &vue, &lastVue, &arriveeOrig, selOrig) != 6) {
+				TS_FAIL(ckLines[i].c_str());
+				continue;
+			}
+			const int expected = selOrig[0] == '-' ? -1 : atoi(selOrig);
+
+			// The port's rule.
+			int arrivee = -1;
+			const bool scan = arrivalAfterChapterLoad((uint)lastVue, arrivee);
+			if (arrivee != arriveeOrig)
+				mismatches++;
+
+			int got = -1;
+			if (scan) {
+				Common::Array<char> data;
+				TS_ASSERT(big.get(Common::String::format("SCENAR\\CHAPI%03d.CON", chapter), data));
+				ConScript script;
+				script.parse(data.begin(), data.size());
+				Common::HashMap<Common::String, int> vars;
+				Common::Array<int> runs;
+				const Common::String &vl = varsLine[name];
+				for (uint p = 0; p < vl.size();) {
+					uint e = p;
+					while (e < vl.size() && vl[e] != ' ')
+						e++;
+					int idx = 0, v = 0;
+					if (sscanf(vl.substr(p, e - p).c_str(), "%d:%d", &idx, &v) == 2)
+						vars[names.name((uint)idx)] = v;
+					p = e + 1;
+				}
+				vars["arriveevue"] = arrivee;
+				ScriptsTest::VarState st;
+				const Common::String &il = invLine[name];
+				for (uint p = 0; p < il.size();) {
+					uint e = p;
+					while (e < il.size() && il[e] != ' ')
+						e++;
+					int id = 0, v = 0;
+					if (sscanf(il.substr(p, e - p).c_str(), "%d:%d", &id, &v) == 2) {
+						TS_ASSERT_EQUALS(v, 1);
+						st.inventory.push_back(id);
+					}
+					p = e + 1;
+				}
+				st.vars = vars;
+				struct Ctx {
+					const ConScript *script;
+					const ScriptsTest::VarState *st;
+					static bool test(const ConSection &sec, void *ctx) {
+						const Ctx *c = (const Ctx *)ctx;
+						if (sec.condOffset < 0)
+							return true;
+						// The condition line as the scanner reads it.
+						const Common::Array<char> &t = c->script->text();
+						uint32 e = (uint32)sec.condOffset;
+						while (e < t.size() && t[e] != '\r' && t[e] != '\n')
+							e++;
+						return ScriptsTest::portEval(Common::String(t.begin() + sec.condOffset, e - sec.condOffset), *c->st);
+					}
+				};
+				Ctx ctx = { &script, &st };
+				const int idx = findSelEntry(script, &Ctx::test, &ctx);
+				got = idx < 0 ? -1 : script.sections()[idx].id;
+			}
+			if (got != expected) {
+				mismatches++;
+				warning("%s: port /sel %d, original %d", name, got, expected);
+			}
+		}
+		TS_ASSERT_EQUALS(mismatches, 0u);
+	}
 };
 
 #endif

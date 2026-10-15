@@ -142,6 +142,23 @@ typedef bool (*ConEntryTest)(const ConSection &sec, void *ctx);
 int findConClickEntry(const ConScript &script, const Common::Array<byte> &counters,
                       ConEntryTest test, void *ctx);
 
+// FUN_004277c8 (the /sel scan, through the scanner FUN_004280f8): the index
+// in sections() of the first /sel entry, in file order, whose condition
+// holds; -1 if none.
+int findSelEntry(const ConScript &script, ConEntryTest test, void *ctx);
+
+// The ArriveeVue of the place loop's first arrival scan after a chapter load
+// (a checkpoint load, a game-over reload or a new game: all go through
+// FUN_0042de5c): its chapter change FUN_00427634 sets ARRIVEEVUE to LastVue
+// (0x0042777d), read from the checkpoint or 1 when there is none; the place
+// loop FUN_00423ad8 runs the scan only when ARRIVEEVUE != 0 (0x00423b48).
+// Returns false when no scan runs.
+// See atlantis-re: functions/ui-FUN_0042de5c.md, experiments/2026-10-15-93.
+inline bool arrivalAfterChapterLoad(uint lastVue, int &arrivee) {
+	arrivee = (int)lastVue;
+	return arrivee != 0;
+}
+
 // Parses a CON file buffer into sections and INIT commands.
 class ConScript {
 public:

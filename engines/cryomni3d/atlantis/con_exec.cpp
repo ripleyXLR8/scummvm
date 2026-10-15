@@ -1002,23 +1002,32 @@ bool CryOmni3DEngine_Atlantis::evalSelSection(const ConSection &sec,
 }
 
 void CryOmni3DEngine_Atlantis::runArrivalSelSections(int arrivedVue, int fromVue) {
-	// arriveevue = the place we arrived FROM (so both the marker form
-	// (arriveevue>0)&(vue=N) and the specific (arriveevue=FROM)&(vue=TO) work).
-	_gameVars["arriveevue"] = (fromVue > 0) ? fromVue : arrivedVue;
+	// ArriveeVue = the place we arrived FROM (so both the marker form
+	// (arriveevue>0)&(vue=N) and the specific (arriveevue=FROM)&(vue=TO)
+	// work), or the LastVue of a chapter change, 0 included: FUN_00427634
+	// copies LastVue as it is (0x0042777d) and FUN_0042a100 scans after it
+	// (0x0042a60e) with no test.  A negative origin is the port's unknown
+	// place (uint(-1) after a sub-WAM swap): the arrived place stands for it.
+	_gameVars["arriveevue"] = (fromVue >= 0) ? fromVue : arrivedVue;
 
 	// Single /sel pool, file order, first match fires (atlantis.exe
-	// FUN_004280f8).  This is also what runs each chapter's intro section
-	// (/sel(initflag=0), the first /sel after /FININIT).
-	for (ConSection &sec : _conScript.sections()) {
-		// /sel entries have no play counter (atlantis.exe FUN_004280f8).
-		if (!sec.isEntry || sec.isCon || sec.isTimer)
-			continue;
-		if (!evalSelSection(sec, 0, arrivedVue))
-			continue;
+	// FUN_004277c8 / FUN_004280f8).  This is also what runs each chapter's
+	// intro section (/sel(initflag=0), the first /sel after /FININIT).
+	struct Ctx {
+		const CryOmni3DEngine_Atlantis *e;
+		int vue;
+		static bool test(const ConSection &sec, void *ctx) {
+			const Ctx *c = (const Ctx *)ctx;
+			return c->e->evalSelSection(sec, 0, c->vue);
+		}
+	};
+	Ctx ctx = { this, arrivedVue };
+	const int idx = findSelEntry(_conScript, &Ctx::test, &ctx);
+	if (idx >= 0) {
+		ConSection &sec = _conScript.sections()[idx];
 		debugC(1, kDebugScript, "runArrivalSelSections: vue=%d firing section %d",
 		      arrivedVue, sec.id);
 		playConSection(sec);
-		break;   // first match only
 	}
 
 	_gameVars["arriveevue"] = 0;

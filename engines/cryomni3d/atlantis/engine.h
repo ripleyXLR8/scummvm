@@ -336,6 +336,11 @@ private:
 	}
 	bool _arrivalScanPending = false;
 	uint _arrivalFromVue = 0;
+	// Set by a chapter load (loadGame, the new game): the next arrival scan
+	// reads ArriveeVue = LastVue and is skipped when it is 0
+	// (arrivalAfterChapterLoad).  See atlantis-re: functions/ui-FUN_0042de5c.md.
+	bool _arrivalAfterLoad = false;
+	bool takeArrivalAfterLoad(int &arrivee);
 	// The CON `Vue` variable when it differs from the current place: a
 	// script Vue=N whose place is not in the loaded WAM keeps the place
 	// (FUN_00421b4c finds no record) but stores N in `Vue`
