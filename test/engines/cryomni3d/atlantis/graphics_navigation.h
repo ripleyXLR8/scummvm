@@ -28,6 +28,7 @@
 #include "cryomni3d/atlantis/npc_click.h"
 #include "cryomni3d/atlantis/sprite_anim.h"
 #include "cryomni3d/atlantis/wam_parser.h"
+#include "cryomni3d/atlantis/warp_momentum.h"
 #include "common/archive.h"
 #include "common/fs.h"
 #include "../../../system/null_osystem.h"
@@ -547,5 +548,24 @@ public:
 				TS_ASSERT_EQUALS(diffs, 0u);
 			}
 		}
+	}
+
+	// FUN_0041bfa0 step 4 (atlantis-re functions/graphics-FUN_0041bfa0.md,
+	// STATIC @ 0x0041c213..0x0041c2b5): one delta of 30 px, then none.
+	// Expected values: the same float / double sequence computed outside the
+	// port (Python, struct-packed floats): alpha 1.01, 1.018, 1.0244,
+	// 1.02952, 1.033616 and 1.05 (30 / 600) in the limit.
+	void test_warp_momentum() {
+		using CryOmni3D::Atlantis::WarpMomentum;
+		WarpMomentum m;
+		float alpha = 1.0f, beta = 0.2f;
+		static const float kWant[5] = { 1.00999999f, 1.01800001f, 1.0244f, 1.02952003f, 1.03361607f };
+		for (int i = 0; i < 400; i++) {
+			m.step(i == 0 ? 30.0f : 0.0f, i == 0 ? -40.0f : 0.0f, alpha, beta);
+			if (i < 5)
+				TS_ASSERT_DELTA(alpha, kWant[i], 1e-6f);
+		}
+		TS_ASSERT_DELTA(alpha, 1.04999983f, 1e-6f);   // d / 600 in total
+		TS_ASSERT_DELTA(beta, 0.249999985f, 1e-6f);   // beta - (-40) / 800
 	}
 };

@@ -259,11 +259,11 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 	g_system->lockMouse(true);
 	takeMouseRelative();   // discard motion accumulated before entry
 
-	// FPS mouse-look sensitivity (atlantis.exe FUN_0041bfa0): 600 px/rad yaw,
-	// 800 px/rad pitch (the exe's momentum integrator collapses within a frame
-	// on modern hardware, so this is the equivalent direct mapping).
-	static const double kLookYawDiv    = 600.0;
-	static const double kLookPitchDiv  = 800.0;
+	// Mouse look with the momentum of atlantis.exe FUN_0041bfa0 step 4
+	// (warp_momentum.h): a delta turns the view by d / 600 rad (yaw) or
+	// d / 800 rad (pitch) in total, spread over the following frames by the
+	// factor 0.8 per frame.  The frame is the port's ([UNKNOWN] pace,
+	// atlantis-re decisions/0013-unpaced-loops.md).
 	static const double kWarpBetaLimit = M_PI / 4.0;  // matches doPlaceChange
 
 	// The cursor follows FUN_00422fcc (warpCursorStep).  When the player is
@@ -503,8 +503,14 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 
 		// Apply the look and render.  The OMNI 3D option inverts the pitch.
 		int pitchDelta = omni3dInvertY() ? -yDelta : yDelta;
-		double alpha = _omni3dMan.getAlpha() - xDelta / kLookYawDiv;
-		double beta  = _omni3dMan.getBeta()  + pitchDelta / kLookPitchDiv;
+		// The original's dx = prevX - x turns alpha by +vx; the port's
+		// xDelta is x - prevX and its beta runs opposite to 0x00bcb598, so
+		// the deltas enter with these signs to keep the port's directions.
+		float alphaF = (float)_omni3dMan.getAlpha();
+		float betaF  = (float)_omni3dMan.getBeta();
+		_warpMomentum.step((float)-xDelta, (float)-pitchDelta, alphaF, betaF);
+		double alpha = alphaF;
+		double beta  = betaF;
 		// F5 / F6 turn and F8 / F7 tilt the view by 0.034906 rad (2 degrees)
 		// on every poll they are held, when the left button is up
 		// (FUN_0041a298 @ 0x0041a33c..0x0041a3ba; floats 0x00bcb59c /

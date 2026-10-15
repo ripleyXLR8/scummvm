@@ -54,6 +54,7 @@
 #include "cryomni3d/atlantis/sprite_decode.h"
 #include "cryomni3d/atlantis/toolbar.h"
 #include "cryomni3d/atlantis/warp_cursor.h"
+#include "cryomni3d/atlantis/warp_momentum.h"
 #include "cryomni3d/atlantis/wam_parser.h"
 
 namespace CryOmni3D {
@@ -299,6 +300,7 @@ private:
 	// @ 0x00423b78), after which it clears ARRIVEEVUE (@ 0x00423be7).
 	bool _inPlaceArrivalScan = false;
 	AtlantisViewKeys _viewKeys;
+	WarpMomentum _warpMomentum;   // 0x00496984 / 0x00496988
 	bool _arrivalScanPending = false;
 	uint _arrivalFromVue = 0;
 	// The CON `Vue` variable when it differs from the current place: a
