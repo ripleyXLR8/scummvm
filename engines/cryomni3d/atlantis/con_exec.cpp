@@ -1145,11 +1145,8 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 		_inventory.setSelectedObject(nullptr);
 		return;
 	}
-	// New conversation: forget the previous cam and capture the click-time
-	// facing for the per-line default angle.
+	// New conversation: forget the previous cam.
 	_lastDialCam = 0;
-	_dialBaseAlpha = _omni3dMan.getAlpha();
-	_dialBaseAlphaValid = true;
 
 	// atlantis.exe FUN_00425828: when the perso has enabled subjects, the
 	// menu lists them in table order (EnableSuj appends, DisableSuj removes
@@ -1207,7 +1204,6 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 	}
 
 	_gameVars["clicperso"] = 0;
-	_dialBaseAlphaValid = false;
 }
 
 // FUN_00432a64 (atlantis-re functions/audio-FUN_00432a64.md).  The loop flag

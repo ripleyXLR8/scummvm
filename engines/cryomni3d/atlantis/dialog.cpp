@@ -47,6 +47,7 @@
 #endif
 
 #include "cryomni3d/omni3d.h"
+#include "cryomni3d/atlantis/dialog_view.h"
 #include "cryomni3d/atlantis/sprite_decode.h"
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/head3d.h"
@@ -314,7 +315,7 @@ int CryOmni3DEngine_Atlantis::showSubjectMenu(const Common::Array<int> &sujIds) 
 // Play a fired CON section: run its /set commands and dialog lines in source
 // order, then follow any /go redirect.  The game-over screen and the F3DC
 // mouth pipeline layer on as their subsystems land.
-void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
+void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView::Angles *chainEntry) {
 	// Hide the cursor for the duration of the section; restore it after.
 	bool cursorWasVisible = showMouse(false);
 
@@ -341,8 +342,11 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 	// ClicPerso uses it, the others resolve the speaker by name.
 	const int savedClicPerso = _gameVars.getValOrDefault("clicperso", 0);
 	// ... and the view angles (0x00428483 / 0x0042848b), set back at the end.
-	double entryAlpha = _omni3dMan.getAlpha();
-	double entryBeta  = _omni3dMan.getBeta();
+	// A /go continues the same walk (FUN_00425c04 returns the target header
+	// to FUN_0042844c), so the target keeps these.
+	DialogView::Angles entry = {_omni3dMan.getAlpha(), _omni3dMan.getBeta()};
+	if (chainEntry)
+		entry = *chainEntry;
 	// A /set(gameover=N) with N != 0 ends the section (atlantis.exe FUN_0042844c
 	// breaks the line loop once the GameOver variable goes non-zero); the lines
 	// that follow feed the game-over screen instead of playing as dialog.
@@ -409,7 +413,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		int camNum = pickDialCam(persoId, explicitCam, sethLine);
 
 		// Off-camera variants (off / off0 / off1) play as voiceover: no head
-		// shot, view left where the player was facing.  "off" (FUN_00430258)
+		// shot, view at the kept angles (below).  "off" (FUN_00430258)
 		// sets the warp FOV 75.137 (0x00430447), which is the port's FOV here
 		// anyway (each line restores its own), so nothing is changed.
 		const bool isOffCam = tailIs("off", 3) || tailIs("off0", 4) || tailIs("off1", 4);
@@ -455,68 +459,71 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 		// Remember for the next line so consecutive lines don't repeat a cam.
 		_lastDialCam = camNum;
 
-		// Per-line panorama angle (atlantis.exe FUN_0042844c):
-		//   • explicit [Speaker, X, Y, camN] → alpha=X°, beta=Y°
-		//   • bare / camN-only → preserve the click-time alpha, beta=0, with
-		//     hero (reverse-shot) lines flipped 180°
-		//   • off-camera → no change (view stays where the player aimed)
-		bool effHasAngle = item.line.hasAngle;
-		int  effAngleX   = item.line.angleX;
-		int  effAngleY   = item.line.angleY;
-		// FUN_0042844c @ 0x00428949..0x00428afc: a line starting with "Seth"
-		// (the original's Seth flag, 0x00428670) shows the view at the
-		// player's angle + pi (wrapped below 2 pi), pitch 0; another line does
-		// so at the player's angle when its perso is >= 0x200, and leaves the
-		// view alone otherwise; explicit X, Y angles in the header win
-		// (0x00428afc).  The player's own angle is kept (restored at 0x00428a7a).
-		const bool isHero = sethLine;
-		if (!effHasAngle && _warpLoaded && !voiceOnly && (isHero || persoId >= 0x200)) {
-			// _dialBaseAlpha is the click-time facing during an NPC interaction
-			// (set by the NPC layer that lands later); /sel-triggered dialog
-			// falls back to the live alpha.
-			const double baseAlpha = _dialBaseAlphaValid
-			                       ? _dialBaseAlpha : _omni3dMan.getAlpha();
-			double effDegX = baseAlpha * 180.0 / M_PI;
-			if (isHero)
-				effDegX += 180.0;
-			double dx = effDegX - 360.0 * floor(effDegX / 360.0);
-			effHasAngle = true;
-			effAngleX   = (int)(dx + 0.5);
-			effAngleY   = 0;
+		// The view behind the line (FUN_0042844c @ 0x00428949..0x00428b5e,
+		// dialog_view.h): a talking head turns from the angles kept in
+		// 0x00bcb59c / 0x00bcb598 (+ pi for a Seth line, pitch 0) without
+		// moving them; explicit X, Y header angles move them; a voice-only
+		// line (FUN_00430258) redraws at them; after the line the view goes
+		// back to them.  A Seth line with an off flag takes the
+		// non-Seth path (0x0042896e).
+		const DialogView::Angles kept = {_omni3dMan.getAlpha(), _omni3dMan.getBeta()};
+		const DialogView::Line view = DialogView::lineView(kept, sethLine && !isOffCam, persoId,
+		    item.line.hasAngle, item.line.angleX * M_PI / 180.0, item.line.angleY * M_PI / 180.0);
+		if (view.entryUpdate)
+			entry = kept;   // 0x004289ef..0x004289fc, 0x00428aa6..0x00428ab3
+		if (_warpLoaded) {
+			const DialogView::Angles &shown = voiceOnly ? view.kept : view.view;
+			_omni3dMan.setAlpha(shown.alpha);
+			_omni3dMan.setBeta(shown.beta);
 		}
 		// camNum=0 lands outside playSingleConLine's 2..5 range, so the FOV
 		// change is skipped while the line still plays as voiceover.
 		const int effCamNum = voiceOnly ? 0 : camNum;
 		_dialVoiceOff = voiceOnly && !_dialKeepScreen;
 		debugC(2, kDebugScript, "playConSection: speaker='%s' params='%s' persoId=%d "
-		         "cam=%d vid='%s' spf='%s' angle=(%d,%d)%s",
+		         "cam=%d vid='%s' spf='%s' view=(%.2f,%.2f) kept=(%.2f,%.2f)",
 		      item.line.speaker.c_str(), item.line.params.c_str(), persoId,
-		      effCamNum, vid.c_str(), spfBase.c_str(), effAngleX, effAngleY,
-		      effHasAngle ? "" : " (none)");
+		      effCamNum, vid.c_str(), spfBase.c_str(), view.view.alpha, view.view.beta,
+		      view.kept.alpha, view.kept.beta);
 		playSingleConLine(sec.id, (char)('A' + lineIdx++), item.line.text, vid,
 		                  spfBase,
-		                  effHasAngle, effAngleX, effAngleY, effCamNum,
+		                  /*hasAngle=*/false, 0, 0, effCamNum,
 		                  /*interactiveDialog=*/sec.isCon,
 		                  (persoId > 0 && !voiceOnly && !vid.empty()) ? dialRow : -1);
 		_dialVoiceOff = false;
 		_gameVars["clicperso"] = 0;   // after every line (0x00428b39)
+		// FUN_00451915(0x00bcb59c, 0x00bcb598) after every line (0x00428b5e).
+		if (_warpLoaded) {
+			_omni3dMan.setAlpha(view.kept.alpha);
+			_omni3dMan.setBeta(view.kept.beta);
+		}
 	}
 	_gameVars["clicperso"] = savedClicPerso;   // 0x00428cb2
+	// A /go target runs in the same walk of the original (below): the end
+	// of the walk, with its angle restore, comes after the target.
+	const bool chainGo = _currentCONChapter == entryChapter && sec.gotoId > 0 && !shouldAbort() &&
+	                     pendingGameOver == 0 && _abortCommand == kAbortNoAbort;
 	// The view goes back to the entry angles, except an axis whose
 	// ANGLEWARPX / ANGLEWARPY is non-zero: that one keeps the current angle
 	// and the variable is cleared (0x00428ccc..0x00428d68).  The warp loop
 	// stores the angles there every frame, so a line's explicit angles stay
-	// unless the player's own angle truncates to 0 degrees.
-	if (_gameVars.getValOrDefault("anglewarpx", 0) != 0) {
-		entryAlpha = _omni3dMan.getAlpha();
-		_gameVars["anglewarpx"] = 0;
-	}
-	if (_gameVars.getValOrDefault("anglewarpy", 0) != 0) {
-		entryBeta = _omni3dMan.getBeta();
-		_gameVars["anglewarpy"] = 0;
-	}
-	_omni3dMan.setAlpha(entryAlpha);
-	_omni3dMan.setBeta(entryBeta);
+	// unless the player's own angle truncates to 0 degrees.  The entry
+	// angles are those of the last talking-head (or perso >= 0x200) line
+	// when one ran (0x004289ef, 0x00428aa6).
+	auto restoreEntry = [&]() {
+		if (_gameVars.getValOrDefault("anglewarpx", 0) != 0) {
+			entry.alpha = _omni3dMan.getAlpha();
+			_gameVars["anglewarpx"] = 0;
+		}
+		if (_gameVars.getValOrDefault("anglewarpy", 0) != 0) {
+			entry.beta = _omni3dMan.getBeta();
+			_gameVars["anglewarpy"] = 0;
+		}
+		_omni3dMan.setAlpha(entry.alpha);
+		_omni3dMan.setBeta(entry.beta);
+	};
+	if (!chainGo)
+		restoreEntry();
 	musicUnduck();   // 0x00428d8b
 
 	// Game-over screen (GereGameOver): show the verdict image + narrator, then
@@ -551,8 +558,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 	// _conScript and left `sec` dangling, so reading sec.gotoId before the
 	// guard would be a use-after-free.  Skip the chain on a pending game-over
 	// (the reload replays the chapter) or any pending abort.
-	if (_currentCONChapter == entryChapter && sec.gotoId > 0 && !shouldAbort() &&
-	        pendingGameOver == 0 && _abortCommand == kAbortNoAbort) {
+	if (chainGo) {
 		// The executor resumes at the first "/N" header of the text
 		// (atlantis.exe FUN_00425c04).
 		ConSection target;
@@ -563,7 +569,9 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec) {
 					break;
 				}
 			}
-			playConSection(target);
+			playConSection(target, &entry);
+		} else {
+			restoreEntry();
 		}
 	}
 

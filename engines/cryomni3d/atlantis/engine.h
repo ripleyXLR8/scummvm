@@ -42,6 +42,7 @@
 #include "cryomni3d/atlantis/bigfile.h"
 #include "cryomni3d/atlantis/chapter_start.h"
 #include "cryomni3d/atlantis/con_eval.h"
+#include "cryomni3d/atlantis/dialog_view.h"
 #include "cryomni3d/atlantis/music_fade.h"
 #include "cryomni3d/atlantis/random.h"
 #include "cryomni3d/atlantis/inventory.h"
@@ -372,7 +373,8 @@ private:
 	bool evalSelSection(const ConSection &sec, int departZone, int currentVue) const;
 	// Execute a fired section's body (its /set commands and /go redirect; the
 	// dialog lines are played once the dialog layer lands).
-	void playConSection(ConSection &sec);
+	// chainEntry: the walk's entry angles, carried into a /go target.
+	void playConSection(ConSection &sec, const DialogView::Angles *chainEntry = nullptr);
 	// Fire the first matching arrival/departure /sel section, in file order.
 	void runArrivalSelSections(int arrivedVue, int fromVue);
 	void runDepartureSelSections(int departZone);
@@ -847,13 +849,6 @@ private:
 	void musicCopyThroughScreenBuffer(uint idx);
 	void execMusicList(bool load, const Common::Array<char> &text, uint32 pos);
 
-	// Panorama alpha captured when an NPC interaction starts (the direction
-	// the player faced on the click); the baseline for a line's default
-	// angle.  Set true only during an NPC interaction — the sprite/NPC layer
-	// that drives that lands later, so for now /sel-triggered dialog falls
-	// back to the live panorama alpha.
-	double _dialBaseAlpha;
-	bool   _dialBaseAlphaValid;
 
 	// Current chapter / place.
 	uint _currentChapter;
