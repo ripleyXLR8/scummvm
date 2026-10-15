@@ -620,6 +620,9 @@ private:
 	Common::HashMap<int32, AtlantisCentrePos> _ambientCentres;
 	void loadAmbientCentres();
 	void ambientEnterPlace();
+	// FUN_0043259c / FUN_00432758: the ambient glide over a video.
+	void ambientPrepareGlide(uint toPlace, int32 frames);
+	void ambientVideoFrame();
 	void stopAmbient();
 	static bool ambientLoadVariant(void *ctx, uint object, uint variant);
 	Common::String _currentWAMName;

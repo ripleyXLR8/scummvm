@@ -96,6 +96,8 @@ AmbientGains ambientGains(const float pos[3], float loudness, const AtlantisCent
 }
 
 AmbientSounds::AmbientSounds() : _loopFlag(false), _count(0), _active(false), _clock(nullptr), _clockCtx(nullptr) {
+	for (uint i = 0; i < kSlots; i++)
+		_curPan[i] = _curVol[i] = _stepPan[i] = _stepVol[i] = 0.0f;
 	for (uint i = 0; i <= kSlots; i++) {
 		_records[i].count = _records[i].current = 0;
 		_records[i].delay = _records[i].start = 0;
@@ -260,8 +262,82 @@ void AmbientSounds::frame(AmbientSampleOutput &out, const AtlantisPlace &place,
 		// the positional update (FUN_00450ed8 with the object's rotated position)
 		const float pos[3] = { -o.pos[1], o.pos[0], -o.pos[2] };
 		const AmbientGains g = ambientGains(pos, o.loudness, cam, ref, alpha, beta);
+		// through the float stores 0x006cc5d0 / 0x006cc548 (exact)
+		_curPan[i] = (float)g.pan;
+		_curVol[i] = (float)g.volume;
 		out.setPan(i, g.pan);
 		out.setVolume(i, g.volume);
+	}
+}
+
+// FUN_0043259c (0x0043259c..0x00432754): for i below the place's count byte
+// (+0x526), FUN_00450ed8(EAX = object, EDX = 0x00554510 + 12 * [0x006cd7b8],
+// the destination's camera, EBX = ref + 5, alpha, beta); after the
+// "a + b == 0" fix, step = (gain - last) / frame count 0x00896c50 for the
+// pan (a * 127 / (a + b)) and the volume (max(a, b) / 2), in x87 (fild,
+// fsub float, fdivp, fstp float).
+void AmbientSounds::prepareGlide(const AtlantisPlace &place, const Common::Array<AtlantisAmbientObject> &objects,
+                                 const AtlantisCentrePos &cam, float alpha, float beta, int32 frames) {
+	const uint n = MIN<uint>(place.ambientRefs.size(), kSlots);
+	for (uint i = 0; i < n; i++) {
+		const AtlantisAmbientRef &ref = place.ambientRefs[i];
+		const int refObj = objectOf(ref, objects);
+		if (refObj < 0)
+			continue;
+		const AtlantisAmbientObject &o = objects[refObj];
+		const float pos[3] = { -o.pos[1], o.pos[0], -o.pos[2] };
+		const AmbientGains g = ambientGains(pos, o.loudness, cam, ref, alpha, beta);
+		const int32 sum = g.right + g.left;
+		const int32 pan = (int32)(((int64)g.right * 127) / sum);
+		const int32 vol = MAX(g.right, g.left) / 2;
+		_stepPan[i] = (float)(((double)pan - (double)_curPan[i]) / (double)frames);
+		_stepVol[i] = (float)(((double)vol - (double)_curVol[i]) / (double)frames);
+	}
+}
+
+// FUN_00432758 (0x00432758..0x00432a60), for i below the place's count byte.
+void AmbientSounds::videoFrame(AmbientSampleOutput &out, const AtlantisPlace &place,
+                               const Common::Array<AtlantisAmbientObject> &objects, int32 chapterTime) {
+	const uint n = MIN<uint>(place.ambientRefs.size(), kSlots);
+	for (uint i = 0; i < n; i++) {
+		Record &rec = _records[i];
+		const int refObj = objectOf(place.ambientRefs[i], objects);
+		const int status = out.status(i);
+		if (rec.start != 0) {
+			// the pause, as in FUN_00432178; the sample starts with the
+			// loop count it already has (no AIL_set_sample_loop_count here)
+			if (refObj >= 0 && (uint32)(chapterTime - (int32)rec.start) > rec.delay) {
+				int v = -1;
+				for (int tries = 0; v == -1 && tries < 100000; tries++)
+					v = pickVariant(objects[refObj], rec.count);
+				if (v != -1) {
+					rec.current = (uint8)v;
+					out.stop(i);
+					out.start(i, rec.object, (uint)v, false);
+					rec.start = 0;
+				}
+			}
+			continue;
+		}
+		// status 2 only (FUN_00432178 also takes 8) and more than one variant
+		if (status == AmbientSampleOutput::kDone && rec.count > 1 && refObj >= 0) {
+			const int v = pickVariant(objects[refObj], rec.count);
+			if (v == -1) {
+				rec.start = (uint32)chapterTime;   // CHAPTERTIME (0x004bc324)
+				out.stop(i);
+				continue;                           // no step this frame
+			}
+			// A finished sample had a finite loop count (1), which no call
+			// here changes.
+			rec.current = (uint8)v;
+			out.stop(i);
+			out.start(i, rec.object, (uint)v, false);
+		}
+		_curPan[i] = _stepPan[i] + _curPan[i];
+		_curVol[i] = _stepVol[i] + _curVol[i];
+		// FUN_00451d6e truncates (RC = 11), then & 0xff
+		out.setPan(i, (uint8)((int32)_curPan[i] & 0xff));
+		out.setVolume(i, (uint8)((int32)_curVol[i] & 0xff));
 	}
 }
 

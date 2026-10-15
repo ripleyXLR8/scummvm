@@ -352,6 +352,11 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 
 	decoder->start();
 
+	// FUN_0043259c between the HNM open (FUN_00448c70) and the play loop,
+	// for a move (FUN_00423ad8); a cinematic keeps the last steps.
+	if (fromPlace != uint(-1) && toPlace != uint(-1))
+		ambientPrepareGlide(toPlace, (int32)decoder->getFrameCount());
+
 	// Play matching APC audio if present (e.g. WAV\CINEM020.APC for
 	// CINEM020.HNM).  AT*.HNM place-to-place transitions are intentionally
 	// silent — they have no APC on the disc.
@@ -389,10 +394,17 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 	}
 
 	uint spfFrameIdx = 0;
+	bool firstFrame = true;
 	Graphics::ManagedSurface composite;  // per-frame scratch when sprites are active
 	while (!shouldAbort() && !decoder->endOfVideo()) {
 		if (decoder->needsUpdate()) {
 			const Graphics::Surface *frame = decoder->decodeNextFrame();
+			// FUN_0041bc74 decodes the first frame before its loop; each
+			// loop pass decodes the next one, then runs FUN_00432758.
+			if (frame && !firstFrame)
+				ambientVideoFrame();
+			if (frame)
+				firstFrame = false;
 			if (frame) {
 				if (decoder->hasDirtyPalette())
 					setPalette(decoder->getPalette(), 0, 256);
@@ -529,6 +541,37 @@ void CryOmni3DEngine_Atlantis::ambientFrame() {
 	_ambient.frame(*_ambientOut, *place, _wam.getAmbientObjects(), cam,
 	               (float)_omni3dMan.getAlpha(), (float)_omni3dMan.getBeta(),
 	               _conClocks.chapterTime(g_system->getMillis()));
+}
+
+// FUN_0043259c, called by FUN_00423ad8 after the HNM is opened and before
+// FUN_0041bc74: the steps toward the gains at the destination's camera
+// (0x00554510 + 12 * [0x006cd7b8]) for the sounds of the current place
+// record 0x006cd7a8.  Not gated by 0x00496980.
+void CryOmni3DEngine_Atlantis::ambientPrepareGlide(uint toPlace, int32 frames) {
+	if (!_ambientOut || frames <= 0)
+		return;
+	const AtlantisPlace *place = _wam.findPlaceById((uint16)_currentPlaceId);
+	if (!place)
+		return;
+	AtlantisCentrePos cam = { 0.0f, 0.0f, 0.0f };
+	if (_ambientCentres.contains((int32)toPlace))
+		cam = _ambientCentres[(int32)toPlace];
+	_ambient.prepareGlide(*place, _wam.getAmbientObjects(), cam,
+	                      (float)_omni3dMan.getAlpha(), (float)_omni3dMan.getBeta(), frames);
+}
+
+// FUN_00432758, called by the HNM play loop FUN_0041bc74 on each frame of
+// its loop (every video, cinematics included, with the last steps).  The
+// port only runs it when the place's sounds are loaded (0x00496980), which
+// is the case whenever the current place has any.
+void CryOmni3DEngine_Atlantis::ambientVideoFrame() {
+	if (!_ambientOut || !_ambient.active())
+		return;
+	const AtlantisPlace *place = _wam.findPlaceById((uint16)_currentPlaceId);
+	if (!place)
+		return;
+	_ambient.videoFrame(*_ambientOut, *place, _wam.getAmbientObjects(),
+	                    _conClocks.chapterTime(g_system->getMillis()));
 }
 
 // FUN_00431e98.

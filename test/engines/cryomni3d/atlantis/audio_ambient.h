@@ -250,6 +250,55 @@ public:
 		TS_ASSERT(!a._loopFlag);
 	}
 
+	// FUN_0043259c / FUN_00432758 (atlantis-re functions/audio-FUN_00432178.md,
+	// STATIC): steps = (gain at the destination - last value) / frames;
+	// each video frame adds them and sets the truncated values; a finished
+	// sample (status 2 only) with more than one variant restarts, keeping a
+	// finite loop count.
+	void test_video_glide() {
+		using namespace AudioAmbient;
+		AmbientSounds a;
+		Clock c;
+		a.setClock(&Clock::fn, &c);
+		FakeOut out;
+		Common::Array<AtlantisAmbientObject> objs;
+		objs.push_back(object(1, 50, 50, 0, 0, 2));
+		const uint8 one[] = { 1 };
+		const AtlantisPlace p = place(135, one, 1);
+		c.values = { 0 };
+		TS_ASSERT(a.enterPlace(out, p, objs));
+		out.st[0] = AmbientSampleOutput::kPlaying;
+		a._curPan[0] = 10.0f;
+		a._curVol[0] = 0.0f;
+		const AtlantisCentrePos dst = { 0.0f, 300.0f, 0.0f };
+		const float pos[3] = { -objs[0].pos[1], objs[0].pos[0], -objs[0].pos[2] };
+		const AmbientGains g = ambientGains(pos, objs[0].loudness, dst, p.ambientRefs[0], 0.5f, 0.0f);
+		a.prepareGlide(p, objs, dst, 0.5f, 0.0f, 4);
+		TS_ASSERT_EQUALS(a._stepPan[0], (float)(((double)g.pan - 10.0) / 4.0));
+		TS_ASSERT_EQUALS(a._stepVol[0], (float)((double)g.volume / 4.0));
+		for (int k = 1; k <= 4; k++) {
+			out.log.clear();
+			a.videoFrame(out, p, objs, 100);
+			TS_ASSERT_EQUALS(out.log.size(), 2u);
+		}
+		TS_ASSERT(out.has(Common::String::format("pan 0 %d", (int)a._curPan[0])));
+		TS_ASSERT_DELTA(a._curPan[0], (float)g.pan, 1e-4f);
+		TS_ASSERT_DELTA(a._curVol[0], (float)g.volume, 1e-4f);
+		// status 8 (stopped) does not restart here
+		out.st[0] = AmbientSampleOutput::kStopped;
+		out.log.clear();
+		a.videoFrame(out, p, objs, 100);
+		TS_ASSERT_EQUALS(out.log.size(), 2u);
+		// status 2 restarts a drawn variant with a finite loop count
+		out.st[0] = AmbientSampleOutput::kDone;
+		a._loopFlag = true;
+		c.values = { 60 }; c.pos = 0;
+		out.log.clear();
+		a.videoFrame(out, p, objs, 100);
+		TS_ASSERT(out.has("start 0 0 1 0"));
+		TS_ASSERT(a._loopFlag);   // FUN_00432758 neither reads nor clears it
+	}
+
 	// MSS32.DLL DirectSound pan (0x2000dd50, helper 0x2000dcd0; atlantis-re
 	// experiments/2026-10-15-61-mss32-status-pan.md): SetPan of
 	// trunc(2000 log10(p / 63)) (p < 63), its mirror with 127 - p (p > 64),

@@ -91,6 +91,18 @@ public:
 	// FUN_00431e98.
 	void stopAll(AmbientSampleOutput &out);
 
+	// FUN_0043259c, before a move video: for each ambient sound of the place
+	// being left, the per-frame pan / volume steps from the last values
+	// toward FUN_00450ed8's gains at the destination's camera `cam` (with
+	// the current angles), divided by the video's frame count.
+	void prepareGlide(const AtlantisPlace &place, const Common::Array<AtlantisAmbientObject> &objects,
+	                  const AtlantisCentrePos &cam, float alpha, float beta, int32 frames);
+	// FUN_00432758, once per frame of any video (FUN_0041bc74): restarts a
+	// finished multi-variant sample, then adds the steps and sets pan and
+	// volume.
+	void videoFrame(AmbientSampleOutput &out, const AtlantisPlace &place,
+	                const Common::Array<AtlantisAmbientObject> &objects, int32 chapterTime);
+
 	bool active() const { return _active; }
 	uint count() const { return _count; }
 
@@ -104,6 +116,10 @@ public:
 	};
 	Record _records[kSlots + 1];
 	bool _loopFlag;        // 0x00495e8c
+	// The last pan / volume set, as floats (0x006cc5d0 / 0x006cc548), and
+	// the video steps (0x006cc530 / 0x006cc5b8); nothing clears them.
+	float _curPan[kSlots], _curVol[kSlots];
+	float _stepPan[kSlots], _stepVol[kSlots];
 
 	// FUN_004320bc.
 	int pickVariant(const AtlantisAmbientObject &obj, uint count);
