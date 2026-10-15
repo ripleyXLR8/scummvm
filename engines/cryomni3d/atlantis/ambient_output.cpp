@@ -109,7 +109,7 @@ void AtlantisAmbientOutput::start(uint slot, uint object, uint variant, bool loo
 	Audio::AudioStream *s = loopForever ? (Audio::AudioStream *)Audio::makeLoopingAudioStream(raw, 0) : raw;
 	_mixer->playStream(Audio::Mixer::kSFXSoundType, &_handles[slot], s, -1,
 	                   (byte)(_volume[slot] * Audio::Mixer::kMaxChannelVolume / 127),
-	                   (int8)((int)_pan[slot] * 254 / 127 - 127));
+	                   milesPanBalance(_pan[slot]));
 	_started[slot] = true;
 	debugC(1, kDebugMusic, "ambient: slot %u plays object %u variant %u%s", slot, object, variant,
 	       loopForever ? " (loop)" : "");
@@ -119,12 +119,12 @@ void AtlantisAmbientOutput::stop(uint slot) {
 	_mixer->stopHandle(_handles[slot]);
 }
 
-// Miles pan 0 (left) .. 127 (right), 64 centre, onto the mixer's balance;
-// Miles volume 0..127 onto 0..255.  The two pan laws differ [INFERRED: the
-// level split of Miles' digital pan was not measured].
+// Miles pan 0 (left) .. 127 (right) onto the mixer's balance with the law of
+// the MSS32.DLL DirectSound back-end (milesPanBalance); Miles volume 0..127
+// onto 0..255, linear in amplitude as there (0x2000dc60).
 void AtlantisAmbientOutput::setPan(uint slot, uint8 pan) {
 	_pan[slot] = pan & 0x7f;
-	_mixer->setChannelBalance(_handles[slot], (int8)((int)_pan[slot] * 254 / 127 - 127));
+	_mixer->setChannelBalance(_handles[slot], milesPanBalance(_pan[slot]));
 }
 
 void AtlantisAmbientOutput::setVolume(uint slot, uint8 volume) {

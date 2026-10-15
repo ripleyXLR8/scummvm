@@ -22,6 +22,8 @@
 #ifndef CRYOMNI3D_ATLANTIS_AMBIENT_OUTPUT_H
 #define CRYOMNI3D_ATLANTIS_AMBIENT_OUTPUT_H
 
+#include <math.h>
+
 #include "audio/mixer.h"
 #include "common/array.h"
 #include "common/hashmap.h"
@@ -34,6 +36,27 @@ class SeekableReadStream;
 
 namespace CryOmni3D {
 namespace Atlantis {
+
+// Miles pan 0 (left) .. 127 (right) onto the mixer's balance, as the
+// DirectSound back-end of the shipped MSS32.DLL plays it (preference 15 = 0
+// selects it; atlantis.exe sets no preference): 0x2000dd50 calls
+// IDirectSoundBuffer::SetPan with trunc(2000 log10(p / 63)) for p < 63,
+// -trunc(2000 log10((127 - p) / 63)) for p > 64, 0 for 63 and 64, -10000
+// for p = 0 (helper 0x2000dcd0, -2000.0 at 0x2001e008).  The near channel
+// stays full and the far one gets 10^(cB / 2000), i.e. p / 63 (or
+// (127 - p) / 63) up to the truncation; the mixer's far channel is
+// (127 - |balance|) / 127, so the balance is the nearest step to that.
+// See atlantis-re: functions/audio-FUN_00432178.md (Port) and
+// experiments/2026-10-15-61-mss32-status-pan.md.
+inline int8 milesPanBalance(uint8 pan) {
+	const int p = pan & 0x7f;
+	if (p == 63 || p == 64)
+		return 0;
+	const int q = (p < 63) ? p : 127 - p;     // the far channel's numerator
+	const double cB = (q == 0) ? -10000.0 : trunc(2000.0 * log10(q / 63.0));
+	const int far = (int)floor(127.0 * pow(10.0, cB / 2000.0) + 0.5);
+	return (int8)((p < 63) ? far - 127 : 127 - far);
+}
 
 // The six Miles sample handles of the ambient sounds on the ScummVM mixer.
 // FUN_00430d20 sets them up as 16-bit mono at 22050 Hz and nothing changes

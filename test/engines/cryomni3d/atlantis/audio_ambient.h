@@ -14,6 +14,7 @@
 #include "common/file.h"
 #include "common/fs.h"
 
+#include "cryomni3d/atlantis/ambient_output.h"
 #include "cryomni3d/atlantis/ambient_sounds.h"
 
 namespace AudioAmbient {
@@ -247,5 +248,29 @@ public:
 		a.frame(out, p, objs, cam, 0.0f, 0.0f, 18);
 		TS_ASSERT(out.has("start 0 0 0 1"));
 		TS_ASSERT(!a._loopFlag);
+	}
+
+	// MSS32.DLL DirectSound pan (0x2000dd50, helper 0x2000dcd0; atlantis-re
+	// experiments/2026-10-15-61-mss32-status-pan.md): SetPan of
+	// trunc(2000 log10(p / 63)) (p < 63), its mirror with 127 - p (p > 64),
+	// 0 for 63 / 64, -10000 for 0.  Expected balances: 127 x the far
+	// channel's amplitude 10^(cB / 2000), to the nearest step, computed
+	// outside the port (Python, math.trunc / log10).
+	void test_miles_pan_balance() {
+		static const int8 kWant[128] = {
+			-127, -125, -123, -121, -119, -117, -115, -113, -111, -109, -107, -105, -103, -101, -99, -97,
+			-95, -93, -91, -89, -87, -85, -83, -81, -79, -77, -75, -73, -71, -68, -66, -64,
+			-62, -60, -58, -56, -54, -52, -50, -48, -46, -44, -42, -40, -38, -36, -34, -32,
+			-30, -28, -26, -24, -22, -20, -18, -16, -14, -12, -10, -8, -6, -4, -2, 0,
+			0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30,
+			32, 34, 36, 38, 40, 42, 44, 46, 48, 50, 52, 54, 56, 58, 60, 62,
+			64, 66, 68, 71, 73, 75, 77, 79, 81, 83, 85, 87, 89, 91, 93, 95,
+			97, 99, 101, 103, 105, 107, 109, 111, 113, 115, 117, 119, 121, 123, 125, 127
+		};
+		for (int p = 0; p < 128; p++)
+			TS_ASSERT_EQUALS((int)CryOmni3D::Atlantis::milesPanBalance((uint8)p), (int)kWant[p]);
+		// Pan 64 is the centre in Miles (both channels full); the old
+		// 2p - 127 mapping gave balance 1 there.
+		TS_ASSERT_EQUALS((int)CryOmni3D::Atlantis::milesPanBalance(64), 0);
 	}
 };
