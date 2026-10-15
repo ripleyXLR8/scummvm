@@ -742,14 +742,36 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 		e.name = episodeName(ch);
 		if (e.name.empty())
 			e.name = desc[0] ? Common::String(desc) : Common::String::format("Chapter %u", ch);
-		if (ch == _currentCONChapter)
-			selected = (int)saves.size();
 		saves.push_back(e);
 	}
 
+	// FUN_0041cf78 starts with no row chosen (0x00612080 = "") and the list
+	// at offset 0 (0x00496605 = 0, 0x0041d273..).  A row click stores the
+	// row's chapter in the player's chapter byte 0x006ce246[player]
+	// (_playerChapter, memory only); OK leaves on record 6 and the caller
+	// reloads the checkpoint of that byte (FUN_0041c838 @ 0x0041c9bc..,
+	// FUN_0042de5c @ 0x0042dee7).  Cancel keeps the byte, so a later OK
+	// without a row click reloads the chapter clicked in the cancelled
+	// picker until a checkpoint (FUN_0042d6b8 @ 0x0042d836 / 0x0042dc7b)
+	// stores the current chapter in it again.
+	// See atlantis-re: functions/ui-FUN_0041cf78.md.
+	const bool havePlayer = _currentPlayer >= 0 && _currentPlayer < (int)kMaxPlayers;
+	auto chooseRow = [&](int entry) {
+		if (havePlayer)
+			_playerChapter[_currentPlayer] = saves[entry].localSlot;
+	};
+	auto byteSlot = [&]() -> uint {
+		if (!havePlayer)
+			return 0;
+		const int ch = _playerChapter[_currentPlayer];
+		if (ch < 0 || ch >= (int)kPlayerSlotStride)
+			return 0;
+		const int slot = episodeSaveSlot((uint)_currentPlayer, (uint)ch);
+		return saveSlotExists(slot) ? (uint)slot + 1 : 0;
+	};
 
 	const int maxScroll = MAX(0, (int)saves.size() - kVisible);
-	int scroll = (selected >= 0) ? CLIP(selected - kVisible / 2, 0, maxScroll) : 0;
+	int scroll = 0;
 
 	// Scrollbar track (LOADMENU /spr=13 thumb) — interactive Y span [123,338].
 	const int kBarTop = 123, kBarBot = 338, kBarH = kBarBot - kBarTop;
@@ -779,14 +801,16 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 			result = 0;
 			break;
 		} else if ((k.keycode == Common::KEYCODE_RETURN || k.keycode == Common::KEYCODE_KP_ENTER)
-		        && selected >= 0) {
-			result = (uint)episodeSaveSlot((uint)_currentPlayer, (uint)saves[selected].localSlot) + 1;
+		        && byteSlot() != 0) {
+			// Port keys (the original reads none here): Enter acts as OK,
+			// Up / Down as a row click.
+			result = byteSlot();
 			done = true;
 			break;
 		} else if (k.keycode == Common::KEYCODE_UP && selected > 0) {
-			selected--;
+			chooseRow(--selected);
 		} else if (k.keycode == Common::KEYCODE_DOWN && selected + 1 < (int)saves.size()) {
-			selected++;
+			chooseRow(++selected);
 		}
 		if (selected >= 0) {
 			if (selected < scroll) scroll = selected;
@@ -815,6 +839,7 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 			waitMouseRelease();
 			if (rowHover >= 0) {
 				selected = rowHover;
+				chooseRow(selected);
 				// A double click on a row loads it (FUN_0041cf78: the window
 				// procedure sets 0x00496118 on WM_LBUTTONDBLCLK, the class
 				// has CS_DBLCLKS).  The interval is Windows' own setting;
@@ -827,12 +852,16 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 				}
 				lastRowClick = rowHover;
 				lastRowClickMs = now;
-			} else if (btnHover == okIdx && selected >= 0) {
-				result = (uint)episodeSaveSlot((uint)_currentPlayer, (uint)saves[selected].localSlot) + 1;
+			} else if (btnHover == okIdx && byteSlot() != 0) {
+				result = byteSlot();
 				done = true;
 				break;
 			} else if (btnHover == restartIdx) {
+				// Record 5 stores the current chapter 0x00772909 in the
+				// player's chapter byte, then the caller reloads it.
 				int slot = episodeSaveSlot((uint)_currentPlayer, _currentCONChapter);
+				if (havePlayer)
+					_playerChapter[_currentPlayer] = (int)_currentCONChapter;
 				if (saveSlotExists(slot)) {
 					result = (uint)slot + 1;
 					done = true;
