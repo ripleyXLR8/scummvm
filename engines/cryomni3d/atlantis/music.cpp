@@ -221,6 +221,12 @@ void CryOmni3DEngine_Atlantis::musicSwitchTrack(int trackId) {
 		_musicFade.percent = 80;
 	}
 	musicPlayTrack(trackId);
+	// FUN_00432ea8 stores the CreateFileA result in 0x006ce0c0 (@ 0x00432f2a,
+	// -1 on failure) and the track in 0x00772915 only when the open worked
+	// (@ 0x00433118).
+	_musicHandleSet = true;
+	if (_musicCurrentFile)
+		_musicOpenTrack = trackId;
 	if (_musicCurrentFile) {
 		Common::StackLock lock(_musicFade.mutex);
 		_musicFade.mode = 1;
@@ -253,6 +259,12 @@ void CryOmni3DEngine_Atlantis::musicStopCommand() {
 		Common::StackLock lock(_musicFade.mutex);
 		_musicFade.cur = saved;
 		_musicFade.percent = 80;
+	}
+	// StopMusik closes and clears 0x006ce0c0 and 0x00772915 only when the
+	// handle is set (@ 0x0042aea9, 0x0042af0e, 0x0042af18).
+	if (_musicHandleSet) {
+		_musicHandleSet = false;
+		_musicOpenTrack = 0;
 	}
 	_musicTrackId = 0;
 }

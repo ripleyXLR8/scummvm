@@ -101,6 +101,8 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_musicRawData(nullptr),
 	_musicRawSize(0),
 	_musicTrackId(0),
+	_musicHandleSet(false),
+	_musicOpenTrack(0),
 	_warpCursorShown(kWarpCursorUnset),
 	_warpCursorNextMs(0),
 	_mainPalette(nullptr),
@@ -805,12 +807,15 @@ void CryOmni3DEngine_Atlantis::playQuitOutro() {
 	stopAmbient();
 	_inventory.setSelectedObject(nullptr);
 
-	// Music (0x0041a83e..0x0041a916): only when a track is open and it is not
-	// track 22 (04GENERI.APC, set by CHAPI085 before the end), switch to track
-	// 26 (09VOLTOT.APC, FUN_00432ea8(0x19)); with track 22 it keeps playing;
-	// with none the credits are silent.  [INFERRED] "a track is open" is
-	// taken as a selected track.
-	if (_musicTrackId != 0 && _musicTrackId != 22)
+	// Music (0x0041a83e..0x0041a916): only when the music handle 0x006ce0c0
+	// is set and the track 0x00772915 is not 22 (04GENERI.APC, set by
+	// CHAPI085 before the end), switch to track 26 (09VOLTOT.APC,
+	// FUN_00432ea8(0x19)); with track 22 it keeps playing; with no handle
+	// the credits are silent.  After a failed StartMusik open the handle is
+	// -1 (set) and 0x00772915 still names the previous track, so the test
+	// uses those two, not the selected _musicTrackId.
+	// See atlantis-re: functions/ui-FUN_0041a72c.md step 4.
+	if (_musicHandleSet && _musicOpenTrack != 22)
 		musicSwitchTrack(26);
 
 	Common::Array<byte> txt;

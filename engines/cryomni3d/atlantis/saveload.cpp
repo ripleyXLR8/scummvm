@@ -525,6 +525,10 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	// musicStop(); musicUpdate() picks the saved track back up on the next
 	// frame.
 	_musicTrackId = savedMusicTrack;
+	// The original's handle / open track after a checkpoint reload are not
+	// established; the restored selection stands for both, as before.
+	_musicHandleSet = savedMusicTrack != 0;
+	_musicOpenTrack = savedMusicTrack;
 
 	_inventory.deselectObject();
 

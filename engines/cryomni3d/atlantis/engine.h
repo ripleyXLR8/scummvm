@@ -736,6 +736,13 @@ private:
 	byte *_musicRawData;
 	uint32 _musicRawSize;
 	int _musicTrackId;   // selected startmusik track id (0 = stopped / none)
+	// The original's own music state, which the credits test (FUN_0041a72c
+	// @ 0x0041a83e): the file handle 0x006ce0c0 != 0 (an open was attempted
+	// by FUN_00432ea8, -1 when it failed) and the track 0x00772915 (index + 1,
+	// written only once the open succeeded @ 0x00433118).  StopMusik clears
+	// both (@ 0x0042af0e / 0x0042af18).
+	bool _musicHandleSet;
+	int _musicOpenTrack;
 
 	// Ambient SFX playback driven by CON `/set(newsound=N)`.  The id-to-APC
 	// mapping lives in atlantis.exe at VA 0x004961e0: a pointer table that
