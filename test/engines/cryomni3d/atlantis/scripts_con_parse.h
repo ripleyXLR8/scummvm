@@ -231,6 +231,135 @@ public:
 			TS_WARN(Common::String::format("scripts_con_parse: %u files differ:", mismatches) + list);
 		TS_ASSERT_EQUALS(mismatches, 0u);
 	}
+
+	// The track letter of every dialog line and game-over narrator: the
+	// port's walk of each entry point (ConScript sections, /go through
+	// gotoSection, conTrackLetter on the line index, the walk ending at a
+	// gameover=N != 0 or a chapter=), against FUN_0042844c / FUN_00426590
+	// run under emulation on every entry point of the 75 CHAPInnn.CON files
+	// (golden video_dialog_letters.txt, atlantis-re
+	// tools/emu/video_dialog_letters.py, experiment 2026-10-15-94).
+	void test_track_letters_vs_original() {
+		using namespace CryOmni3D::Atlantis;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("track letters: no game data configured, skipped");
+			return;
+		}
+		Common::Array<Common::String> lines;
+		TS_ASSERT(AtlantisTest::loadGoldenLines("video_dialog_letters.txt", lines));
+		ScriptsTest::Big big;
+		Common::HashMap<Common::String, ConScript *> scripts;
+		uint walks = 0, dlg = 0, narr = 0, mismatches = 0;
+		for (uint li = 0; li < lines.size(); li++) {
+			const Common::String &l = lines[li];
+			const bool isW = l.hasPrefix("W "), isG = l.hasPrefix("G ");
+			if (!isW && !isG)
+				continue;
+			char con[16];
+			int body = 0;
+			if (sscanf(l.c_str() + 2, "%15s %d", con, &body) != 2) {
+				TS_FAIL(l.c_str());
+				continue;
+			}
+			if (!scripts.contains(con)) {
+				Common::Array<char> data;
+				TS_ASSERT(big.get(Common::String::format("SCENAR\\%s.CON", con), data));
+				ConScript *s = new ConScript();
+				s->parse(data.begin(), data.size());
+				scripts[con] = s;
+			}
+			const ConScript &script = *scripts[con];
+			const ConSection *start = nullptr;
+			for (uint i = 0; i < script.sections().size() && !start; i++)
+				if (script.sections()[i].bodyOffset == body)
+					start = &script.sections()[i];
+			if (!start) {
+				mismatches++;
+				warning("%s: no port section at body %d", con, body);
+				continue;
+			}
+			// The port's walk: "<section><letter>" per line, and the
+			// narrator's APC name at a game over.
+			Common::String got, narrator;
+			ConSection cur = *start;
+			for (uint guard = 0; guard < 64; guard++) {
+				uint lineIdx = 0;
+				bool stop = false;
+				for (uint k = 0; k < cur.items.size() && !stop; k++) {
+					const ConSectionItem &it = cur.items[k];
+					if (!it.isSet) {
+						got += Common::String::format(" %d%c", cur.id, conTrackLetter(lineIdx++));
+						continue;
+					}
+					if (scumm_strnicmp(it.setCmd.c_str(), "chapter=", 8) == 0) {
+						stop = true;
+					} else if (scumm_strnicmp(it.setCmd.c_str(), "gameover=", 9) == 0 &&
+					           atoi(it.setCmd.c_str() + 9) != 0) {
+						if (k + 1 < cur.items.size() && !cur.items[k + 1].isSet &&
+						        cur.items[k + 1].line.speaker.hasPrefix("Narra"))
+							narrator = Common::String::format("WAV\\ATA%04d%c.APC", cur.id,
+							                                  conTrackLetter(lineIdx));
+						stop = true;
+					}
+				}
+				if (stop || cur.gotoId <= 0)
+					break;
+				const int target = cur.gotoId;
+				if (!script.gotoSection(target, cur))
+					break;
+				cur.id = target;
+			}
+			if (isW) {
+				walks++;
+				// Expected: "<offset>:<section><letter>" tokens.
+				Common::String want;
+				const char *p = strchr(l.c_str(), ':');
+				Common::String rest(p ? p + 1 : "");
+				for (uint q = 0; q < rest.size();) {
+					while (q < rest.size() && rest[q] == ' ')
+						q++;
+					uint e = q;
+					while (e < rest.size() && rest[e] != ' ')
+						e++;
+					if (e > q) {
+						Common::String tok = rest.substr(q, e - q);
+						const char *c = strchr(tok.c_str(), ':');
+						Common::String t(c ? c + 1 : tok.c_str());
+						t.toUppercase();
+						want += " " + t;
+						dlg++;
+					}
+					q = e;
+				}
+				if (got != want) {
+					mismatches++;
+					warning("%s body %d: port%s, original%s", con, body, got.c_str(), want.c_str());
+				}
+			} else {
+				narr++;
+				// G <CON> <body> <section>: @<offset> narrator|no-narrator <apc>
+				Common::String want;
+				const char *p = strstr(l.c_str(), " narrator ");
+				if (p)
+					want = Common::String(p + 10);
+				const uint sp = want.findFirstOf(' ');
+				if (sp != Common::String::npos)
+					want = want.substr(0, sp);
+				want.toUppercase();
+				if (want != narrator) {
+					mismatches++;
+					warning("%s body %d: port narrator '%s', original '%s'", con, body,
+					        narrator.c_str(), want.c_str());
+				}
+			}
+		}
+		for (auto &kv : scripts)
+			delete kv._value;
+		TS_ASSERT_EQUALS(walks, 1197u);
+		TS_ASSERT_EQUALS(dlg, 2797u);
+		TS_ASSERT_EQUALS(narr, 364u);
+		TS_ASSERT_EQUALS(mismatches, 0u);
+	}
 };
 
 #endif

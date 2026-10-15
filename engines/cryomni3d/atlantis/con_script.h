@@ -147,6 +147,20 @@ int findConClickEntry(const ConScript &script, const Common::Array<byte> &counte
 // holds; -1 if none.
 int findSelEntry(const ConScript &script, ConEntryTest test, void *ctx);
 
+// The track letter of a dialog line, the <L> of its voice, lip-sync and head
+// files wav\ata<NNNN><L>.apc / .syc (FUN_0042f9e8 appends the letter byte
+// 0x004961a8).  The section executor FUN_0042844c sets it to 'a' at the
+// start (0x004284cb), adds 1 after each played line (0x00428b21) and per `[`
+// line skipped after an Escape (0x00428b85); /go (FUN_00425c04, 0x00425c4b)
+// sets it back to 'a'.  So it is the index of the line among the `[` lines
+// of its part of the walk; the game-over narrator FUN_00426590 counts the
+// same lines from the section header (0x004268b2..0x0042690f).  Upper case:
+// the names in the BIG archives.
+// See atlantis-re: experiments/2026-10-15-94-dialog-track-letters.md.
+inline char conTrackLetter(uint lineIdx) {
+	return (char)('A' + lineIdx);
+}
+
 // The ArriveeVue of the place loop's first arrival scan after a chapter load
 // (a checkpoint load, a game-over reload or a new game: all go through
 // FUN_0042de5c): its chapter change FUN_00427634 sets ARRIVEEVUE to LastVue

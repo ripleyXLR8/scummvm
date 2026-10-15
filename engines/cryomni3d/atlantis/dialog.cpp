@@ -379,7 +379,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 				if (itemIdx + 1 < sec.items.size() && !sec.items[itemIdx + 1].isSet &&
 				        sec.items[itemIdx + 1].line.speaker.hasPrefix("Narra")) {
 					gameOverText  = sec.items[itemIdx + 1].line.text;
-					gameOverTrack = (char)('A' + lineIdx);
+					gameOverTrack = conTrackLetter(lineIdx);
 				}
 				break;
 			}
@@ -447,7 +447,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 		bool noSyc = false;
 		if (!isOffCam) {
 			Common::ScopedPtr<Common::SeekableReadStream> syc(openBigFileStream(kFileTypeSound,
-			    Common::String::format("ATA%04d%c.SYC", sec.id, (char)('A' + lineIdx))));
+			    Common::String::format("ATA%04d%c.SYC", sec.id, conTrackLetter(lineIdx))));
 			noSyc = !syc;
 		}
 		const bool voiceOnly = isOffCam || noSyc;
@@ -500,7 +500,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 		      item.line.speaker.c_str(), item.line.params.c_str(), persoId,
 		      effCamNum, vid.c_str(), spfBase.c_str(), view.view.alpha, view.view.beta,
 		      view.kept.alpha, view.kept.beta);
-		playSingleConLine(sec.id, (char)('A' + lineIdx++), item.line.text, vid,
+		playSingleConLine(sec.id, conTrackLetter(lineIdx++), item.line.text, vid,
 		                  spfBase,
 		                  /*hasAngle=*/false, 0, 0, effCamNum,
 		                  /*interactiveDialog=*/sec.isCon,
