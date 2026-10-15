@@ -1159,6 +1159,23 @@ public:
 		}
 	}
 
+	// Typed name characters: the original's ANSI window stores the
+	// Windows-1252 code of WM_CHAR (0x00419c9a). The Wine run of
+	// atlantis-re experiments/2026-10-14-15 stored 0xa3, 0xa7, 0x85 in the
+	// name buffer 0x00612080; the port gets Unicode from ScummVM.
+	void test_name_key_code_page() {
+		using CryOmni3D::Atlantis::nameKeyCode;
+		TS_ASSERT_EQUALS(nameKeyCode('A'), 0x41u);
+		TS_ASSERT_EQUALS(nameKeyCode(0x00a3), 0xa3u);   // pound sign
+		TS_ASSERT_EQUALS(nameKeyCode(0x00a7), 0xa7u);   // section sign
+		TS_ASSERT_EQUALS(nameKeyCode(0x2026), 0x85u);   // ellipsis
+		TS_ASSERT_EQUALS(nameKeyCode(0x20ac), 0x80u);   // euro sign
+		TS_ASSERT_EQUALS(nameKeyCode(0x0153), 0x9cu);   // oe ligature
+		TS_ASSERT_EQUALS(nameKeyCode(0x00e9), 0xe9u);   // above 0xa7: refused by the caller
+		TS_ASSERT_EQUALS(nameKeyCode(0x0101), 0u);      // not in the code page
+		TS_ASSERT_EQUALS(nameKeyCode(0x0081), 0x81u);   // C1 control: round trip, as Windows' table
+	}
+
 	// Load list rows: displaySavePicker draws row i at (55, 130 + 22 i) with
 	// the load-list renderer (spaces blitted, + table), vs FUN_00420b48.
 	void test_load_list_layout() {

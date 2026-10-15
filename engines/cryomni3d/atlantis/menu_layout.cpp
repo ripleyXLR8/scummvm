@@ -21,7 +21,9 @@
 
 #include "cryomni3d/atlantis/menu_layout.h"
 
+#include "common/str-enc.h"
 #include "common/textconsole.h"
+#include "common/ustr.h"
 #include "common/util.h"
 
 namespace CryOmni3D {
@@ -505,6 +507,16 @@ void walkMenuText(const byte *t, uint32 size, int menu, int hoverLine,
 		p++;
 	}
 	walk.records.resize(count);
+}
+
+uint nameKeyCode(uint16 unicode) {
+	if (unicode < 0x80 || (unicode >= 0xa0 && unicode <= 0xff))
+		return unicode;
+	const Common::u32char_type_t ch = unicode;
+	const Common::String enc = Common::U32String(&ch, 1).encode(Common::kWindows1252);
+	if (enc.size() != 1 || (byte)enc[0] < 0x80)
+		return 0;   // not in the code page ('?')
+	return (byte)enc[0];
 }
 
 } // namespace Atlantis

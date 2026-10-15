@@ -547,13 +547,14 @@ int CryOmni3DEngine_Atlantis::displayPlayerScreen() {
 				} else if (k.keycode == Common::KEYCODE_BACKSPACE) {
 					if (!editBuf.empty())
 						editBuf.deleteLastChar();
-				} else if (k.ascii >= 0x20 && k.ascii <= 0xa7
+				} else if (nameKeyCode(k.ascii) >= 0x20 && nameKeyCode(k.ascii) <= 0xa7
 				        && editBuf.size() < kPlayerNameLen) {
 					// FUN_0041dea4 @ 0x0041e283: characters 0x20..0xa7 (the
 					// FONTMIN glyphs); a leading space is refused, a leading
 					// '.' is typed (the commit still refuses it).
-					if (!(editBuf.empty() && k.ascii == ' '))
-						editBuf += (char)k.ascii;
+					const uint c = nameKeyCode(k.ascii);
+					if (!(editBuf.empty() && c == ' '))
+						editBuf += (char)c;
 				}
 			} else if (k.keycode == Common::KEYCODE_ESCAPE) {
 				result = -1;

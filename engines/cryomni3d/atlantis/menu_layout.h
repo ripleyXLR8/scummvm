@@ -200,6 +200,14 @@ void sprFontPen(const Common::String &text, int anchorX, int spaceAdvance,
                 const Common::Array<int> &glyphWidths, const uint8 *advanceTable,
                 uint advanceCount, Common::Array<SprFontGlyph> &out);
 
+// The code the original's window procedure stores from WM_CHAR (0x00419c9a):
+// its window is ANSI (RegisterClassA, PeekMessageA + TranslateMessage), so a
+// typed character arrives in the Windows-1252 code page; ScummVM gives
+// Unicode. They differ only for 0x80..0x9f (e.g. U+2026 is 0x85, drawn as
+// FONTMIN's 'a grave'; atlantis-re experiments/2026-10-14-15). 0 when the
+// character is not in the code page.
+uint nameKeyCode(uint16 unicode);
+
 } // namespace Atlantis
 } // namespace CryOmni3D
 
