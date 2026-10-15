@@ -424,6 +424,152 @@ public:
 		TS_ASSERT_EQUALS(bad, 0u);
 	}
 
+	// The place-sprite active flag over ShowPerso / HidePerso / NEWWSPRANIM /
+	// STOPWSPRANIM / type-2 cycles and place re-entries, in every WAM, against
+	// the ORIGINAL table run under emulation (FUN_00421ebc with FUN_00424a20
+	// and FUN_00427d30, FUN_0042431c, FUN_00427eb0, FUN_00427bd0,
+	// FUN_00428da8, FUN_00425304; atlantis-re tools/emu/scripts_sprite_active.py,
+	// golden scripts_sprite_active.txt, experiment 2026-10-15-95).  Port:
+	// parseSpritePlaceLine, spriteListApplyHidden, spriteListSetPerso,
+	// start/stopPlaceSpriteAnim, animatePlaceSprites, spriteListEnterPlace.
+	void test_sprite_active_vs_original() {
+		using namespace CryOmni3D::Atlantis;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("graphics_navigation: no game data configured, skipped");
+			return;
+		}
+		Common::Array<Common::String> lines;
+		TS_ASSERT(AtlantisTest::loadGoldenLines("scripts_sprite_active.txt", lines));
+		if (!SearchMan.hasArchive("graphics_npc_data"))
+			SearchMan.addDirectory("graphics_npc_data", Common::FSNode(Common::Path(AtlantisTest::dataDir(), '/')));
+		BigFileArchive big;
+		for (int d = 1; d <= 4; d++)
+			TS_ASSERT(big.open(Common::Path(Common::String::format("BIGCD%d.BIG", d))));
+		Common::String wam;
+		Common::Array<SpritePlaceEntry> parsed;
+		uint rows = 0, scen = 0, bad = 0;
+		auto viewRow = [](Common::Array<SpritePlaceEntry> &es, int v, int k) -> SpritePlaceEntry * {
+			int n = 0;
+			for (SpritePlaceEntry &e : es)
+				if (e.placeId == (uint16)v && n++ == k)
+					return &e;
+			return nullptr;
+		};
+		for (const Common::String &l : lines) {
+			if (l.size() < 2 || l[1] != ' ')
+				continue;
+			char w[32], a[32];
+			if (l[0] == 'L') {
+				// L <WAM> <list>: the port's parse of the list.
+				if (sscanf(l.c_str() + 2, "%31s %31s", w, a) != 2)
+					continue;
+				wam = w;
+				parsed.clear();
+				Common::String listName = Common::String("SPRLIST\\") + a;
+				listName.toUppercase();
+				Common::ScopedPtr<Common::SeekableReadStream> ls(big.createReadStreamForMember(listName));
+				if (!ls)
+					continue;
+				Common::String text;
+				while (true) {
+					char c = (char)ls->readByte();
+					if (ls->eos())
+						break;
+					text += c;
+				}
+				const char *p = text.c_str();
+				while (*p) {
+					while (*p == '\r' || *p == '\n' || *p == ' ' || *p == '\t') p++;
+					const char *eol = p;
+					while (*eol && *eol != '\r' && *eol != '\n') eol++;
+					SpritePlaceEntry e;
+					if (eol > p && parseSpritePlaceLine(Common::String(p, eol - p), e))
+						parsed.push_back(e);
+					p = eol;
+				}
+				continue;
+			}
+			if (l[0] == 'R') {
+				// R <WAM> <vue> <k> <id> <active> <type>
+				int v, k, id, act, typ;
+				if (sscanf(l.c_str() + 2, "%31s %d %d %d %d %d", w, &v, &k, &id, &act, &typ) != 6)
+					continue;
+				rows++;
+				SpritePlaceEntry *e = viewRow(parsed, v, k);
+				if (!e || (e->active ? 1 : 0) != (act ? 1 : 0) || e->persoId != (id > 0 ? id : 0) || e->type != typ) {
+					if (bad++ < 5)
+						TS_FAIL(Common::String::format("sprite list %s view %d row %d differs from the original", w, v, k).c_str());
+				}
+				continue;
+			}
+			if (l[0] != 'S')
+				continue;
+			// S <WAM> <kind> <arg...>: <v>.<k>=<active>[(before x)] ...
+			const char *colon = strchr(l.c_str(), ':');
+			if (!colon || sscanf(l.c_str() + 2, "%31s %31s", w, a) != 2)
+				continue;
+			scen++;
+			const Common::String kind(a);
+			const char *argp = l.c_str() + 2 + strlen(w) + 1 + strlen(a) + 1;
+			int arg1 = atoi(argp), arg2 = 0;
+			const char *sp = strchr(argp, ' ');
+			if (sp && sp < colon)
+				arg2 = atoi(sp + 1);
+			// The expected rows.
+			Common::Array<int> tv, tk, ta;
+			for (const char *q = colon + 1; *q;) {
+				while (*q == ' ') q++;
+				int v, k, act;
+				if (sscanf(q, "%d.%d=%d", &v, &k, &act) == 3) {
+					tv.push_back(v); tk.push_back(k); ta.push_back(act);
+				}
+				while (*q && *q != ' ') q++;
+			}
+			Common::Array<SpritePlaceEntry> es = parsed;
+			Common::Array<int> hidden;
+			if (kind == "HLOAD" || kind == "HSHOW") {
+				hidden.push_back(arg1);
+				spriteListApplyHidden(es, hidden);   // the list load
+			}
+			for (uint i = 0; i < tv.size(); i++)
+				spriteListEnterPlace(es, (uint16)tv[i]);
+			uint current = 0;
+			if (kind == "SHOW" || kind == "HSHOW") {
+				spriteListSetPerso(es, arg1, true);
+			} else if (kind == "HIDE") {
+				spriteListSetPerso(es, arg1, false);
+			} else if (kind == "NEW") {
+				startPlaceSpriteAnim(es, (uint16)arg1, arg2 + 1, current);
+			} else if (kind == "STOP") {
+				stopPlaceSpriteAnim(es, (uint16)arg1, arg2 + 1);
+			} else if (kind == "T2") {
+				SpritePlaceEntry *e = viewRow(es, arg1, arg2);
+				if (e && !e->active)
+					startPlaceSpriteAnim(es, (uint16)arg1, arg2 + 1, current);
+				if (e)
+					e->frameCount = 3;    // any count: the cycle ends at it
+				uint32 last[kSpriteAnimSlots];
+				memset(last, 0, sizeof(last));
+				int wspr = 0;
+				for (uint32 t = 1; t < 200 && e && e->active; t++)
+					animatePlaceSprites(es, (uint16)arg1, current, 1000 + 14 * t, last, wspr);
+			}
+			for (uint i = 0; i < tv.size(); i++)
+				spriteListEnterPlace(es, (uint16)tv[i]);
+			for (uint i = 0; i < tv.size(); i++) {
+				SpritePlaceEntry *e = viewRow(es, tv[i], tk[i]);
+				if (!e || (e->active ? 1 : 0) != ta[i]) {
+					if (bad++ < 5)
+						TS_FAIL(Common::String::format("sprite active %s %s %d: row %d.%d port %d original %d",
+						        w, kind.c_str(), arg1, tv[i], tk[i], e ? (int)e->active : -1, ta[i]).c_str());
+				}
+			}
+		}
+		TS_ASSERT_EQUALS(rows, 1393u);
+		TS_ASSERT_EQUALS(scen, 3463u);
+		TS_ASSERT_EQUALS(bad, 0u);
+	}
+
 	// Arrow shot in bow mode, from the static reading of atlantis.exe
 	// FUN_0041bfa0 @ 0x0041c61d..0x0041c6a0 (atlantis-re
 	// experiments/2026-10-13-20-archery-and-sprite-animation.md): the click is

@@ -942,8 +942,7 @@ void CryOmni3DEngine_Atlantis::subGuest(int32 guestId) {
 void CryOmni3DEngine_Atlantis::showPerso(int perso) {
 	for (int i = (int)_hiddenPersos.size() - 1; i >= 0; i--)
 		if (_hiddenPersos[i] == perso) _hiddenPersos.remove_at(i);
-	for (SpritePlaceEntry &e : _spritePlaceList)
-		if (e.persoId == perso) e.active = true;
+	spriteListSetPerso(_spritePlaceList, perso, true);   // FUN_00427eb0
 	recompositeSpriteLayer();
 	debugC(1, kDebugScript, "showPerso: %d", perso);
 }
@@ -1088,8 +1087,7 @@ void CryOmni3DEngine_Atlantis::hidePerso(int perso) {
 	for (int h : _hiddenPersos) if (h == perso) { found = true; break; }
 	if (!found)
 		_hiddenPersos.push_back(perso);
-	for (SpritePlaceEntry &e : _spritePlaceList)
-		if (e.persoId == perso) e.active = false;
+	spriteListSetPerso(_spritePlaceList, perso, false);
 	recompositeSpriteLayer();
 	debugC(1, kDebugScript, "execConSetCommand: hide perso %d", perso);
 }

@@ -85,6 +85,30 @@ bool stopPlaceSpriteAnim(Common::Array<SpritePlaceEntry> &entries, uint16 vue, i
 	return true;
 }
 
+void spriteListApplyHidden(Common::Array<SpritePlaceEntry> &entries, const Common::Array<int> &hidden) {
+	for (SpritePlaceEntry &e : entries) {
+		if (e.persoId <= 0)
+			continue;
+		for (int h : hidden)
+			if (h == e.persoId) {
+				e.active = false;
+				break;
+			}
+	}
+}
+
+void spriteListSetPerso(Common::Array<SpritePlaceEntry> &entries, int perso, bool active) {
+	for (SpritePlaceEntry &e : entries)
+		if (e.persoId == perso)
+			e.active = active;
+}
+
+void spriteListEnterPlace(Common::Array<SpritePlaceEntry> &entries, uint16 vue) {
+	for (SpritePlaceEntry &e : entries)
+		if (e.placeId == vue)
+			e.frame = 0;
+}
+
 bool bowFrameStep(bool bowMode, bool click, int angleWarpY, int &tirFleche, uint &arrowFrame) {
 	bool consumed = false;
 	if (click && bowMode) {

@@ -53,6 +53,29 @@ bool animatePlaceSprites(Common::Array<SpritePlaceEntry> &entries, uint16 vue, u
 bool startPlaceSpriteAnim(Common::Array<SpritePlaceEntry> &entries, uint16 vue, int n, uint &current);
 bool stopPlaceSpriteAnim(Common::Array<SpritePlaceEntry> &entries, uint16 vue, int n);
 
+// The active flag (+0x04) of the place-sprite table 0x00590510.  Its only
+// writers (operand scan of atlantis.exe, atlantis-re
+// tools/emu/scripts_sprite_active.py --xrefs): the list load FUN_00424a20
+// (0x00424f7a) with FUN_00427d30 for the hidden ids (0x00427d93), HidePerso
+// FUN_00427bd0 (0x00427c57), ShowPerso FUN_00427eb0 (0x00427f30),
+// NEWWSPRANIM / STOPWSPRANIM FUN_00428da8 (0x00428e07, 0x00428ecc) and the
+// end of a type-2 cycle FUN_00425304 (0x004255d7).  Entering a place
+// (FUN_0042431c) writes the frame, the frame count and the SPW buffers only,
+// so a flag set by a script stays until the next list load (a WAM load).
+// See atlantis-re: experiments/2026-10-15-95-sprite-active-flag.md.
+
+// FUN_00427d30, run by the list load for each row: a row whose id is in the
+// hidden-perso list starts inactive.
+void spriteListApplyHidden(Common::Array<SpritePlaceEntry> &entries, const Common::Array<int> &hidden);
+
+// FUN_00427eb0 (active) / FUN_00427bd0 (inactive): every row of the perso,
+// in every view.
+void spriteListSetPerso(Common::Array<SpritePlaceEntry> &entries, int perso, bool active);
+
+// FUN_0042431c for view vue: frame 0 (the caller sets the frame count from
+// the SPW header); the active flag is left as it is.
+void spriteListEnterPlace(Common::Array<SpritePlaceEntry> &entries, uint16 vue);
+
 // atlantis.exe FUN_0041bfa0 @ 0x0041c61d..0x0041c6a0, once per warp frame
 // after the frame is drawn: a left click in bow mode is consumed and, when
 // AngleWarpY < 20, sets TirFleche to 1; then, while TirFleche is non-zero,

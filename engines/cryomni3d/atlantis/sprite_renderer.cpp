@@ -258,6 +258,9 @@ void CryOmni3DEngine_Atlantis::loadSpritePlaceList() {
 	}
 
 	delete[] buf;
+	// FUN_00427d30 from the parse FUN_00424a20: the rows of hidden persos
+	// start inactive.
+	spriteListApplyHidden(_spritePlaceList, _hiddenPersos);
 	debugC(1, kDebugVideo, "loadSpritePlaceList: %u entries from '%s'",
 	      _spritePlaceList.size(), listFile.c_str());
 }
@@ -363,25 +366,21 @@ void CryOmni3DEngine_Atlantis::compositeNPCSprites() {
 	if (!_warpLoaded)
 		return;
 
-	// Rebaseline each current-place sprite to its parsed startActive flag so
-	// state from a previous place doesn't leak; a persoId in _hiddenPersos
-	// stays deactivated (a /set(hideperso=N) persists across places).
+	// FUN_0042431c: frame 0 and frame count = SPW header dword +4 for each
+	// entry of the place.  The active flags are not touched: a sprite shown
+	// or hidden by a script, started or stopped by NEWWSPRANIM /
+	// STOPWSPRANIM, or ended by its type-2 cycle stays so until the next list
+	// load (see sprite_anim.h).
+	spriteListEnterPlace(_spritePlaceList, (uint16)_currentPlaceId);
 	for (SpritePlaceEntry &e : _spritePlaceList) {
 		if (e.placeId != (uint16)_currentPlaceId)
 			continue;
-		e.active = e.startActive;
-		// FUN_0042431c: frame 0, frame count = SPW header dword +4.
-		e.frame  = 0;
 		e.frameCount = 0;
 		Common::ScopedPtr<Common::SeekableReadStream> spw(openBigFileStream(kFileTypeSpriteCyclo, e.spwFile));
 		if (spw && spw->seek(4)) {
 			uint32 n = spw->readUint32LE();
 			if (!spw->err())
 				e.frameCount = (int)n;
-		}
-		if (e.persoId > 0) {
-			for (int h : _hiddenPersos)
-				if (h == e.persoId) { e.active = false; break; }
 		}
 	}
 

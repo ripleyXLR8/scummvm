@@ -449,6 +449,12 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	// FUN_0041eda8(disc - 1)).  Saves older than ext v10 have none.
 	if (savedDisc >= 0 && savedDisc != _currentDisc)
 		changeDisc((uint)(savedDisc - 1) & 0xff);
+	// The hidden-perso list is one of the 25 fields read before the WAM load
+	// (steps 2 and 6), whose list parse leaves its persos' rows inactive
+	// (FUN_00424a20 -> FUN_00427d30).
+	_hiddenPersos.clear();
+	if (hasExt)
+		_hiddenPersos = savedHiddenPersos;
 	Common::String wamName(wamNameC);
 	if (!wamName.empty())
 		setupWAMByName(wamName);   // FUN_00421ebc on the saved WAM name
@@ -493,9 +499,7 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	// and its chapter change clears it before /INIT (memset 0x00602f10).
 	(void)savedSubjects;
 	(void)keepInitSubjects;
-	_hiddenPersos.clear();
 	if (hasExt) {
-		_hiddenPersos = savedHiddenPersos;
 		for (const auto &kv : savedGameVars)
 			if (isPersistentGameVar(kv._key))
 				_gameVars[kv._key] = kv._value;
