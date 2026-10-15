@@ -161,6 +161,24 @@ inline char conTrackLetter(uint lineIdx) {
 	return (char)('A' + lineIdx);
 }
 
+// Escape during a talking-head line (FUN_0041a298 @ 0x0041a3c0 sets
+// 0x00496134 while 0x00496188 == 1): after the line the section executor
+// FUN_0042844c (0x00428b6d..0x00428bcd) walks the text up to the next '/'
+// and adds 1 to the track letter for each '[' it passes, then runs that '/'
+// line (/set or /go) and goes on.  In the item list: the dialog items from
+// `next` on are skipped up to the first /set item (or the end of the items,
+// where the /go or the next header is), each one counted in lineIdx.
+// Returns the index of the item to run next.  Checked on every line of
+// every walk of the game: no '/' stands inside a skipped line.
+// See atlantis-re: experiments/2026-10-16-03-dialog-escape-skip.md.
+inline uint conEscapeSkip(const Common::Array<ConSectionItem> &items, uint next, uint &lineIdx) {
+	while (next < items.size() && !items[next].isSet) {
+		lineIdx++;
+		next++;
+	}
+	return next;
+}
+
 // The ArriveeVue of the place loop's first arrival scan after a chapter load
 // (a checkpoint load, a game-over reload or a new game: all go through
 // FUN_0042de5c): its chapter change FUN_00427634 sets ARRIVEEVUE to LastVue

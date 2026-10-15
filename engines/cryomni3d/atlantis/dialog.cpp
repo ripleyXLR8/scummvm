@@ -500,6 +500,7 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 		      item.line.speaker.c_str(), item.line.params.c_str(), persoId,
 		      effCamNum, vid.c_str(), spfBase.c_str(), view.view.alpha, view.view.beta,
 		      view.kept.alpha, view.kept.beta);
+		_dialEscapeSkip = false;
 		playSingleConLine(sec.id, conTrackLetter(lineIdx++), item.line.text, vid,
 		                  spfBase,
 		                  /*hasAngle=*/false, 0, 0, effCamNum,
@@ -511,6 +512,15 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 		if (_warpLoaded) {
 			_omni3dMan.setAlpha(view.kept.alpha);
 			_omni3dMan.setBeta(view.kept.beta);
+		}
+		// Escape during the talking head: the following lines up to the next
+		// /set (or the /go, or the end) are skipped, their letters counted
+		// (FUN_0042844c @ 0x00428b6d..0x00428bcd).
+		if (_dialEscapeSkip) {
+			_dialEscapeSkip = false;
+			uint letters = (uint)lineIdx;
+			itemIdx = conEscapeSkip(sec.items, itemIdx + 1, letters) - 1;
+			lineIdx = (int)letters;
 		}
 	}
 	// A /go target runs in the same walk of the original (below): the end
@@ -1099,8 +1109,12 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 				if (!voiceStarted && ubbFramesShown >= 2)
 					startVoice();
 				pollEvents();
-				if (getCurrentMouseButton() == 1 ||
-				        (escapeSkips && checkKeysPressed(1, Common::KEYCODE_ESCAPE))) {
+				const bool escape = escapeSkips && checkKeysPressed(1, Common::KEYCODE_ESCAPE);
+				if (escape || getCurrentMouseButton() == 1) {
+					// Escape also sets the dialog-skip flag 0x00496134 that
+					// FUN_0042844c reads after the line (conEscapeSkip).
+					if (escape)
+						_dialEscapeSkip = true;
 					if (voiceStarted)
 						_mixer->stopHandle(handle);
 					break;

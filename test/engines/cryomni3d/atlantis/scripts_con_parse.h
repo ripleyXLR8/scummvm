@@ -360,6 +360,111 @@ public:
 		TS_ASSERT_EQUALS(narr, 364u);
 		TS_ASSERT_EQUALS(mismatches, 0u);
 	}
+
+	// Escape during a talking-head line, after every played line of every
+	// walk: the lines played after it, with their letters.  Expected:
+	// FUN_0042844c with 0x00496134 set after line j (golden
+	// video_dialog_escape.txt, atlantis-re tools/emu/video_dialog_escape.py,
+	// experiment 2026-10-16-03).  Port: the walk of
+	// test_track_letters_vs_original with conEscapeSkip after line j, as
+	// playConSection runs it.
+	void test_escape_skip_vs_original() {
+		using namespace CryOmni3D::Atlantis;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("escape skip: no game data configured, skipped");
+			return;
+		}
+		Common::Array<Common::String> lines;
+		TS_ASSERT(AtlantisTest::loadGoldenLines("video_dialog_escape.txt", lines));
+		ScriptsTest::Big big;
+		Common::HashMap<Common::String, ConScript *> scripts;
+		uint rows = 0, skipping = 0, mismatches = 0;
+		for (uint li = 0; li < lines.size(); li++) {
+			const Common::String &l = lines[li];
+			if (!l.hasPrefix("E "))
+				continue;
+			char con[16], kind[8];
+			int body = 0, sid = 0, escAt = 0, skipped = 0;
+			if (sscanf(l.c_str() + 2, "%15s %d %7s %d esc %d skipped %d", con, &body, kind, &sid, &escAt, &skipped) != 6) {
+				TS_FAIL(l.c_str());
+				continue;
+			}
+			rows++;
+			if (skipped)
+				skipping++;
+			if (!scripts.contains(con)) {
+				Common::Array<char> data;
+				TS_ASSERT(big.get(Common::String::format("SCENAR\\%s.CON", con), data));
+				ConScript *s = new ConScript();
+				s->parse(data.begin(), data.size());
+				scripts[con] = s;
+			}
+			const ConScript &script = *scripts[con];
+			const ConSection *start = nullptr;
+			for (uint i = 0; i < script.sections().size() && !start; i++)
+				if (script.sections()[i].bodyOffset == body)
+					start = &script.sections()[i];
+			if (!start) {
+				mismatches++;
+				continue;
+			}
+			Common::String got;
+			int played = 0;
+			ConSection cur = *start;
+			for (uint guard = 0; guard < 64; guard++) {
+				uint lineIdx = 0;
+				bool stop = false;
+				for (uint k = 0; k < cur.items.size() && !stop; k++) {
+					const ConSectionItem &it = cur.items[k];
+					if (!it.isSet) {
+						if (played >= escAt)
+							got += Common::String::format(" %d%c", cur.id, conTrackLetter(lineIdx));
+						lineIdx++;
+						if (++played == escAt)
+							k = conEscapeSkip(cur.items, k + 1, lineIdx) - 1;
+						continue;
+					}
+					if (scumm_strnicmp(it.setCmd.c_str(), "chapter=", 8) == 0 ||
+					        (scumm_strnicmp(it.setCmd.c_str(), "gameover=", 9) == 0 && atoi(it.setCmd.c_str() + 9) != 0))
+						stop = true;
+				}
+				if (stop || cur.gotoId <= 0)
+					break;
+				const int target = cur.gotoId;
+				if (!script.gotoSection(target, cur))
+					break;
+				cur.id = target;
+			}
+			Common::String want;
+			const char *p = strchr(l.c_str(), ':');
+			Common::String rest(p ? p + 1 : "");
+			for (uint q = 0; q < rest.size();) {
+				while (q < rest.size() && rest[q] == ' ')
+					q++;
+				uint e = q;
+				while (e < rest.size() && rest[e] != ' ')
+					e++;
+				if (e > q) {
+					Common::String tok = rest.substr(q, e - q);
+					const char *c = strchr(tok.c_str(), ':');
+					Common::String t(c ? c + 1 : tok.c_str());
+					t.toUppercase();
+					want += " " + t;
+				}
+				q = e;
+			}
+			if (got != want) {
+				mismatches++;
+				if (mismatches <= 10)
+					warning("%s body %d esc %d: port%s, original%s", con, body, escAt, got.c_str(), want.c_str());
+			}
+		}
+		for (auto &kv : scripts)
+			delete kv._value;
+		TS_ASSERT_EQUALS(rows, 2797u);
+		TS_ASSERT_EQUALS(skipping, 1546u);
+		TS_ASSERT_EQUALS(mismatches, 0u);
+	}
 };
 
 #endif
