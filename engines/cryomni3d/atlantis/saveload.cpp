@@ -499,6 +499,15 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 			if (isPersistentGameVar(kv._key))
 				_gameVars[kv._key] = kv._value;
 	}
+	// Step 4 (both paths, after the reads): ZOOM = 0 and NEWSOUND = 0
+	// (stores @ 0x0042e2b5 / 0x0042e2d1) and the last started NewSound
+	// 0x006cd87c = 0, before the chapter change polls NewSound
+	// (FUN_00427634 @ 0x0042e390).  A NewSound held by the checkpoint is
+	// therefore never played on a reload.
+	// See atlantis-re: functions/audio-FUN_00432a64.md, experiments/2026-10-15-77.
+	_gameVars["zoom"] = 0;
+	_gameVars["newsound"] = 0;
+	_newSoundLast = 0;
 
 	// The saved inventory, before /INIT (which may change it).
 	for (uint i = 0; i < _inventory.size(); i++) {
