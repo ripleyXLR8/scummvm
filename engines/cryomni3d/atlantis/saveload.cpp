@@ -537,6 +537,8 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	// The place loop's first arrival scan reads ARRIVEEVUE = the restored
 	// LastVue, and does not run when it is 0 (0x00423b48): see gameStep.
 	_arrivalAfterLoad = true;
+	// FUN_0042de5c @ 0x0042e2ec: the bar shows records 0..8 again.
+	_toolbar.resetInventoryFirst();
 
 	// Restore the music selection last: loadConScript above may have run
 	// musicStop(); musicUpdate() picks the saved track back up on the next

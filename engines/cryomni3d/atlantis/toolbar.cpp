@@ -95,20 +95,23 @@ void Atlantis_Toolbar::addZone(Common::Rect rect, ZoneCallback callback) {
 }
 
 void Atlantis_Toolbar::inventoryChanged(uint newPosition) {
-	if (newPosition != uint(-1) && newPosition > _inventoryOffset)
-		_inventoryOffset = newPosition - (kInventorySlots - 1);
+	// The first shown record 0x00496924 does not follow the inventory: its
+	// only writers are the edge scrolls of FUN_0042c8ac / FUN_0042cc98
+	// (0x0042cbba, 0x0042cbe8, 0x0042cf55, 0x0042cf83) and FUN_0042de5c,
+	// which sets it to 0 (0x0042e2ec).
+	// See atlantis-re: experiments/2026-10-16-05-inventory-first-shown.md.
+	(void)newPosition;
 	updateZones();
 }
 
 void Atlantis_Toolbar::updateZones() {
-	// Max scroll offset (how far we can page right).
+	// How far the edge scroll can go is scrollStep's rule (first < count - 7),
+	// checked when it scrolls; nothing clamps the first shown record here.
 	_inventoryMaxOffset = 0;
 	for (uint i = kInventorySlots; i < _inventory->size(); i++) {
 		if ((*_inventory)[i] != nullptr)
 			_inventoryMaxOffset = i - (kInventorySlots - 1);
 	}
-	if (_inventoryOffset > _inventoryMaxOffset)
-		_inventoryOffset = _inventoryMaxOffset;
 }
 
 Common::Array<Atlantis_Toolbar::Zone>::const_iterator Atlantis_Toolbar::hitTestZones(

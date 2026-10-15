@@ -428,4 +428,112 @@ public:
 		// Pressed on slot 0: no engine call on this path.
 		TS_ASSERT_EQUALS(tb.callbackInventory(0, CryOmni3D::kDragStatus_Pressed), 1u);
 	}
+
+	// The first shown record 0x00496924 over the play-through of the 74
+	// original checkpoints (golden ui_inventory_first.txt, atlantis-re
+	// tools/emu/ui_inventory_first.py, experiment 2026-10-16-05): its only
+	// writers are the edge scrolls and FUN_0042de5c (0 on a load), so it is
+	// 0 at every checkpoint, also with 10..12 records.  Port: the toolbar fed
+	// by the inventory's change callback as in the engine, the bar opening's
+	// updateZones, and resetInventoryFirst on a load.
+	struct ToolbarCb {
+		CryOmni3D::Atlantis::Atlantis_Toolbar *tb;
+		void cb(uint pos) { tb->inventoryChanged(pos); }
+	};
+	void test_inventory_first_over_checkpoints() {
+		using namespace GraphicsToolbarTest;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("inventory first: no game data configured, skipped");
+			return;
+		}
+		Common::Array<Common::String> lines;
+		TS_ASSERT(AtlantisTest::loadGoldenLines("ui_inventory_first.txt", lines));
+		Common::Array<Common::Array<uint> > lists;
+		Common::Array<uint> all;
+		for (uint li = 0; li < lines.size(); li++) {
+			if (!lines[li].hasPrefix("C "))
+				continue;
+			const char *p = strstr(lines[li].c_str(), " ids ");
+			Common::Array<uint> ids;
+			for (p = p ? p + 5 : ""; *p;) {
+				ids.push_back((uint)atoi(p));
+				while (*p && *p != ',')
+					p++;
+				if (*p == ',')
+					p++;
+			}
+			for (uint k = 0; k < ids.size(); k++) {
+				bool seen = false;
+				for (uint a = 0; a < all.size(); a++)
+					seen |= all[a] == ids[k];
+				if (!seen)
+					all.push_back(ids[k]);
+			}
+			lists.push_back(ids);
+		}
+		TS_ASSERT_EQUALS(lists.size(), 74u);
+		CryOmni3D::Objects objects;
+		portSetupObjects(objects, all);
+		CryOmni3D::Atlantis::Atlantis_Toolbar tb;
+		CryOmni3D::Inventory inv;
+		ToolbarCb cb = { &tb };
+		inv.init(30, new Common::Functor1Mem<uint, void, ToolbarCb>(&cb, &ToolbarCb::cb));
+		initToolbarNoGfx(tb, &inv);
+		uint bad = 0, big = 0;
+		for (uint c = 0; c < lists.size(); c++) {
+			const Common::Array<uint> &ids = lists[c];
+			// The play since the previous checkpoint: removals, then appends.
+			Common::Array<uint> cur;
+			for (uint i = 0; i < inv.size(); i++)
+				if (inv[i])
+					cur.push_back(inv[i]->idOBJ());
+			for (uint k = 0; k < cur.size(); k++) {
+				uint want = 0, have = 0;
+				for (uint a = 0; a < ids.size(); a++)
+					want += ids[a] == cur[k];
+				for (uint a = 0; a < cur.size(); a++)
+					have += cur[a] == cur[k];
+				if (have > want) {
+					portInvent(objects, inv, cur[k], 0);
+					cur.remove_at(k);
+					k = (uint)-1;
+				}
+			}
+			for (uint k = 0; k < ids.size(); k++) {
+				uint want = 0, have = 0;
+				for (uint a = 0; a < ids.size(); a++)
+					want += ids[a] == ids[k];
+				for (uint a = 0; a < cur.size(); a++)
+					have += cur[a] == ids[k];
+				if (have < want) {
+					portInvent(objects, inv, ids[k], 1);
+					cur.push_back(ids[k]);
+				}
+			}
+			tb.updateZones();   // the bar opens
+			if (ids.size() > 9)
+				big++;
+			if (tb.inventoryFirst() != 0)
+				bad++;
+			// A load of the checkpoint (loadGame rebuilds the list).
+			tb.resetInventoryFirst();
+			tb.updateZones();
+			if (tb.inventoryFirst() != 0)
+				bad++;
+		}
+		TS_ASSERT_EQUALS(big, 32u);
+		TS_ASSERT_EQUALS(bad, 0u);
+		// The edge scroll goes up to count - 7 and the next opening keeps it
+		// (no clamp to count - 9).
+		uint n = 0;
+		for (uint i = 0; i < inv.size(); i++)
+			if (inv[i])
+				n = i + 1;
+		int step;
+		while ((step = CryOmni3D::Atlantis::Atlantis_Toolbar::scrollStep(631, 401, n, tb.inventoryFirst())) != 0)
+			tb._inventoryOffset += step;
+		TS_ASSERT_EQUALS(tb.inventoryFirst(), n - 7);
+		tb.updateZones();
+		TS_ASSERT_EQUALS(tb.inventoryFirst(), n - 7);
+	}
 };

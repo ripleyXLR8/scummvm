@@ -590,6 +590,7 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 			if (_currentDisc != 1)
 				changeDisc(0);
 			changeChapter(1);             // new game (also the fallback)
+			_toolbar.resetInventoryFirst();   // FUN_0042de5c @ 0x0042e2ec
 			// FUN_0042de5c with no checkpoint: LastVue = 1 (0x0042e285), then
 			// ARRIVEEVUE = LastVue (FUN_00427634 @ 0x0042777d), whatever the
 			// /INIT Vue= of chapter 1 did.

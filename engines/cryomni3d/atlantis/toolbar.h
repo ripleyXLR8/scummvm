@@ -75,6 +75,10 @@ public:
 	bool slideIn(const Graphics::Surface *original);
 	bool slideOut(const Graphics::Surface *original);
 	void inventoryChanged(uint newPosition);
+	// FUN_0042de5c (load, game-over reload, new game): first shown record
+	// 0x00496924 = 0, end 0x00496928 = 9 (0x0042e2ec).
+	void resetInventoryFirst() { _inventoryOffset = 0; }
+	uint inventoryFirst() const { return _inventoryOffset; }
 	// The guest whose portrait was clicked in the open bar (0: none); the
 	// caller talks to it (atlantis.exe FUN_0042c8ac @ 0x0042cbfe).
 	int32 guestClicked() const { return _guestClicked; }
