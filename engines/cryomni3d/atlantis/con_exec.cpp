@@ -419,6 +419,7 @@ void CryOmni3DEngine_Atlantis::runPuzzleZone(int puzzleId) {
 
 void CryOmni3DEngine_Atlantis::runSelScan() {
 	// FUN_004277c8: the first /sel entry whose condition holds runs.
+	beginConScan();
 	for (ConSection &sec : _conScript.sections()) {
 		if (!sec.isEntry || sec.isCon || sec.isTimer)
 			continue;
@@ -803,6 +804,7 @@ bool CryOmni3DEngine_Atlantis::runConTimers(bool fromWarp) {
 	for (int timer = 1; timer <= 2; timer++) {
 		if (_gameVars.getValOrDefault(timer == 1 ? "testtime1" : "testtime2", 0) == 0)
 			continue;
+		beginConScan();   // FUN_0042bef4 / FUN_0042bfa4
 		for (ConSection &sec : _conScript.sections()) {
 			if (!sec.isEntry || !sec.isTimer || sec.timerNum != timer)
 				continue;
@@ -953,6 +955,7 @@ void CryOmni3DEngine_Atlantis::runConClick() {
 			return e->evalSelSection(sec, e->vueVariable());
 		}
 	};
+	beginConScan();   // FUN_004281f8
 	int idx = findConClickEntry(_conScript, _conPlayCounters, &Ctx::test, this);
 	if (idx >= 0) {
 		ConSection &sec = _conScript.sections()[idx];
@@ -993,7 +996,7 @@ bool CryOmni3DEngine_Atlantis::evalSelSection(const ConSection &sec, int current
 	if (sec.condOffset < 0)
 		return true;
 	EngineConEvaluator eval(_conVarNames, _inventory, _gameVars, currentVue);
-	return eval.evaluate(_conScript.text(), (uint32)sec.condOffset);
+	return eval.evaluate(_conScript.text(), (uint32)sec.condOffset, _conScanKey);
 }
 
 void CryOmni3DEngine_Atlantis::runArrivalSelSections(int arrivedVue, int fromVue) {
@@ -1018,6 +1021,7 @@ void CryOmni3DEngine_Atlantis::runArrivalSelSections(int arrivedVue, int fromVue
 		}
 	};
 	Ctx ctx = { this, arrivedVue };
+	beginConScan();   // FUN_004280f8
 	const int idx = findSelEntry(_conScript, &Ctx::test, &ctx);
 	if (idx >= 0) {
 		ConSection &sec = _conScript.sections()[idx];
@@ -1173,6 +1177,7 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 	}
 
 	ConSection *play = nullptr;
+	beginConScan();   // FUN_004281f8
 	for (ConSection &sec : _conScript.sections()) {
 		if (!sec.isCon)
 			continue;

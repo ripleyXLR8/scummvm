@@ -402,14 +402,20 @@ int ConEvaluator::value(const Common::String &name) const {
 	return (it != _vars.end()) ? it->_value : 0;
 }
 
-bool ConEvaluator::evaluate(const Common::Array<char> &text, uint32 offset) const {
+bool ConEvaluator::evaluate(const Common::Array<char> &text, uint32 offset, byte *keyBuffer) const {
 	const TextCursor t(text);
 	// The key buffer of the original is a 16-byte stack array that is never
-	// cleared or terminated; FUN_00429e54 reads it past the key.  Its initial
-	// content is undefined in the original: it is zero here, as in the
-	// emulation that produced the reference results.
-	byte key[16];
-	memset(key, 0, sizeof(key));
+	// cleared or terminated; FUN_00429e54 reads it past the key.  What it
+	// holds at the start of a scan is undefined in the original: zero here,
+	// as in the emulation that produced the reference results.  Within a
+	// scan it keeps what earlier evaluations wrote (atlantis-re experiments/
+	// 2026-10-16-24).
+	byte ownKey[kKeyBufferSize];
+	byte *key = keyBuffer;
+	if (!key) {
+		memset(ownKey, 0, sizeof(ownKey));
+		key = ownKey;
+	}
 	int pending = 0;
 	uint32 p = offset;
 
@@ -435,7 +441,7 @@ bool ConEvaluator::evaluate(const Common::Array<char> &text, uint32 offset) cons
 				key[i] -= 0x20;
 
 		// FUN_00429e54: "INVENT" then atoi over the rest of the buffer.
-		int32 objId = (memcmp(key, "INVENT", 6) == 0) ? atoiBuf(key, sizeof(key), 6) : 0;
+		int32 objId = (memcmp(key, "INVENT", 6) == 0) ? atoiBuf(key, kKeyBufferSize, 6) : 0;
 		if (objId == 0) {
 			int index = _names.index((const char *)key, len);
 			if (index == -1) {

@@ -382,7 +382,13 @@ private:
 	void playPuzzle(int puzzleId);
 	void runPuzzleZone(int puzzleId);
 	// Evaluate a /sel section's condition list (left-to-right short-circuit).
+	// It uses the current scan's key buffer (_conScanKey).
 	bool evalSelSection(const ConSection &sec, int currentVue) const;
+	// The key buffer of FUN_004298ac kept across one scan (FUN_004280f8,
+	// FUN_004281f8, FUN_0042bef4, FUN_0042bfa4 each call the evaluator from
+	// one frame); beginConScan() starts a scan with it zeroed.
+	mutable byte _conScanKey[ConEvaluator::kKeyBufferSize];
+	void beginConScan() const { memset(_conScanKey, 0, sizeof(_conScanKey)); }
 	// Execute a fired section's body (its /set commands and /go redirect; the
 	// dialog lines are played once the dialog layer lands).
 	// chain: the walk's entry angles and ClicPerso, carried into a /go target.

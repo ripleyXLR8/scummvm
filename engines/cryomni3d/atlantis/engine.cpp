@@ -109,6 +109,7 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	memset(_spriteAnimLast, 0, sizeof(_spriteAnimLast));
 	_spriteAnimCurrent.resize(512, 0);
 	_conPlayCounters.resize(kConPlayCounterCount, 0);
+	beginConScan();
 	// malloc(0x12c000) @ 0x00418f83: both IX buffers, RGB565 640 x 480.
 	_ixVideoBuffers = new byte[2 * 640 * 480 * 2]();
 	for (int i = 0; i < 4; i++)

@@ -293,6 +293,47 @@ inline bool portEval(const Common::String &line, const VarState &st) {
 	return eval.evaluate(buf, 0);
 }
 
+// The VARIAS.CON names in lower case, in file order.
+inline Common::Array<Common::String> variasNamesLower(Big &big) {
+	Common::Array<char> varias;
+	Common::Array<Common::String> out;
+	if (!big.get("SCENAR\\VARIAS.CON", varias))
+		return out;
+	Common::String cur;
+	for (uint i = 0; i <= varias.size(); i++) {
+		const char ch = i < varias.size() ? varias[i] : '\n';
+		if (ch == '\r' || ch == '\n') {
+			if (!cur.empty()) {
+				cur.toLowercase();
+				out.push_back(cur);
+			}
+			cur.clear();
+		} else {
+			cur += ch;
+		}
+	}
+	return out;
+}
+
+// portEval on a line of a whole CON text (the scanner's view) with a key
+// buffer kept by the caller across one scan (keyBuffer may be null).
+inline bool portEvalAt(const Common::Array<char> &text, uint32 offset, const VarState &st, byte *keyBuffer) {
+	static const CryOmni3D::Sprites sprites;
+	static NullInventoryCb nullCb;
+	Common::Array<uint> ids;
+	for (uint i = 0; i < st.inventory.size(); i++)
+		ids.push_back((uint)st.inventory[i]);
+	CryOmni3D::Objects objects;
+	CryOmni3D::Atlantis::buildInventoryCatalogue(sprites, ids, objects);
+	CryOmni3D::Inventory inventory;
+	inventory.init(MAX<uint>(ids.size(), 1),
+	               new Common::Functor1Mem<uint, void, NullInventoryCb>(&nullCb, &NullInventoryCb::cb));
+	for (uint i = 0; i < objects.size(); i++)
+		CryOmni3D::Atlantis::inventoryAppend(inventory, &objects[i]);
+	CryOmni3D::Atlantis::ConEvaluator eval(variasNames(), st.vars, inventory);
+	return eval.evaluate(text, offset, keyBuffer);
+}
+
 } // End of namespace ScriptsTest
 
 #endif

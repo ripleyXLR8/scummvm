@@ -315,6 +315,127 @@ public:
 		TS_ASSERT_EQUALS(mismatches, 0u);
 	}
 
+	// One scan keeps FUN_004298ac's key buffer across its evaluations, so an
+	// INVENT key can read the digit a PARLETEMPn key left after it: in
+	// CHAPI063's /tim2 scan, (time2>T)&(Invent408=1) reads INVENT4082 after
+	// the (Parletemp2=N) lines and never holds (Wine trace
+	// 20261016_123506_wine_keystack63tim, emulated scan).  Expected: the
+	// original scanners FUN_004280f8 / FUN_004281f8 (play counters 0) /
+	// FUN_0042bef4 / FUN_0042bfa4 with the real evaluator, run on each
+	// CHAPI file for the 64 INVENT lines x 64 states of scripts_eval, the
+	// stack zeroed at the start of the scan only; the chosen body line, golden
+	// scripts_scan_keystack.txt (atlantis-re tools/emu/scripts_scan_keystack.py,
+	// experiment 2026-10-16-24).  Port: findSelEntry, the /con entry rule
+	// (conEntryAllowed) and the timer loop of runConTimers with the real
+	// ConEvaluator and one key buffer per scan, as evalSelSection uses
+	// _conScanKey.
+	void test_scan_key_buffer_vs_original() {
+		using namespace CryOmni3D::Atlantis;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("scripts_con_eval: no game data configured, skipped");
+			return;
+		}
+		Common::File gf;
+		TS_ASSERT(gf.open(Common::FSNode(Common::Path(AtlantisTest::goldenDir(), '/').appendComponent("scripts_scan_keystack.txt"))));
+		ScriptsTest::Big big;
+		const Common::Array<Common::String> varNames = ScriptsTest::variasNamesLower(big);
+		Common::String curFile;
+		Common::Array<char> data;
+		Common::Array<Common::String> lines;
+		ConScript script;
+		const Common::Array<byte> counters(kConPlayCounterCount, 0);
+		uint cases = 0, mismatches = 0, persistentDiffers = 0;
+		while (!gf.eos()) {
+			Common::String ln = gf.readLine();
+			if (ln.empty() || ln[0] == '#' || ln.hasPrefix("cases"))
+				continue;
+			char file[32], kind[8];
+			uint lineIdx = 0, k = 0;
+			int expected = 0, resetRun = 0;
+			if (sscanf(ln.c_str(), "%31s %u %7s %u: %d / %d", file, &lineIdx, kind, &k, &expected, &resetRun) != 6) {
+				TS_FAIL(("bad golden line: " + ln).c_str());
+				break;
+			}
+			if (curFile != file) {
+				curFile = file;
+				TS_ASSERT(big.get(Common::String("SCENAR\\") + file, data));
+				lines.clear();
+				ScriptsTest::condLines(data, lines);
+				script = ConScript();
+				script.parse(data.begin(), data.size());
+			}
+			if (lineIdx >= lines.size()) {
+				TS_FAIL(("line index out of range: " + ln).c_str());
+				break;
+			}
+			ScriptsTest::VarState st;
+			ScriptsTest::makeState(lineIdx, k, varNames, lines[lineIdx], st);
+			byte key[ConEvaluator::kKeyBufferSize];
+			memset(key, 0, sizeof(key));
+			struct Ctx {
+				const ConScript *script;
+				const ScriptsTest::VarState *st;
+				byte *key;
+				static bool test(const ConSection &sec, void *ctx) {
+					const Ctx *c = (const Ctx *)ctx;
+					if (sec.condOffset < 0)
+						return true;
+					return ScriptsTest::portEvalAt(c->script->text(), (uint32)sec.condOffset, *c->st, c->key);
+				}
+			};
+			Ctx ctx = { &script, &st, key };
+			int idx = -1;
+			const Common::String kd(kind);
+			if (kd == "sel") {
+				idx = findSelEntry(script, &Ctx::test, &ctx);
+			} else if (kd == "con") {
+				// FUN_004281f8 itself: the first allowed /con entry whose
+				// condition holds, /Suj bodies included (FUN_00425cf4, i.e.
+				// findConClickEntry, skips those and scans on).
+				for (uint s = 0; s < script.sections().size(); s++) {
+					const ConSection &sec = script.sections()[s];
+					if (!sec.isEntry || !sec.isCon || !conEntryAllowed(sec, counters))
+						continue;
+					if (Ctx::test(sec, &ctx)) {
+						idx = (int)s;
+						break;
+					}
+				}
+			} else {
+				const int timer = kd == "tim1" ? 1 : 2;
+				for (uint s = 0; s < script.sections().size(); s++) {
+					const ConSection &sec = script.sections()[s];
+					if (!sec.isEntry || !sec.isTimer || sec.timerNum != timer)
+						continue;
+					if (Ctx::test(sec, &ctx)) {
+						idx = (int)s;
+						break;
+					}
+				}
+			}
+			int got = -1;
+			if (idx >= 0) {
+				// The body starts on the line after the condition line.
+				const int32 off = script.sections()[idx].condOffset;
+				got = 1;
+				for (int32 i = 0; i + 1 < off; i++)
+					if (data[i] == '\r' && data[i + 1] == '\n')
+						got++;
+			}
+			cases++;
+			if (expected != resetRun)
+				persistentDiffers++;
+			if (got != expected) {
+				mismatches++;
+				if (mismatches <= 10)
+					TS_WARN(Common::String::format("%s line %u %s state %u: port body line %d, original %d", file, lineIdx, kind, k, got, expected).c_str());
+			}
+		}
+		TS_ASSERT_EQUALS(cases, 4096u);
+		TS_ASSERT_EQUALS(persistentDiffers, 64u);   // the CHAPI063 /tim2 cases
+		TS_ASSERT_EQUALS(mismatches, 0u);
+	}
+
 	// The place loop's first arrival scan after a chapter load, for the 74
 	// original checkpoints and the new game (no checkpoint): ArriveeVue and
 	// the /sel section fired.  Expected: FUN_0042de5c then the head of

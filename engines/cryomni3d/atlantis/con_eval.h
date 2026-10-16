@@ -151,10 +151,19 @@ public:
 		_names(names), _vars(vars), _inventory(inventory) {}
 	virtual ~ConEvaluator() {}
 
+	// The 16-byte key buffer of FUN_004298ac (EBP-0x34).  The original never
+	// clears or terminates it, and within one scan every evaluation runs in
+	// the same stack frame, so a short key leaves the tail of an earlier,
+	// longer key in place (PARLETEMP1..3 leave a digit after an INVENTnnn
+	// key).  A scan keeps one buffer across its evaluations.
+	enum { kKeyBufferSize = 16 };
+
 	// True when the condition line starting at text[offset] holds.  The
 	// scans may run past the line, as in the original; bytes past the end of
-	// the text read as 0.
-	bool evaluate(const Common::Array<char> &text, uint32 offset) const;
+	// the text read as 0.  keyBuffer: the scan's buffer (kKeyBufferSize
+	// bytes), kept between calls; null evaluates with a zeroed buffer of its
+	// own.
+	bool evaluate(const Common::Array<char> &text, uint32 offset, byte *keyBuffer = nullptr) const;
 
 	// Value of the variable with this VARIAS.CON index.
 	int variableValue(int index) const;
