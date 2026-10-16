@@ -114,6 +114,18 @@ inline Line lineView(const Angles &kept, bool sethPath, int clicPerso,
 	return l;
 }
 
+// A talking-head line (not voice-only) whose row has no INITDIAL record:
+// its UBB name is empty, so FUN_0042ee88 opens "dialog\perso\" (FUN_00434814
+// @ 0x0042f005, cryo.dll _GL_CreateFile@28 -> _GL_FileOpen@8, mode 1).  With
+// the modes WinMain sets (_GL_SetErrorMode(3) @ 0x00418f1e,
+// _SetBigFileDebug(1) @ 0x00418f30) the open returns -1 without quitting;
+// FUN_0042ee88 shows error dialog 0x65 code 0xc ("Fichier introuvable : ")
+// and returns before the subtitle and the voice (0x0042f00f..0x0042f056);
+// FUN_0042844c ignores the result and goes on with the next line.
+inline bool headOpenFails(bool voiceOnly, bool haveRecord) {
+	return !voiceOnly && !haveRecord;
+}
+
 } // End of namespace DialogView
 
 } // End of namespace Atlantis

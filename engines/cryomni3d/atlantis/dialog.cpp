@@ -449,12 +449,13 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 		}
 		const bool voiceOnly = isOffCam || noSyc;
 		// A row without its INITDIAL record leaves an empty UBB name: the
-		// original then opens "dialog\perso\", which cryo.dll's
-		// _GL_FileOpen@8 fails on (error dialog or quit, experiment
-		// 2026-10-15-92); the port plays the voice over the panorama.
+		// original's open fails and the line is not played
+		// (DialogView::headOpenFails; atlantis-re experiment 2026-10-16-15).
+		bool headFails = false;
 		if (!voiceOnly) {
 			Common::HashMap<int, DialInitEntry>::const_iterator it =
 			    _dialInitData.find(dialRow);
+			headFails = DialogView::headOpenFails(voiceOnly, it != _dialInitData.end());
 			if (it != _dialInitData.end()) {
 				Common::String fn = it->_value.camUBB[camNum - 2];
 				if (!fn.empty() && !fn.equalsIgnoreCase("none")) {
@@ -498,11 +499,20 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 		      effCamNum, vid.c_str(), spfBase.c_str(), view.view.alpha, view.view.beta,
 		      view.kept.alpha, view.kept.beta);
 		_dialEscapeSkip = false;
-		playSingleConLine(sec.id, conTrackLetter(lineIdx++), item.line.text, vid,
-		                  spfBase,
-		                  /*hasAngle=*/false, 0, 0, effCamNum,
-		                  /*interactiveDialog=*/sec.isCon,
-		                  (!voiceOnly && !vid.empty()) ? dialRow : -1);
+		if (headFails) {
+			// The letter still counts (0x00428b21).  The original's error box
+			// is not shown.
+			warning("playConSection: section %d line %c: no INITDIAL row %d, "
+			        "line not played (the original reports \"Fichier introuvable\")",
+			        sec.id, conTrackLetter(lineIdx), dialRow);
+			lineIdx++;
+		} else {
+			playSingleConLine(sec.id, conTrackLetter(lineIdx++), item.line.text, vid,
+			                  spfBase,
+			                  /*hasAngle=*/false, 0, 0, effCamNum,
+			                  /*interactiveDialog=*/sec.isCon,
+			                  (!voiceOnly && !vid.empty()) ? dialRow : -1);
+		}
 		_dialVoiceOff = false;
 		_gameVars["clicperso"] = 0;   // after every line (0x00428b39)
 		// FUN_00451915(0x00bcb59c, 0x00bcb598) after every line (0x00428b5e).

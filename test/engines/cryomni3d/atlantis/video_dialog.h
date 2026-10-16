@@ -37,6 +37,7 @@
 #define private public
 #define protected public
 #include "cryomni3d/atlantis/subtitle_layout.h"
+#include "cryomni3d/atlantis/dialog_view.h"
 #include "cryomni3d/atlantis/engine.h"
 #undef private
 #undef protected
@@ -237,6 +238,53 @@ public:
 		}
 		TS_ASSERT_EQUALS(compared, 67 * 11);
 		TS_ASSERT_EQUALS(diffs, 0);
+	}
+
+	// Lines whose INITDIAL row has no record: the original's head open fails
+	// ("dialog\perso\" + an empty name), it reports the error and plays
+	// nothing of the line; every other talking-head line opens its UBB.
+	// Golden video_dialog_line_view.txt (the ORIGINAL FUN_0042844c on every
+	// dialog line, atlantis-re tools/emu/video_dialog_line_view.py): its
+	// "orig head row R" lines must have a record in the port's real
+	// loadDialInitData, its "orig UBB open fails (row R" lines none, and
+	// DialogView::headOpenFails must pick exactly the latter (atlantis-re
+	// experiment 2026-10-16-15).
+	void test_head_open_fails_vs_original() {
+		using namespace CryOmni3D::Atlantis;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("no game data configured; skipping");
+			return;
+		}
+		Common::Array<Common::String> golden;
+		TS_ASSERT(AtlantisTest::loadGoldenLines("video_dialog_line_view.txt", golden));
+		VideoPeek::Eng *e = VideoPeek::rawEngine();
+		new (&e->_bigFile) CryOmni3D::Atlantis::BigFileArchive();
+		new (&e->_dialInitData) Common::HashMap<int, VideoPeek::Eng::DialInitEntry>();
+		VideoPeek::addDataDirToSearchMan();
+		for (int cd = 1; cd <= 4; cd++)
+			e->_bigFile.open(Common::Path(Common::String::format("BIGCD%d.BIG", cd)));
+		e->loadDialInitData();
+		TS_ASSERT_EQUALS(e->_dialInitData.size(), 67u);
+		uint heads = 0, fails = 0, bad = 0;
+		for (uint g = 0; g < golden.size(); g++) {
+			const char *l = golden[g].c_str();
+			const char *h = strstr(l, "orig head row ");
+			const char *f = strstr(l, "orig UBB open fails (row ");
+			int row = 0;
+			if (h && sscanf(h, "orig head row %d", &row) == 1) {
+				heads++;
+				if (DialogView::headOpenFails(false, e->_dialInitData.contains(row)))
+					bad++;
+			} else if (f && sscanf(f, "orig UBB open fails (row %d", &row) == 1) {
+				fails++;
+				if (!DialogView::headOpenFails(false, e->_dialInitData.contains(row)))
+					bad++;
+			}
+		}
+		TS_ASSERT_EQUALS(heads, 2048u);
+		TS_ASSERT_EQUALS(fails, 7u);
+		TS_ASSERT_EQUALS(bad, 0u);
+		TS_ASSERT(!DialogView::headOpenFails(true, false));   // voice-only: no UBB opened
 	}
 
 	// Data test (atlantis-re experiments/2026-10-16-12-dialog-spf-frames.md):
