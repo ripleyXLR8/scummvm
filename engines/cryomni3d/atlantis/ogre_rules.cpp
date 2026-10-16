@@ -48,6 +48,16 @@ OgreRules::OgreRules() {
 	}
 }
 
+void OgreRules::resetBoard() {
+	memset(occ, 0, sizeof(occ));
+	p[kHero].flag = 1;  p[kHero].x = 0;  p[kHero].y = 0;
+	p[kQueen].flag = 0;
+	p[kOgreA].flag = 1; p[kOgreA].x = 6; p[kOgreA].y = 6;
+	p[kOgreB].flag = 1; p[kOgreB].x = 0; p[kOgreB].y = 6;
+	occ[p[kOgreA].y * 7 + p[kOgreA].x] = 1;
+	occ[p[kOgreB].y * 7 + p[kOgreB].x] = 1;
+}
+
 int OgreRules::cellColumn(int mouseX) {
 	int cell = 99;
 	for (int i = 0; i < 7; i++) {

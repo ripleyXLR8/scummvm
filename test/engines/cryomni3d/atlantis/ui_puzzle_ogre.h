@@ -106,18 +106,45 @@ class UiPuzzleOgreTestSuite : public CxxTest::TestSuite {
 	}
 
 public:
-	// Initial records (FUN_0044203c + FUN_004422b8): hero (0,0), ogres (6,6), (0,6).
-	// This checks only the test's stateKey() helper against the original's
-	// values: the port's start positions are set by the OgreGamePuzzle
-	// constructor (puzzle_ogregame.cpp), engine-bound code not linked here, so
-	// a wrong start position in the port is not caught by this test.
+	// Initial records (FUN_0044203c + FUN_004422b8): hero (0,0), ogres (6,6), (0,6),
+	// set by the port's OgreRules::resetBoard (ogre_rules.cpp), which the
+	// OgreGamePuzzle constructor calls before placeQueen.
 	void test_initial_pieces() {
-		// Original: 0x495e4c = {1,0,0}, ogre 2 {1,6,6}, ogre 3 {1,0,6} (set by FUN_004422b8).
+		// Original FUN_0044203c steps 2-3 then FUN_004422b8 (STATIC,
+		// 0x00442054..0x004422b7, 0x004422d0..0x0044234d; atlantis-re
+		// functions/puzzles-FUN_0044203c.md): hero {1,0,0}, queen flag 0,
+		// ogre A {1,6,6}, ogre B {1,0,6}.  The static image before the
+		// set-up (golden init.records) holds hero {1,0,0} and ogre A {1,6,6}
+		// already.  The constructor runs OgreRules::resetBoard, as here.
+		static const int kInitRecords[15] = { 1,0,0, 0,3,3, 1,6,6, 0,4,4, 0,5,5 };
 		Game g;
-		g.p[0].flag = 1; g.p[0].x = 0; g.p[0].y = 0;
-		g.p[2].flag = 1; g.p[2].x = 6; g.p[2].y = 6;
-		g.p[3].flag = 1; g.p[3].x = 0; g.p[3].y = 6;
-		TS_ASSERT_EQUALS(stateKey(g), Common::String("0,0,6,6,0,6,"));
+		g.p[1].x = 3; g.p[1].y = 3;   // queen: left as it is (placeQueen sets it)
+		g.occ[10] = 1;                // stale cell: cleared
+		g.resetBoard();
+		TS_ASSERT_EQUALS(g.p[0].flag, kInitRecords[0]);
+		TS_ASSERT_EQUALS(g.p[0].x, kInitRecords[1]);
+		TS_ASSERT_EQUALS(g.p[0].y, kInitRecords[2]);
+		TS_ASSERT_EQUALS(g.p[1].flag, 0);
+		TS_ASSERT_EQUALS(g.p[1].x, 3);
+		TS_ASSERT_EQUALS(g.p[1].y, 3);
+		TS_ASSERT_EQUALS(g.p[2].flag, kInitRecords[6]);
+		TS_ASSERT_EQUALS(g.p[2].x, kInitRecords[7]);
+		TS_ASSERT_EQUALS(g.p[2].y, kInitRecords[8]);
+		TS_ASSERT_EQUALS(g.p[3].flag, 1);
+		TS_ASSERT_EQUALS(g.p[3].x, 0);
+		TS_ASSERT_EQUALS(g.p[3].y, 6);
+		TS_ASSERT_EQUALS(stateKey(g), Common::String("0,0,6,6,0,6,42.48"));
+		// Occupancy: the port marks the two ogre cells (6,6) and (0,6) and
+		// nothing else.  The original leaves all 49 cells at 0; the
+		// breadth-first search of golden ui_puzzle2_start_occ.txt
+		// (same_transitions 1) shows both starts give the same game.
+		int marked = 0;
+		for (int i = 0; i < (int)sizeof(g.occ); i++)
+			if (g.occ[i])
+				marked++;
+		TS_ASSERT_EQUALS(marked, 2);
+		TS_ASSERT_EQUALS(g.occ[6 * 7 + 6], 1);
+		TS_ASSERT_EQUALS(g.occ[6 * 7 + 0], 1);
 	}
 
 	// Pick-up rectangle and abort strip: original sweep of every pixel gives

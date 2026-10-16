@@ -92,17 +92,11 @@ OgreGamePuzzle::OgreGamePuzzle(CryOmni3DEngine_Atlantis *engine)
 	loadPuzzleSpr(engine, "PUZCYCLO.SPR", _pieceFrames);
 	_bgLoaded = loadPuzzleTGA(engine, "PUZCYCLO.TGA", _bgPixels);
 
-	// Records as FUN_0044203c initializes them: hero (0,0), queen placed
-	// by placeQueen() with flag 0 (never a mover, never drawn outside the
-	// blink/win reveals), ogres at (6,6) and (0,6).
-	_rules.p[0].flag = 1; _rules.p[0].x = 0; _rules.p[0].y = 0;
-	_rules.p[1].flag = 0;
-	_rules.p[2].flag = 1; _rules.p[2].x = 6; _rules.p[2].y = 6;
-	_rules.p[3].flag = 1; _rules.p[3].x = 0; _rules.p[3].y = 6;
+	// Records as FUN_0044203c initializes them (OgreRules::resetBoard):
+	// hero (0,0), queen placed by placeQueen() with flag 0 (never a mover,
+	// never drawn outside the blink/win reveals), ogres at (6,6) and (0,6).
+	_rules.resetBoard();
 	placeQueen();
-
-	_rules.occ[_rules.p[2].y * 7 + _rules.p[2].x] = 1;
-	_rules.occ[_rules.p[3].y * 7 + _rules.p[3].x] = 1;
 }
 
 OgreGamePuzzle::~OgreGamePuzzle() {

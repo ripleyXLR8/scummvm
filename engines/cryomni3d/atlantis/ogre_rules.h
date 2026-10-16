@@ -47,6 +47,14 @@ public:
 
 	OgreRules();
 
+	// FUN_0044203c steps 2-3 (0x00442054..0x004422b7): occupancy cleared,
+	// hero {1,0,0}, queen flag 0, ogre A {1,6,6}, ogre B {1,0,6} (its
+	// position is written by FUN_004422b8).  The queen's cell is left to the
+	// caller (FUN_004422b8, OgreGamePuzzle::placeQueen).  The port also
+	// marks the two ogre cells, which the original leaves at 0; that has no
+	// effect on any reachable move (atlantis-re experiment 2026-10-15-21).
+	void resetBoard();
+
 	// FUN_00443ea0 / FUN_00443f18: the cell under a screen point through the
 	// edge table at 0x0049743c, or 99 off the board.
 	static int cellColumn(int mouseX);

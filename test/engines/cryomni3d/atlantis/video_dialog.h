@@ -184,7 +184,7 @@ public:
 	// the four CD archives) against what the ORIGINAL FUN_0042ea18 stores
 	// (evidence/golden/video_dialog_initdial.txt). The original appends the
 	// extension and keeps "none" as "none.<ext>"; the port stores the bare
-	// basename and maps "none" to "" (SPF, 3DC, animM, s3d) or keeps "none"
+	// basename and maps "none" to "" (SPF, 3DC, 3DA, animM, s3d) or keeps "none"
 	// (cam UBB). Both are normalised to the original's form before comparing.
 	void test_initdial_vs_original_parser() {
 		if (!AtlantisTest::haveData()) {
@@ -215,16 +215,17 @@ public:
 		for (Common::HashMap<int, VideoPeek::Eng::DialInitEntry>::const_iterator it =
 		         e->_dialInitData.begin(); it != e->_dialInitData.end(); ++it) {
 			const VideoPeek::Eng::DialInitEntry &d = it->_value;
-			struct F { Common::String key, port; } fields[11] = {
+			struct F { Common::String key, port; } fields[12] = {
 				{ "s3d", norm(d.s3dBase, ".s3d") },
 				{ "3dc", norm(d.anim3DCBase, ".3dc") },
+				{ "3da", norm(d.anim3DABase, ".3da") },
 				{ "3dam", norm(d.animMBase, ".3da") },
 				{ "ubb2", norm(d.camUBB[0], ".ubb") }, { "ubb3", norm(d.camUBB[1], ".ubb") },
 				{ "ubb4", norm(d.camUBB[2], ".ubb") }, { "ubb5", norm(d.camUBB[3], ".ubb") },
 				{ "spf2", norm(d.camSPF[0], ".spf") }, { "spf3", norm(d.camSPF[1], ".spf") },
 				{ "spf4", norm(d.camSPF[2], ".spf") }, { "spf5", norm(d.camSPF[3], ".spf") },
 			};
-			for (int k = 0; k < 11; k++) {
+			for (int k = 0; k < 12; k++) {
 				Common::String key = Common::String::format("%d.", it->_key) + fields[k].key;
 				if (!golden.contains(key)) {
 					diffs++;
@@ -238,7 +239,7 @@ public:
 				}
 			}
 		}
-		TS_ASSERT_EQUALS(compared, 67 * 11);
+		TS_ASSERT_EQUALS(compared, 67 * 12);
 		TS_ASSERT_EQUALS(diffs, 0);
 	}
 
@@ -322,7 +323,7 @@ public:
 	// +0x10, 0x0042f617..0x0042f651); the port draws spfFrameIdx % the SPF's
 	// count (header +4).  The two agree when every dialog SPF has the frame
 	// count of its UBB, which holds for every camera of the port's INITDIAL
-	// table (48 distinct pairs, all 31 frames).
+	// table (128 cameras, 48 distinct pairs, all 31 frames).
 	void test_dialog_spf_frames_vs_ubb() {
 		if (!AtlantisTest::haveData()) {
 			TS_WARN("no game data configured; skipping");
@@ -381,7 +382,7 @@ public:
 			}
 		}
 		TS_ASSERT_EQUALS(pairs.size(), 48u);
-		TS_ASSERT(cams > 0);
+		TS_ASSERT_EQUALS(cams, 128);
 		TS_ASSERT_EQUALS(bad, 0);
 	}
 };

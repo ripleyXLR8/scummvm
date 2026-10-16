@@ -1022,10 +1022,9 @@ void CryOmni3DEngine_Atlantis::displayOptionsMenu(const Graphics::ManagedSurface
 					ConfMan.setBool("subtitles", on);
 					tog.selected = on ? 0 : 1;
 				} else {
-					if (!tog.options.empty())
-						tog.selected = (tog.selected + 1) % (int)tog.options.size();
+					bool inverted = omniToggleClick(tog);
 					if (hovered == omniIdx)
-						ConfMan.setBool(kOmni3dInvertKey, tog.selected == 1);
+						ConfMan.setBool(kOmni3dInvertKey, inverted);
 				}
 			}
 			hovered = -1;

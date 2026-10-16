@@ -249,7 +249,8 @@ public:
 
 	// Data test: every episode name of the shipped EPI.TXT, as the original
 	// load picker extracts it, versus the port's epiEpisodeName.
-	// Chapters 2..85 (all chapters the CON scripts set).
+	// Chapters 2..85 (all chapters the CON scripts set) and 86, the last
+	// chapter whose scan the original ends (the golden's last row).
 	void test_data_episode_names_vs_original() {
 		if (!AtlantisTest::haveData()) {
 			TS_WARN("ui_saves: no game data configured, skipping");
@@ -263,8 +264,9 @@ public:
 			return;
 		TS_ASSERT_EQUALS(AtlantisTest::md5Hex(data.data(), data.size()), golden["epi.txt"]);
 		UiSaves::EpiText n = UiSaves::portEpisodeNames(data.data(), data.size());
-		for (uint ch = 2; ch <= 85; ch++) {
+		for (uint ch = 2; ch <= 86; ch++) {
 			Common::String key = Common::String::format("chapter %u", ch);
+			TSM_ASSERT(key.c_str(), golden.contains(key));
 			Common::String name = UiSaves::portEpisodeName(n, ch);
 			TSM_ASSERT_EQUALS(key.c_str(),
 			    AtlantisTest::md5Hex((const byte *)name.c_str(), name.size()), golden[key]);

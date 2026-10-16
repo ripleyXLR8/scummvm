@@ -198,6 +198,13 @@ int menuVolumeFromKnob(int x);
 // DAT_00496098).  Subtitles are drawn when on is set (FUN_00430178).
 void subtitleToggleClick(bool &on, uint8 &counter);
 
+// atlantis.exe options menu, OMNI 3D item (FUN_0041d5f4 @ 0x0041d706):
+// DAT_004960ac = (DAT_004960ac == 0).  The port steps the toggle to its next
+// option, (selected + 1) % options; with the file's two options this is the
+// same flip.  Returns true when option 1 (inverted look, the original's
+// DAT_004960ac == 0) is selected.
+bool omniToggleClick(MenuItem &tog);
+
 // FONTMAX measuring widths (atlantis.exe @ 0x0049660e indexed by char - 0x20,
 // i.e. 0x004965ee indexed by the raw byte):
 // FUN_004206c8 centres labels and sizes hit rects with it, and the pen

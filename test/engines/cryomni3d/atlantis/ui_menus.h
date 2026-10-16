@@ -1114,17 +1114,23 @@ public:
 		}
 	}
 
-	// OMNI 3D toggle: a check of the golden constant kUiOrigOmniClicks only
-	// (FUN_0041d5f4 @ 0x0041d706, DAT_004960ac = (DAT_004960ac == 0)).  No
-	// port code runs here: the port's toggle is the generic
-	// '(selected + 1) % options.size()' step inside
-	// CryOmni3DEngine_Atlantis::displayOptionsMenu (menus.cpp), engine code
-	// the test runner does not link, and the loop below recomputes it.
+	// OMNI 3D toggle (FUN_0041d5f4 @ 0x0041d706, DAT_004960ac =
+	// (DAT_004960ac == 0)) vs the port's omniToggleClick, the step
+	// displayOptionsMenu (menus.cpp) runs on a click.  OPTMENU.TXT's toggle
+	// has two options; the port starts on option 1 (inverted look) as the
+	// original starts on DAT_004960ac == 0 (MODE 1), and option 0 is the
+	// original's 1.
 	void test_omni_toggle_sequence() {
-		int sel = 1;   // MODE 1 (DAT_004960ac == 0)
+		CryOmni3D::Atlantis::MenuItem tog;
+		tog.kind = CryOmni3D::Atlantis::MenuItem::kToggle;
+		tog.options.push_back("A");
+		tog.options.push_back("B");
+		tog.selected = 1;
 		for (int k = 0; k < 4; k++) {
-			sel = (sel + 1) % 2;
-			TS_ASSERT_EQUALS(sel == 0 ? 1 : 0, kUiOrigOmniClicks[k]);
+			bool inverted = CryOmni3D::Atlantis::omniToggleClick(tog);
+			TS_ASSERT_EQUALS(inverted, tog.selected == 1);
+			TSM_ASSERT_EQUALS(Common::String::format("after click %d", k + 1).c_str(),
+			                  tog.selected == 0 ? 1 : 0, kUiOrigOmniClicks[k]);
 		}
 	}
 

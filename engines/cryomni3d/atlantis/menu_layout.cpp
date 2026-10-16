@@ -208,6 +208,12 @@ void subtitleToggleClick(bool &on, uint8 &counter) {
 		counter = 0;
 }
 
+bool omniToggleClick(MenuItem &tog) {
+	if (!tog.options.empty())
+		tog.selected = (tog.selected + 1) % (int)tog.options.size();
+	return tog.selected == 1;
+}
+
 static const uint8 kFontMinAdvance[137] = {
 	15, 8,13, 6,13,20,17, 6,13,20,11, 6, 4,20,15,12,17, 8,16,16,
 	14,13,15,13,16,15, 7, 6, 6, 6, 6,20, 6,17,19,18,19,16,16,19,
