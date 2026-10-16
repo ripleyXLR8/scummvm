@@ -403,8 +403,7 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 		if (apcFile) {
 			Audio::AudioStream *apc = makeAtlantisAPCStream(*apcFile);
 			if (apc) {
-				_mixer->stopHandle(_newSoundHandle);
-				_mixer->playStream(Audio::Mixer::kSFXSoundType, &_newSoundHandle, apc);
+				startNewSoundStream(apc);
 				_newSoundLast = 1;
 				_newSoundPlaying = true;
 				_gameVars["newsound"] = 1;

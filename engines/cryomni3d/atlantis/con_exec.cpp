@@ -1252,11 +1252,24 @@ void CryOmni3DEngine_Atlantis::pollNewSound() {
 		delete apcFile;
 		return;
 	}
-	_mixer->playStream(Audio::Mixer::kSFXSoundType, &_newSoundHandle, apc);
+	startNewSoundStream(apc);
 	_newSoundPlaying = true;
 	_newSoundLast = value;
 	debugC(1, kDebugScript, "pollNewSound: newsound=%d playing '%s'", value, apcName.c_str());
 	delete apcFile;
+}
+
+// FUN_00432a64 step 5: the sample is started at the effects volume and the
+// fade-out state 0x00495eb0 is cleared, so a fade armed by a video cut
+// short (FUN_0041bc74) does not carry over to the new sound.
+void CryOmni3DEngine_Atlantis::startNewSoundStream(Audio::AudioStream *apc) {
+	{
+		Common::StackLock lock(_musicFade.mutex);
+		_musicFade.sfxMode = 0;
+		_musicFade.sfxChanged = _musicFade.sfxStop = false;
+	}
+	_mixer->stopHandle(_newSoundHandle);
+	_mixer->playStream(Audio::Mixer::kSFXSoundType, &_newSoundHandle, apc);
 }
 
 } // End of namespace Atlantis

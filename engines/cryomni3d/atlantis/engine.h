@@ -832,6 +832,7 @@ private:
 	// 0x0041be88, FUN_00426590 @ 0x00426631); FUN_0042f7a8 then lowers it.
 	void fadeOutNewSound();
 	uint8 effectsVolume127() const;
+	void startNewSoundStream(Audio::AudioStream *apc);
 
 	// FONTMAX gold menu font (FONTMAX.SPR) + its hover/highlight set
 	// (FONTMAX2.SPR).  Glyph index = char_code - 0x20.
