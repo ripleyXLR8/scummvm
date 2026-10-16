@@ -56,6 +56,8 @@ void inventoryAppend(Inventory &inventory, Object *obj) {
 	// The used slots are at the front, so the first empty slot is the end of
 	// the list.  Past the 30 records of the original's table its next record
 	// would overwrite players.atl data (0x006ce246); the port drops it.
+	// Not reproduced: kEnhGameBreakingBugFixes (atlantis-re decisions/0016,
+	// row 3).
 	if (inventory.size() && inventory[inventory.size() - 1] != nullptr) {
 		warning("inventoryAppend: the 30 records are used, object dropped");
 		return;
@@ -119,6 +121,11 @@ int32 AtlantisGuests::at(int x, int y) const {
 		return 0;
 	const int cell = ((y - y0) / 100) * (int)count + (x - x0) / 85;
 	const int k = (int)count - 1 - cell;
+	// k < 0 on the right or bottom edge pixel: FUN_0042bdb8 reads the bytes
+	// before the list (256 x the zone left under the pointer) and the NPC
+	// flow then builds its subject menu from memory outside the tables
+	// (atlantis-re experiments/2026-10-16-27).  Not reproduced:
+	// kEnhGameBreakingBugFixes (decisions/0016, row 2).
 	return (k >= 0) ? id[k] : 0;
 }
 
