@@ -990,7 +990,11 @@ bool CryOmni3DEngine_Atlantis::evalSelSection(const ConSection &sec, int current
 	if (sec.condOffset < 0)
 		return true;
 	EngineConEvaluator eval(_conVarNames, _inventory, _gameVars, currentVue);
-	return eval.evaluate(_conScript.text(), (uint32)sec.condOffset, _conScanKey);
+	// With restored content each evaluation starts from a clear key buffer,
+	// so INVENTnnn is never extended by an earlier key and CHAPI063's Anna
+	// timer lines can play (atlantis-re decisions/0016, row 6).
+	return eval.evaluate(_conScript.text(), (uint32)sec.condOffset,
+	                     enhancementEnabled(kEnhRestoredContent) ? nullptr : _conScanKey);
 }
 
 void CryOmni3DEngine_Atlantis::runArrivalSelSections(int arrivedVue, int fromVue) {

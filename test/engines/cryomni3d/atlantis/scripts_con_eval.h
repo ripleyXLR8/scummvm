@@ -370,65 +370,73 @@ public:
 			}
 			ScriptsTest::VarState st;
 			ScriptsTest::makeState(lineIdx, k, varNames, lines[lineIdx], st);
-			byte key[ConEvaluator::kKeyBufferSize];
-			memset(key, 0, sizeof(key));
-			struct Ctx {
-				const ConScript *script;
-				const ScriptsTest::VarState *st;
-				byte *key;
-				static bool test(const ConSection &sec, void *ctx) {
-					const Ctx *c = (const Ctx *)ctx;
-					if (sec.condOffset < 0)
-						return true;
-					return ScriptsTest::portEvalAt(c->script->text(), (uint32)sec.condOffset, *c->st, c->key);
-				}
-			};
-			Ctx ctx = { &script, &st, key };
-			int idx = -1;
-			const Common::String kd(kind);
-			if (kd == "sel") {
-				idx = findSelEntry(script, &Ctx::test, &ctx);
-			} else if (kd == "con") {
-				// FUN_004281f8 itself: the first allowed /con entry whose
-				// condition holds, /Suj bodies included (FUN_00425cf4, i.e.
-				// findConClickEntry, skips those and scans on).
-				for (uint s = 0; s < script.sections().size(); s++) {
-					const ConSection &sec = script.sections()[s];
-					if (!sec.isEntry || !sec.isCon || !conEntryAllowed(sec, counters))
-						continue;
-					if (Ctx::test(sec, &ctx)) {
-						idx = (int)s;
-						break;
+			// mode 0: one key buffer per scan (the original); mode 1: a clear
+			// buffer per evaluation (restored content, decisions/0016 row 6),
+			// which is the golden's second column.
+			for (int mode = 0; mode < 2; mode++) {
+				byte key[ConEvaluator::kKeyBufferSize];
+				memset(key, 0, sizeof(key));
+				struct Ctx {
+					const ConScript *script;
+					const ScriptsTest::VarState *st;
+					byte *key;
+					static bool test(const ConSection &sec, void *ctx) {
+						const Ctx *c = (const Ctx *)ctx;
+						if (sec.condOffset < 0)
+							return true;
+						return ScriptsTest::portEvalAt(c->script->text(), (uint32)sec.condOffset, *c->st, c->key);
+					}
+				};
+				Ctx ctx = { &script, &st, mode == 0 ? key : nullptr };
+				int idx = -1;
+				const Common::String kd(kind);
+				if (kd == "sel") {
+					idx = findSelEntry(script, &Ctx::test, &ctx);
+				} else if (kd == "con") {
+					// FUN_004281f8 itself: the first allowed /con entry whose
+					// condition holds, /Suj bodies included (FUN_00425cf4, i.e.
+					// findConClickEntry, skips those and scans on).
+					for (uint s = 0; s < script.sections().size(); s++) {
+						const ConSection &sec = script.sections()[s];
+						if (!sec.isEntry || !sec.isCon || !conEntryAllowed(sec, counters))
+							continue;
+						if (Ctx::test(sec, &ctx)) {
+							idx = (int)s;
+							break;
+						}
+					}
+				} else {
+					const int timer = kd == "tim1" ? 1 : 2;
+					for (uint s = 0; s < script.sections().size(); s++) {
+						const ConSection &sec = script.sections()[s];
+						if (!sec.isEntry || !sec.isTimer || sec.timerNum != timer)
+							continue;
+						if (Ctx::test(sec, &ctx)) {
+							idx = (int)s;
+							break;
+						}
 					}
 				}
-			} else {
-				const int timer = kd == "tim1" ? 1 : 2;
-				for (uint s = 0; s < script.sections().size(); s++) {
-					const ConSection &sec = script.sections()[s];
-					if (!sec.isEntry || !sec.isTimer || sec.timerNum != timer)
-						continue;
-					if (Ctx::test(sec, &ctx)) {
-						idx = (int)s;
-						break;
-					}
+				int got = -1;
+				if (idx >= 0) {
+					// The body starts on the line after the condition line.
+					const int32 off = script.sections()[idx].condOffset;
+					got = 1;
+					for (int32 i = 0; i + 1 < off; i++)
+						if (data[i] == '\r' && data[i + 1] == '\n')
+							got++;
 				}
-			}
-			int got = -1;
-			if (idx >= 0) {
-				// The body starts on the line after the condition line.
-				const int32 off = script.sections()[idx].condOffset;
-				got = 1;
-				for (int32 i = 0; i + 1 < off; i++)
-					if (data[i] == '\r' && data[i + 1] == '\n')
-						got++;
-			}
-			cases++;
-			if (expected != resetRun)
-				persistentDiffers++;
-			if (got != expected) {
-				mismatches++;
-				if (mismatches <= 10)
-					TS_WARN(Common::String::format("%s line %u %s state %u: port body line %d, original %d", file, lineIdx, kind, k, got, expected).c_str());
+				const int want = mode == 0 ? expected : resetRun;
+				if (mode == 0) {
+					cases++;
+					if (expected != resetRun)
+						persistentDiffers++;
+				}
+				if (got != want) {
+					mismatches++;
+					if (mismatches <= 10)
+						TS_WARN(Common::String::format("%s line %u %s state %u mode %d: port body line %d, original %d", file, lineIdx, kind, k, mode, got, want).c_str());
+				}
 			}
 		}
 		TS_ASSERT_EQUALS(cases, 4096u);

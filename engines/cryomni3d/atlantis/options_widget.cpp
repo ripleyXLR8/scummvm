@@ -36,6 +36,12 @@ AtlantisOptionsWidget::AtlantisOptionsWidget(GuiObject *boss, const Common::Stri
 	_group1 = new GUI::CheckboxWidget(widgetsBoss(), _dialogLayout + ".enhancementGroup1",
 		_("Fix original bugs"),
 		_("Fixes bugs which were present in the original release, and noticeable graphical/audio glitches."));
+	_group3 = new GUI::CheckboxWidget(widgetsBoss(), _dialogLayout + ".enhancementGroup3",
+		_("Restored content"),
+		_("Restores dialogs, graphics, and audio elements which were originally cut in the original release."));
+	_group4 = new GUI::CheckboxWidget(widgetsBoss(), _dialogLayout + ".enhancementGroup4",
+		_("Modern UI/UX adjustments"),
+		_("Activates some modern comforts for a smoother user experience."));
 }
 
 // The value an engine starts with (engines/engine.cpp registers it as the
@@ -46,16 +52,24 @@ static int32 enhancementFlags(const Common::String &domain) {
 }
 
 void AtlantisOptionsWidget::load() {
-	_group1->setState((enhancementFlags(_domain) & kEnhGrp1) != 0);
+	const int32 flags = enhancementFlags(_domain);
+	_group1->setState((flags & kEnhGrp1) != 0);
+	_group3->setState((flags & kEnhGrp3) != 0);
+	_group4->setState((flags & kEnhGrp4) != 0);
 }
 
 bool AtlantisOptionsWidget::save() {
 	int32 flags = enhancementFlags(_domain);
 	flags |= kEnhGameBreakingBugFixes;   // always active
-	if (_group1->getState())
-		flags |= kEnhGrp1;
-	else
-		flags &= ~kEnhGrp1;
+	const struct { GUI::CheckboxWidget *box; int32 group; } groups[] = {
+		{ _group1, kEnhGrp1 }, { _group3, kEnhGrp3 }, { _group4, kEnhGrp4 }
+	};
+	for (const auto &g : groups) {
+		if (g.box->getState())
+			flags |= g.group;
+		else
+			flags &= ~g.group;
+	}
 	ConfMan.setInt("enhancements", flags, _domain);
 	return true;
 }
@@ -66,6 +80,8 @@ void AtlantisOptionsWidget::defineLayout(GUI::ThemeEval &layouts, const Common::
 			.addPadding(0, 0, 8, 8)
 			.addWidget("enhancementsLabel", "OptionsLabel")
 			.addWidget("enhancementGroup1", "Checkbox")
+			.addWidget("enhancementGroup3", "Checkbox")
+			.addWidget("enhancementGroup4", "Checkbox")
 		.closeLayout()
 	.closeDialog();
 }

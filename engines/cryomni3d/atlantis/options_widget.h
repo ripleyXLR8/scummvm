@@ -31,7 +31,9 @@ namespace Atlantis {
 // The game options of an Atlantis target: ScummVM's enhancement groups
 // (engines/enhancements.h) that change something in this engine
 // (atlantis-re decisions/0016).  Group 1, "fix original bugs": with it off
-// the music plays through the original's streaming ring.
+// the music plays through the original's streaming ring.  Group 3,
+// "restored content": CHAPI063's Anna timer lines.  Group 4, "modern UI/UX":
+// no error box for the head lines without an INITDIAL row.
 class AtlantisOptionsWidget : public GUI::OptionsContainerWidget {
 public:
 	AtlantisOptionsWidget(GuiObject *boss, const Common::String &name, const Common::String &domain);
@@ -44,6 +46,8 @@ private:
 	void defineLayout(GUI::ThemeEval &layouts, const Common::String &layoutName, const Common::String &overlayedLayout) const override;
 
 	GUI::CheckboxWidget *_group1 = nullptr;
+	GUI::CheckboxWidget *_group3 = nullptr;
+	GUI::CheckboxWidget *_group4 = nullptr;
 };
 
 } // End of namespace Atlantis

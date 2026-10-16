@@ -508,8 +508,12 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 			// still counts (0x00428b21).
 			debugC(1, kDebugScript, "playConSection: section %d line %c: no INITDIAL row %d",
 			      sec.id, conTrackLetter(lineIdx), dialRow);
-			GUI::MessageDialog box(Common::String(DialogView::kHeadOpenFailText), Common::String("OK"));
-			runDialog(box);
+			// Not shown with the UI/UX enhancements (atlantis-re
+			// decisions/0016, row 7); the line is skipped either way.
+			if (!enhancementEnabled(kEnhUIUX)) {
+				GUI::MessageDialog box(Common::String(DialogView::kHeadOpenFailText), Common::String("OK"));
+				runDialog(box);
+			}
 			lineIdx++;
 		} else {
 			playSingleConLine(sec.id, conTrackLetter(lineIdx++), item.line.text, vid,
