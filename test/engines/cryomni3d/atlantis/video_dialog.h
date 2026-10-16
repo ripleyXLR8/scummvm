@@ -238,6 +238,75 @@ public:
 		TS_ASSERT_EQUALS(compared, 67 * 11);
 		TS_ASSERT_EQUALS(diffs, 0);
 	}
+
+	// Data test (atlantis-re experiments/2026-10-16-12-dialog-spf-frames.md):
+	// FUN_0042ee88 draws SPF frame 0x00496104 (FUN_0042ff90, no bound check)
+	// and sets it back to 0 when the UBB rewinds at its frame count (header
+	// +0x10, 0x0042f617..0x0042f651); the port draws spfFrameIdx % the SPF's
+	// count (header +4).  The two agree when every dialog SPF has the frame
+	// count of its UBB, which holds for every camera of the port's INITDIAL
+	// table (48 distinct pairs, all 31 frames).
+	void test_dialog_spf_frames_vs_ubb() {
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("no game data configured; skipping");
+			return;
+		}
+		VideoPeek::Eng *e = VideoPeek::rawEngine();
+		new (&e->_bigFile) CryOmni3D::Atlantis::BigFileArchive();
+		new (&e->_dialInitData) Common::HashMap<int, VideoPeek::Eng::DialInitEntry>();
+		VideoPeek::addDataDirToSearchMan();
+		for (int cd = 1; cd <= 4; cd++)
+			e->_bigFile.open(Common::Path(Common::String::format("BIGCD%d.BIG", cd)));
+		e->loadDialInitData();
+		VideoTest::Big big;
+		auto u32At = [&](const Common::String &name, uint off, uint32 &v) {
+			uint32 size = 0;
+			byte *b = big.get(name, size);
+			if (!b || size < off + 4) {
+				delete[] b;
+				return false;
+			}
+			v = READ_LE_UINT32(b + off);
+			delete[] b;
+			return true;
+		};
+		int cams = 0, bad = 0;
+		Common::HashMap<Common::String, bool> pairs;
+		for (Common::HashMap<int, VideoPeek::Eng::DialInitEntry>::const_iterator it =
+		         e->_dialInitData.begin(); it != e->_dialInitData.end(); ++it) {
+			for (int c = 0; c < 4; c++) {
+				const Common::String &spf = it->_value.camSPF[c];
+				if (spf.empty())
+					continue;
+				cams++;
+				Common::String ubbName = "DIALOG\\PERSO\\" + it->_value.camUBB[c] + ".UBB";
+				Common::String spfName = "DIALOG\\PERSO\\" + spf + ".SPF";
+				ubbName.toUppercase();
+				spfName.toUppercase();
+				pairs[ubbName + " " + spfName] = true;
+				uint32 ubbFrames = 0, spfFrames = 0;
+				if (!u32At(ubbName, 0x10, ubbFrames) || !u32At(spfName, 4, spfFrames) || ubbFrames == 0 ||
+				        spfFrames == 0) {
+					bad++;
+					TS_WARN(("missing: " + ubbName + " " + spfName).c_str());
+					continue;
+				}
+				// Three passes of the UBB loop: the original's SPF frame is
+				// the UBB frame index, the port's the running count modulo.
+				for (uint32 k = 0; k < 3 * ubbFrames; k++) {
+					if (k % spfFrames != k % ubbFrames) {
+						bad++;
+						TS_WARN(Common::String::format("%s: %u UBB frames, %u SPF frames",
+						                               spfName.c_str(), ubbFrames, spfFrames).c_str());
+						break;
+					}
+				}
+			}
+		}
+		TS_ASSERT_EQUALS(pairs.size(), 48u);
+		TS_ASSERT(cams > 0);
+		TS_ASSERT_EQUALS(bad, 0);
+	}
 };
 
 class VideoDialogCameraTestSuite : public CxxTest::TestSuite {
