@@ -224,9 +224,12 @@ void CryOmni3DEngine_Atlantis::executeTransition(uint nextPlaceId) {
 		// FUN_00423ad8 @ 0x00423ec0: FUN_004212cc turns the view to the
 		// transition's source angles before the video.
 		turnToTransition(trans->srcAlpha, trans->srcBeta);
-		playTransitionVideo(trans->videoName, _currentPlaceId, nextPlaceId, kTransitionFrameMs);
+		// FUN_004212cc ends by setting the destination angles
+		// (0x00421b01..0x00421b31), before the video, so FUN_0043259c's
+		// ambient glide uses them.
 		_omni3dMan.setAlpha(trans->dstAlpha);
 		_omni3dMan.setBeta(trans->dstBeta);
+		playTransitionVideo(trans->videoName, _currentPlaceId, nextPlaceId, kTransitionFrameMs);
 	}
 
 	// Cross-WAM transition: sub-WAMs hot-swap the navigation map when a
@@ -690,10 +693,10 @@ void CryOmni3DEngine_Atlantis::transitionAfterDepartureVue(uint transitionIndex)
 	const uint record = uint(_currentPlace - _wam.getPlaces().begin());
 	const AtlantisTransition t = placeTableEntry(record, transitionIndex);
 	turnToTransition(t.srcAlpha, t.srcBeta);
+	_omni3dMan.setAlpha(t.dstAlpha);   // 0x00421b01..0x00421b31, before the video
+	_omni3dMan.setBeta(t.dstBeta);
 	if (t.videoName.contains('.'))
 		playTransitionVideo(t.videoName, _currentPlaceId, _currentPlaceId, kTransitionFrameMs);
-	_omni3dMan.setAlpha(t.dstAlpha);
-	_omni3dMan.setBeta(t.dstBeta);
 }
 
 } // End of namespace Atlantis
