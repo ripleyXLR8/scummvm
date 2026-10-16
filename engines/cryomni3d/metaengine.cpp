@@ -37,7 +37,10 @@
 
 #ifdef ENABLE_ATLANTIS
 #include "cryomni3d/atlantis/engine.h"
+#include "cryomni3d/atlantis/options_widget.h"
 #endif
+
+#include "common/config-manager.h"
 
 #include "cryomni3d/detection.h"
 
@@ -78,6 +81,7 @@ public:
 
 	bool hasFeature(MetaEngineFeature f) const override;
 	Common::Error createInstance(OSystem *syst, Engine **engine, const CryOmni3DGameDescription *desc) const override;
+	GUI::OptionsContainerWidget *buildEngineOptionsWidget(GUI::GuiObject *boss, const Common::String &name, const Common::String &target) const override;
 
 	SaveStateList listSaves(const char *target) const override;
 	int getMaximumSaveSlot() const override { return 999; }
@@ -185,6 +189,16 @@ Common::Error CryOmni3DMetaEngine::createInstance(OSystem *syst, Engine **engine
 	default:
 		return Common::kUnsupportedGameidError;
 	}
+}
+
+// Atlantis targets get the enhancement setting (atlantis-re decisions/0016);
+// every other target keeps the default widget.
+GUI::OptionsContainerWidget *CryOmni3DMetaEngine::buildEngineOptionsWidget(GUI::GuiObject *boss, const Common::String &name, const Common::String &target) const {
+#ifdef ENABLE_ATLANTIS
+	if (ConfMan.get("gameid", target) == "atlantis")
+		return new Atlantis::AtlantisOptionsWidget(boss, name, target);
+#endif
+	return AdvancedMetaEngine<CryOmni3DGameDescription>::buildEngineOptionsWidget(boss, name, target);
 }
 
 } // End of namespace CryOmni3D

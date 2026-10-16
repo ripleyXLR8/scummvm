@@ -18,6 +18,45 @@
 #include "common/memstream.h"
 
 #include "cryomni3d/atlantis/apc_stream.h"
+#include "cryomni3d/atlantis/music_ring.h"
+#include "common/md5.h"
+
+namespace AudioApcDataTest {
+
+// The heard PCM of a MusicRing as a byte stream: one 5 ms period at a time,
+// each period's frames read before its release and refill (the model's
+// order), little-endian int16.
+class RingPcm : public Common::ReadStream {
+public:
+	RingPcm(CryOmni3D::Atlantis::MusicRing &ring) : _ring(ring), _t(0), _have(0), _at(0) {}
+	bool eos() const override { return false; }
+	uint32 read(void *dataPtr, uint32 dataSize) override {
+		byte *dst = (byte *)dataPtr;
+		uint32 done = 0;
+		while (done < dataSize) {
+			if (_at == _have) {
+				const uint nf = _ring.framesOfTick(_t++);
+				_ring.tick(nf, _pcm);
+				for (uint i = 0; i < 2 * nf; i++)
+					WRITE_LE_UINT16(_bytes + 2 * i, (uint16)_pcm[i]);
+				_have = 4 * nf;
+				_at = 0;
+			}
+			const uint32 n = MIN(dataSize - done, _have - _at);
+			memcpy(dst + done, _bytes + _at, n);
+			done += n;
+			_at += n;
+		}
+		return done;
+	}
+private:
+	CryOmni3D::Atlantis::MusicRing &_ring;
+	uint32 _t, _have, _at;
+	int16 _pcm[2 * 256];
+	byte _bytes[4 * 256];
+};
+
+} // End of namespace AudioApcDataTest
 
 class AudioApcDataTestSuite : public CxxTest::TestSuite {
 public:
@@ -138,6 +177,55 @@ public:
 		if (mismatches)
 			TS_WARN(Common::String::format("audio_apc_data: %u of %u streams differ:", mismatches, files) + list);
 		TS_ASSERT_EQUALS(files, 2468u);
+		TS_ASSERT_EQUALS(mismatches, 0u);
+	}
+
+	// The music ring of the original (MusicRing: FUN_00432ea8, FUN_0043318c,
+	// FUN_00433310, FUN_004101ce) with the position law measured under Wine
+	// (play + 0x8000, rounded down to 0x4000): the PCM heard over two loops
+	// of each of the 31 tracks, against the original's code run under
+	// Unicorn with the same law and the same 5 ms periods (golden
+	// audio_music_ring_wine.txt, atlantis-re tools/emu/audio_music_stream.py
+	// --wine --pcm, experiment 2026-10-16-28; decisions/0016 row 1).
+	void test_music_ring_vs_original() {
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("audio_apc_data: no game data configured, skipped");
+			return;
+		}
+		Common::Array<Common::String> golden;
+		TS_ASSERT(AtlantisTest::loadGoldenLines("audio_music_ring_wine.txt", golden));
+		ScriptsTest::Big big;
+		uint tracks = 0, mismatches = 0;
+		Common::String list;
+		for (uint g = 0; g < golden.size(); g++) {
+			char name[64], md5[40];
+			unsigned long long heard = 0;
+			if (sscanf(golden[g].c_str(), "M %63s heard_bytes %llu md5 %39s", name, &heard, md5) != 3)
+				continue;
+			tracks++;
+			Common::Array<char> data;
+			TS_ASSERT(big.get(Common::String("WAV\\") + name, data));
+			CryOmni3D::Atlantis::MusicRing ring((const byte *)data.begin(), data.size());
+			if (!ring.start()) {
+				mismatches++;
+				list += Common::String::format(" %s(start)", name);
+				continue;
+			}
+			// The model's stop rule: whole periods until two loops are heard.
+			uint64 frames = 0;
+			for (uint32 t = 0; frames < 2ULL * ring.headerFrames(); t++)
+				frames += ring.framesOfTick(t);
+			AudioApcDataTest::RingPcm pcm(ring);
+			const Common::String got = Common::computeStreamMD5AsString(pcm, (uint32)(frames * 4));
+			if (frames * 4 != heard || got != md5) {
+				mismatches++;
+				if (mismatches <= 10)
+					list += Common::String::format(" %s", name);
+			}
+		}
+		if (mismatches)
+			TS_WARN(Common::String::format("audio_apc_data: %u of %u music rings differ:", mismatches, tracks) + list);
+		TS_ASSERT_EQUALS(tracks, 31u);
 		TS_ASSERT_EQUALS(mismatches, 0u);
 	}
 };

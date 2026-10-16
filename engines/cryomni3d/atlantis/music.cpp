@@ -32,6 +32,7 @@
 #include "common/util.h"
 
 #include "cryomni3d/atlantis/apc_stream.h"
+#include "cryomni3d/atlantis/music_ring.h"
 #include "cryomni3d/atlantis/engine.h"
 
 namespace CryOmni3D {
@@ -163,9 +164,54 @@ private:
 	AtlantisMusicFade *_fade;
 };
 
+// The original's streaming ring (music_ring.h) as a mixer stream: each 5 ms
+// period of the 200 Hz timer plays its frames, then the timer's release and
+// the refill run, whatever the size of the mixer's reads.
+class MusicRingStream : public Audio::AudioStream {
+public:
+	MusicRingStream(MusicRing *ring) : _ring(ring), _t(0), _left(0) {}
+	~MusicRingStream() override { delete _ring; }
+	int readBuffer(int16 *buffer, const int numSamples) override {
+		const uint frames = (uint)numSamples / 2;
+		uint done = 0;
+		while (done < frames) {
+			if (_left == 0)
+				_left = _ring->framesOfTick(_t++);
+			const uint k = MIN(_left, frames - done);
+			_ring->play(k, buffer + 2 * done);
+			done += k;
+			_left -= k;
+			if (_left == 0)
+				_ring->timer();
+		}
+		return (int)(2 * frames);
+	}
+	bool isStereo() const override { return true; }
+	int getRate() const override { return (int)_ring->rate(); }
+	bool endOfData() const override { return false; }
+private:
+	MusicRing *_ring;
+	uint32 _t;
+	uint _left;
+};
+
+// atlantis-re decisions/0016 row 1: with the minor bug fixes (ScummVM's
+// default) the track loops cleanly; without them it plays through the
+// original's ring, with the position law measured under Wine.
 static void startMusicFromBuffer(Audio::Mixer *mixer, Audio::SoundHandle &handle,
-                                 const byte *data, uint32 size, AtlantisMusicFade *fade) {
-	Audio::AudioStream *stream = buildLoopingMusicStream(data, size);
+                                 const byte *data, uint32 size, AtlantisMusicFade *fade, bool originalRing) {
+	Audio::AudioStream *stream = nullptr;
+	if (originalRing) {
+		MusicRing *ring = new MusicRing(data, size);
+		if (ring->start()) {
+			stream = new MusicRingStream(ring);
+			debugC(1, kDebugMusic, "music: the original's streaming ring (enhancements off)");
+		} else {
+			delete ring;
+		}
+	}
+	if (!stream)
+		stream = buildLoopingMusicStream(data, size);
 	if (stream)
 		mixer->playStream(Audio::Mixer::kMusicSoundType, &handle, new FadedMusicStream(stream, fade));
 }
@@ -337,7 +383,8 @@ void CryOmni3DEngine_Atlantis::musicPlayTrack(int trackId) {
 	delete apcFile;
 
 	_musicCurrentFile = musicFile;
-	startMusicFromBuffer(_mixer, _musicHandle, _musicRawData, _musicRawSize, &_musicFade);
+	startMusicFromBuffer(_mixer, _musicHandle, _musicRawData, _musicRawSize, &_musicFade,
+	                     !enhancementEnabled(kEnhMinorBugFixes));
 	debugC(1, kDebugMusic, "musicPlayTrack: track %d '%s'", trackId, musicFile);
 }
 

@@ -48,7 +48,9 @@ MODULE_OBJS += \
 	atlantis/menu_layout.o \
 	atlantis/menus.o \
 	atlantis/music.o \
+	atlantis/music_ring.o \
 	atlantis/navigation.o \
+	atlantis/options_widget.o \
 	atlantis/npc_click.o \
 	atlantis/crab_game.o \
 	atlantis/hexa_game.o \
