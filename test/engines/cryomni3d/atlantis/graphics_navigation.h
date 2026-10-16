@@ -716,6 +716,82 @@ public:
 		TS_ASSERT_DELTA(beta, 0.249999985f, 1e-6f);   // beta - (-40) / 800
 	}
 
+	// ANGLEWARPX / ANGLEWARPY and the look step of FUN_0041bfa0 against the
+	// original run unmodified (atlantis-re tools/emu/graphics_anglewarp.py,
+	// golden graphics_anglewarp.txt, experiment 2026-10-16-11): the smallest
+	// float of every degree on both axes (B rows), and 6720 frames of
+	// scripted mouse motion in OMNI 3D MODE 1 and 2 (F rows: ANGLEWARPX /
+	// ANGLEWARPY stored at the frame start, then the angles and momentum).
+	void test_anglewarp_vs_original() {
+		using namespace CryOmni3D::Atlantis;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("anglewarp: no golden configured, skipped");
+			return;
+		}
+		Common::Array<Common::String> lines;
+		TS_ASSERT(AtlantisTest::loadGoldenLines("graphics_anglewarp.txt", lines));
+		Omni3DManagerAtlantis omni;
+		omni.setHFov((double)kWarpFovDeg * M_PI / 180.0);
+		const float pi = omni.piF();
+		auto u2f = [](uint32 u) { float f; memcpy(&f, &u, 4); return f; };
+		auto f2u = [](float f) { uint32 u; memcpy(&u, &f, 4); return u; };
+		uint bounds = 0, frames = 0, bad = 0;
+		Common::String trace;
+		int traceMode = -1;
+		WarpMomentum m;
+		float alpha = 0.f, beta = 0.f, prevA = -1.f, prevB = -1.f;
+		for (uint li = 0; li < lines.size(); li++) {
+			const Common::String &l = lines[li];
+			if (l.hasPrefix("B ")) {
+				char axis;
+				int k;
+				uint32 bits;
+				if (sscanf(l.c_str(), "B %c %d %x", &axis, &k, &bits) != 3) {
+					TS_FAIL(l.c_str());
+					continue;
+				}
+				bounds++;
+				const int at = angleWarpDegrees(u2f(bits), pi);
+				const int below = angleWarpDegrees(u2f(bits - 1), pi);   // next float toward 0
+				if (at != k || below != (k > 0 ? k - 1 : k + 1)) {
+					bad++;
+					TS_WARN(Common::String::format("%s: port %d / %d", l.c_str(), at, below).c_str());
+				}
+			} else if (l.hasPrefix("F ")) {
+				char name[32];
+				int mode, idx, mx, my, dx, dy, awx, awy;
+				uint32 a, b, vx, vy;
+				if (sscanf(l.c_str(), "F %31s %d %d: %d %d d %d %d -> %d %d %x %x %x %x", name, &mode, &idx, &mx, &my,
+				           &dx, &dy, &awx, &awy, &a, &b, &vx, &vy) != 13) {
+					TS_FAIL(l.c_str());
+					continue;
+				}
+				if (trace != name || traceMode != mode) {
+					trace = name;
+					traceMode = mode;
+					m = WarpMomentum();
+					alpha = beta = 0.f;
+					prevA = prevB = -1.f;
+				}
+				frames++;
+				const WarpLookFrame f = warpLookFrame(m, alpha, beta, dx, dy, mode != 0, prevA, prevB, pi,
+				                                      omni.twoPiF(), omni.betaLimit());
+				prevA = alpha;
+				prevB = beta;
+				if (f.angleWarpX != awx || f.angleWarpY != awy || f2u(alpha) != a || f2u(beta) != b ||
+				        f2u(m.vx) != vx || f2u(m.vy) != vy) {
+					bad++;
+					if (bad < 10)
+						TS_WARN(Common::String::format("%s: port %d %d %08x %08x %08x %08x", l.c_str(), f.angleWarpX,
+						                               f.angleWarpY, f2u(alpha), f2u(beta), f2u(m.vx), f2u(m.vy)).c_str());
+				}
+			}
+		}
+		TS_ASSERT_EQUALS(bounds, 450u);
+		TS_ASSERT_EQUALS(frames, 6720u);
+		TS_ASSERT_EQUALS(bad, 0u);
+	}
+
 	// The warp pointer across loops (atlantis-re functions/graphics-FUN_0041bfa0.md,
 	// experiments/2026-10-15-70): the image values (0, 0) and -1.0
 	// (0x004960ec, 0x0049698c), (0x140, 0x140) after a panorama load

@@ -943,8 +943,12 @@ uint CryOmni3DEngine_Atlantis::displaySavePicker(bool saveMode, Common::String &
 	return result;
 }
 
+// True for OMNI 3D MODE 1, 0x004960ac == 0 (the label after "&&"): the
+// original's default (0 in the image; written only by the toggle 0x0041d794
+// and the checkpoint reader), with the pitch delta dy = prevY - y
+// (FUN_0041bfa0 @ 0x0041c1e3); MODE 2 takes y - prevY.
 bool CryOmni3DEngine_Atlantis::omni3dInvertY() const {
-	return ConfMan.hasKey(kOmni3dInvertKey) && ConfMan.getBool(kOmni3dInvertKey);
+	return !ConfMan.hasKey(kOmni3dInvertKey) || ConfMan.getBool(kOmni3dInvertKey);
 }
 
 // Options menu (OPTMENU.TXT): SUBTITLES and OMNI 3D (look-Y) toggles, plus a

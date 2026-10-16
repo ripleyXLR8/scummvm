@@ -270,7 +270,6 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 	// d / 800 rad (pitch) in total, spread over the following frames by the
 	// factor 0.8 per frame.  The frame is the port's ([UNKNOWN] pace,
 	// atlantis-re decisions/0013-unpaced-loops.md).
-	static const double kWarpBetaLimit = M_PI / 4.0;  // matches doPlaceChange
 
 	// The cursor follows FUN_00422fcc (warpCursorStep).  When the player is
 	// carrying an object the item cursor replaces it.
@@ -298,16 +297,19 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		pollEvents();
 		updateConClocks();   // atlantis.exe FUN_0041bfa0 @ 0x0041c086
 
-		// This frame's accumulated relative motion.  WSLg's Wayland relative
-		// pointer inverts X (Y is consistent everywhere); the Windows build
-		// takes X as-is.  xDelta must be positive for a rightward look.
+		// This frame's accumulated relative motion of the pointer (x right,
+		// y down, as the WM_MOUSEMOVE positions the original subtracts).
+		// WSLg's Wayland relative pointer inverts X, the pre-RE port found
+		// (Y is consistent everywhere); the Windows build takes X as-is.
+		// Which sign SDL gives on each platform is not established
+		// (atlantis-re experiments/2026-10-16-11-warp-look.md).
 		Common::Point lookRel = takeMouseRelative();
 #if defined(WIN32)
-		int xDelta = lookRel.x;
+		int motionX = lookRel.x;
 #else
-		int xDelta = -lookRel.x;
+		int motionX = -lookRel.x;
 #endif
-		int yDelta = -lookRel.y;
+		const int motionY = lookRel.y;
 
 		// Pin the crosshair to screen centre (every hit-test is at the centre).
 		setMousePos(Common::Point(320, 240));
@@ -537,41 +539,36 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 			}
 		}
 
-		// Apply the look and render.  The OMNI 3D option inverts the pitch.
-		int pitchDelta = omni3dInvertY() ? -yDelta : yDelta;
-		// The original's dx = prevX - x turns alpha by +vx; the port's
-		// xDelta is x - prevX and its beta runs opposite to 0x00bcb598, so
-		// the deltas enter with these signs to keep the port's directions.
+		// The view: FUN_0041bfa0 steps 2..5 (warp_momentum.h warpLookFrame).
+		// The stored angles first take F5 / F6 (turn) and F8 / F7 (tilt),
+		// 0.034906 rad (2 degrees) on every poll they are held with the left
+		// button up: FUN_0041a298 at the end of the previous frame
+		// (0x0041a33c..0x0041a3ba, floats 0x00bcb59c / 0x00bcb598), so before
+		// this frame's ANGLEWARPX / ANGLEWARPY, which are stored from the
+		// angles as the frame starts (0x0041c08b..0x0041c10a), before the
+		// mouse turns the view.  OMNI 3D MODE 1 (0x004960ac == 0, the
+		// original's default) gives dy = prevY - y, MODE 2 y - prevY.
 		float alphaF = (float)_omni3dMan.getAlpha();
 		float betaF  = (float)_omni3dMan.getBeta();
-		_warpMomentum.step((float)-xDelta, (float)-pitchDelta, alphaF, betaF);
-		double alpha = alphaF;
-		double beta  = betaF;
-		// F5 / F6 turn and F8 / F7 tilt the view by 0.034906 rad (2 degrees)
-		// on every poll they are held, when the left button is up
-		// (FUN_0041a298 @ 0x0041a33c..0x0041a3ba; floats 0x00bcb59c /
-		// 0x00bcb598).
 		if (getCurrentMouseButton() != 1) {
 			const uint8 k = _viewKeys.held;
-			if (k & 1) alpha = (float)(alpha + 0.034906);
-			if (k & 2) alpha = (float)(alpha - 0.034906);
-			if (k & 8) beta = (float)(beta + 0.034906);
-			if (k & 4) beta = (float)(beta - 0.034906);
+			if (k & 1) alphaF = (float)(alphaF + 0.034906);
+			if (k & 2) alphaF = (float)(alphaF - 0.034906);
+			if (k & 8) betaF = (float)(betaF + 0.034906);
+			if (k & 4) betaF = (float)(betaF - 0.034906);
 		}
-		const float newAlpha = (float)alpha, newBeta = (float)beta;
-		while (alpha >= 2.0 * M_PI) alpha -= 2.0 * M_PI;
-		while (alpha < 0.0)         alpha += 2.0 * M_PI;
-		if (beta < -kWarpBetaLimit) beta = -kWarpBetaLimit;
-		if (beta >  kWarpBetaLimit) beta =  kWarpBetaLimit;
-		_omni3dMan.setAlpha(alpha);
-		_omni3dMan.setBeta(beta);
+		const WarpLookFrame look = warpLookFrame(_warpMomentum, alphaF, betaF, motionX, motionY,
+		                                         !omni3dInvertY(), _warpPointer.prevAlpha,
+		                                         _warpPointer.prevBeta, _omni3dMan.piF(),
+		                                         _omni3dMan.twoPiF(), _omni3dMan.betaLimit());
+		_gameVars["anglewarpx"] = look.angleWarpX;
+		_gameVars["anglewarpy"] = look.angleWarpY;
+		_omni3dMan.setAlpha(alphaF);
+		_omni3dMan.setBeta(betaF);
 		// The pointer follows the mouse, and goes back to the centre when the
 		// new (unclamped) angles differ from the previous frame's (FUN_0041bfa0
 		// step 5, @ 0x0041c2bb..0x0041c363).
-		_warpPointer.frame(xDelta, -yDelta, newAlpha, newBeta, (float)alpha, (float)beta);
-		// Keep angle vars in sync for CON conditions (AngleWarpX<N).
-		_gameVars["anglewarpx"] = (int)(alpha * 180.0 / M_PI);
-		_gameVars["anglewarpy"] = (int)(beta  * 180.0 / M_PI);
+		_warpPointer.frame(motionX, motionY, look.newAlpha, look.newBeta, alphaF, betaF);
 
 		// Timer sections (atlantis.exe FUN_0041bfa0 @ 0x0041c369).
 		if (!exit && runConTimers(true)) {

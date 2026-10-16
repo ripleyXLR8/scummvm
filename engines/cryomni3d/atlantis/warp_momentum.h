@@ -52,6 +52,58 @@ struct WarpMomentum {
 	}
 };
 
+// ANGLEWARPX / ANGLEWARPY of a view angle (FUN_0041bfa0 @ 0x0041c08b..
+// 0x0041c10a): angle / pi * 180 at 53-bit precision with the float pi of
+// 0x00bcb594 and the float 180.0 of 0x004bc2f3, stored to a float, then
+// truncated (FUN_00451d6e, FISTP).  Emulated for every degree of both
+// axes: atlantis-re tools/emu/graphics_anglewarp.py.
+inline int angleWarpDegrees(float angle, float pi) {
+	const float t = (float)((double)angle / (double)pi * 180.0);
+	return (int)t;
+}
+
+// FUN_00451915's angle rule: beta clamped to +-betaMax (0.9 x the vertical
+// limit), alpha brought into [0, 2 pi) by one float 2 pi; both kept in the
+// view-angle globals.  The same code as Omni3DManagerAtlantis.
+inline void warpWrapAngles(float &alpha, float &beta, float twoPi, double betaMax) {
+	if (beta > betaMax)
+		beta = (float)betaMax;
+	else if (beta < -betaMax)
+		beta = (float)-betaMax;
+	if (!(alpha < twoPi))
+		alpha = (float)((double)alpha - twoPi);
+	else if (alpha < 0.f)
+		alpha = (float)((double)twoPi + alpha);
+}
+
+// FUN_0041bfa0 steps 2..5 on the stored view angles (0x00bcb59c /
+// 0x00bcb598): ANGLEWARPX / ANGLEWARPY from the angles as the frame starts,
+// then the mouse deltas of the pointer motion (x right, y down):
+// dx = -motion x; dy = -motion y in OMNI 3D MODE 1 (0x004960ac == 0),
+// +motion y in MODE 2 (0x0041c1c3..0x0041c20d); the momentum; and, when the
+// new angles differ from the previous frame's, FUN_00451915's wrap and clamp
+// (0x0041c2bb..0x0041c2e9).  alpha / beta are updated in place.
+struct WarpLookFrame {
+	int angleWarpX, angleWarpY;
+	float newAlpha, newBeta;   // before FUN_00451915 (the recentre test)
+	bool moved;
+};
+
+inline WarpLookFrame warpLookFrame(WarpMomentum &m, float &alpha, float &beta, int motionX,
+                                   int motionY, bool mode2, float prevAlpha, float prevBeta,
+                                   float pi, float twoPi, double betaMax) {
+	WarpLookFrame f;
+	f.angleWarpX = angleWarpDegrees(alpha, pi);
+	f.angleWarpY = angleWarpDegrees(beta, pi);
+	m.step((float)-motionX, (float)(mode2 ? motionY : -motionY), alpha, beta);
+	f.newAlpha = alpha;
+	f.newBeta = beta;
+	f.moved = alpha != prevAlpha || beta != prevBeta;
+	if (f.moved)
+		warpWrapAngles(alpha, beta, twoPi, betaMax);
+	return f;
+}
+
 } // End of namespace Atlantis
 } // End of namespace CryOmni3D
 

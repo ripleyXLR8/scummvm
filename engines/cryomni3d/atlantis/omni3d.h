@@ -55,6 +55,9 @@ public:
 	// FUN_00451915's pitch limit: 0.9 (0x004befe0) x the vertical limit
 	// 0x00bcab58 set by FUN_0045179a.
 	double betaLimit() const { return (double)_vfovF * 0.9; }
+	// pi (0x00bcb594) and 2 pi as FUN_0045179a stores them (floats).
+	float piF() const { return _piF; }
+	float twoPiF() const { return _twoPiF; }
 
 protected:
 	void updateImageCoords() override;

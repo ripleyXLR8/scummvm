@@ -22,6 +22,7 @@
 #include "common/scummsys.h"
 
 #include "cryomni3d/atlantis/omni3d.h"
+#include "cryomni3d/atlantis/warp_momentum.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
@@ -76,21 +77,9 @@ void Omni3DManagerAtlantis::updateImageCoords() {
 		return;
 	}
 
-	const float alpha = (float)_alpha;
-	const float beta = (float)_beta;
-	const double betaMax = (double)_vfovF * 0.9;
-	float b = beta;
-	if (beta > betaMax) {
-		b = (float)betaMax;
-	} else if (beta < -betaMax) {
-		b = (float)-betaMax;
-	}
-	float a = alpha;
-	if (!(alpha < _twoPiF)) {
-		a = (float)((double)alpha - _twoPiF);
-	} else if (alpha < 0.f) {
-		a = (float)((double)_twoPiF + alpha);
-	}
+	float a = (float)_alpha;
+	float b = (float)_beta;
+	warpWrapAngles(a, b, _twoPiF, betaLimit());
 	_alpha = a;
 	_beta = b;
 
