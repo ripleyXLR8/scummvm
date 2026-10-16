@@ -440,7 +440,13 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 		// the in-game menu under the conditions of escapeOpensMenu.  Space is
 		// not read by FUN_0041a298.
 		Common::KeyCode kc = getNextKey().keycode;
-		bool barRequested = !exit && getCurrentMouseButton() == 2;
+		// The request can also come from the previous frame's timer
+		// section: a right press during its talking-head lines toggled it
+		// (FUN_0041a298), and the original's step 17 (@ 0x0041c6d2) opens
+		// the bar in that same frame, after its own poll; each frame then
+		// starts by clearing the flags (0x0041c04a..0x0041c07c).
+		const bool pendingRequest = BarSessionRules::warpFrameStart(_barSession);
+		bool barRequested = !exit && (getCurrentMouseButton() == 2 || pendingRequest);
 		// In bow mode the request only lowers the bow and is dropped
 		// (0x0041c6af..0x0041c6c8: FUN_0042d368, 0x004960c4 = 0).
 		if (barRequested && _bowMode) {

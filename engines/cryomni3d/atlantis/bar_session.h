@@ -75,6 +75,18 @@ inline void rightPressed(BarSession &s, bool sectionPlay, bool menuRequest) {
 		s.request = !s.request;
 }
 
+// The warp loop FUN_0041bfa0: its timers (step 6, @ 0x0041c369) run before
+// its own poll and its bar test (step 17, @ 0x0041c6d2), so a request left by
+// a timer section (a right press during its talking-head lines) opens the
+// bar in the same frame; the next frame starts by clearing the flags
+// (0x0041c04a..0x0041c07c).  The port tests the bar at the top of its frame:
+// this returns the request carried over and clears the flags.
+inline bool warpFrameStart(BarSession &s) {
+	const bool pending = s.request;
+	flagsReset(s);
+	return pending;
+}
+
 // After the timers of a bar frame: true when the loop leaves (0x0042cb76).
 inline bool timersEndBar(const BarSession &s) {
 	return !s.request;

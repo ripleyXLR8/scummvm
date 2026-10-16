@@ -580,5 +580,19 @@ public:
 		BarSessionRules::rightPressed(s, false, true);
 		TS_ASSERT(s.request);
 		TS_ASSERT(s.rightPress);
+		// The warp loop: a right press during a timer's talking-head line
+		// opens the bar in that frame (step 17); a voice-only line or a
+		// video in the section resets it first.
+		BarSessionRules::flagsReset(s);
+		BarSessionRules::rightPressed(s, false, false);
+		TS_ASSERT(BarSessionRules::warpFrameStart(s));
+		TS_ASSERT(!s.request && !s.rightPress);
+		TS_ASSERT(!BarSessionRules::warpFrameStart(s));
+		BarSessionRules::rightPressed(s, false, false);
+		BarSessionRules::voiceLineEnded(s);
+		TS_ASSERT(!BarSessionRules::warpFrameStart(s));
+		// A /con click section (0x00496170) never toggles it.
+		BarSessionRules::rightPressed(s, true, false);
+		TS_ASSERT(!BarSessionRules::warpFrameStart(s));
 	}
 };
