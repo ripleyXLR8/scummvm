@@ -15,6 +15,8 @@
 #include "common/fs.h"
 
 #include "cryomni3d/atlantis/ambient_output.h"
+#include "cryomni3d/atlantis/bigfile.h"
+#include "cryomni3d/atlantis/wam_parser.h"
 #include "cryomni3d/atlantis/ambient_sounds.h"
 #include "cryomni3d/atlantis/miles_samples.h"
 
@@ -51,6 +53,16 @@ struct Clock {
 	static uint32 fn(void *ctx) {
 		Clock *c = (Clock *)ctx;
 		return c->pos < c->values.size() ? c->values[c->pos++] : 0;
+	}
+};
+
+struct LoadLog {
+	const Common::Array<AtlantisAmbientObject> *objects = nullptr;
+	Common::Array<Common::String> names;
+	static bool fn(void *ctx, uint object, uint variant) {
+		LoadLog *l = (LoadLog *)ctx;
+		l->names.push_back((*l->objects)[object].variants[variant]);
+		return true;
 	}
 };
 
@@ -431,5 +443,66 @@ public:
 		// Pan 64 is the centre in Miles (both channels full); the old
 		// 2p - 127 mapping gave balance 1 there.
 		TS_ASSERT_EQUALS((int)CryOmni3D::Atlantis::milesPanBalance(64), 0);
+	}
+
+	// CHAPI038 /551 (departure from place 145 of the night hut PECHEUR2.WAM)
+	// runs ChangeWam=pecheur1.wam, Vue=145 and a cinema; nothing between calls
+	// FUN_00431e98 (its 7 callers: exit, end of game, credits, puzzle zone,
+	// game over, load, a place without refs), so the next FUN_00431a1c sees
+	// the night records. Its reuse test is pointer identity on the object
+	// table 0x0076f6c7 + 100 k, which the new WAM refills slot for slot: the
+	// day place's objects 1 and 2 count as loaded, and the night waves
+	// (mernuit vague_07..10, mernuit2 vague_01..04) go on playing where the
+	// day WAM names vague_01..04 and vague_07..10.
+	// atlantis-re experiments/2026-10-16-22, functions/audio-FUN_00431a1c.md.
+	void test_data_changewam_keeps_samples() {
+		using namespace AudioAmbient;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("audio: no game data configured, skipping the ChangeWam ambient test");
+			return;
+		}
+		if (!SearchMan.hasArchive("archive_test_data"))
+			SearchMan.addDirectory("archive_test_data", Common::FSNode(Common::Path(AtlantisTest::dataDir(), '/')));
+		BigFileArchive big;
+		for (int d = 1; d <= 4; d++)
+			TS_ASSERT(big.open(Common::Path(Common::String::format("BIGCD%d.BIG", d))));
+		AtlantisWAMParser night, day;
+		Common::ScopedPtr<Common::SeekableReadStream> s2(big.createReadStreamForMember(Common::String("WAM\\PECHEUR2.WAM")));
+		Common::ScopedPtr<Common::SeekableReadStream> s1(big.createReadStreamForMember(Common::String("WAM\\PECHEUR1.WAM")));
+		TS_ASSERT(s2 && s1);
+		if (!s2 || !s1)
+			return;
+		night.loadStream(*s2);
+		day.loadStream(*s1);
+		const AtlantisPlace *p2 = night.findPlaceById(145), *p1 = day.findPlaceById(145);
+		TS_ASSERT(p2 && p1);
+		if (!p2 || !p1)
+			return;
+		AmbientSounds a;
+		Clock c;
+		a.setClock(&Clock::fn, &c);
+		FakeOut out;
+		LoadLog l;
+		l.objects = &night.getAmbientObjects();
+		TS_ASSERT(a.enterPlace(out, *p2, night.getAmbientObjects(), &LoadLog::fn, &l));
+		TS_ASSERT_EQUALS(a.count(), 2u);
+		TS_ASSERT_EQUALS(l.names.size(), 8u);
+		if (l.names.size() == 8) {
+			TS_ASSERT_EQUALS(l.names[0], "vague_07.apc");   // mernuit
+			TS_ASSERT_EQUALS(l.names[4], "vague_01.apc");   // mernuit2
+		}
+		// the day WAM names other waves for the same slots
+		TS_ASSERT_EQUALS(day.getAmbientObjects()[0].variants[0], "vague_01.apc");   // mer1
+		TS_ASSERT_EQUALS(day.getAmbientObjects()[1].variants[0], "vague_07.apc");   // mer2
+		l.names.clear();
+		l.objects = &day.getAmbientObjects();
+		out.log.clear();
+		TS_ASSERT(a.enterPlace(out, *p1, day.getAmbientObjects(), &LoadLog::fn, &l));
+		TS_ASSERT_EQUALS(l.names.size(), 0u);   // nothing reloaded
+		TS_ASSERT_EQUALS(out.log.size(), 0u);   // nothing stopped or released
+		TS_ASSERT_EQUALS(a.count(), 2u);
+		TS_ASSERT_EQUALS(a._records[0].object, 0);
+		TS_ASSERT_EQUALS(a._records[1].object, 1);
+		TS_ASSERT_EQUALS(a._records[1].delay, 5u);   // mernuit2's 20 x 4, not mer2's 25 x 4
 	}
 };
