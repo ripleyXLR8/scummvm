@@ -1064,7 +1064,8 @@ static const char *const kMasterVolKey = "atlantis_master_volume";
 //    @ 0x4bc35b/0x4bc35f/0x4bc363) into the AIL 0..127 volumes, in order
 //    master / music / effects / voices; Cancel applies nothing.
 //  - Left/Right plays WAV\VAGUE_10.APC hard-panned (AIL pan 0 / 0x7f) at the
-//    *applied* effects volume, frozen-screen, until the next click.
+//    *applied* effects volume and returns at once (the click wait ends at
+//    once, below).
 //  - Clicking a knob record itself (reachable only on its 1-px sliver above
 //    the track rect) does nothing; the original toggles a write-only global
 //    there (DAT_004960b0), dead code we do not reproduce.
@@ -1150,9 +1151,7 @@ void CryOmni3DEngine_Atlantis::displaySoundMenu(const Graphics::ManagedSurface &
 	}
 
 	// Left/Right channel test (FUN_0041db4c / FUN_0041dcf8): play
-	// WAV\VAGUE_10.APC hard left or right and block, screen frozen, until the
-	// next press.  The original frees the sample after the click rather than
-	// stopping it; a short wave simply plays out, so we leave it running too.
+	// WAV\VAGUE_10.APC hard left or right, then return while it plays.
 	// It plays on Miles sample 0x006cc564, one of the six the ambient sounds
 	// and the puzzles share (miles_samples.h): AIL_stop_sample then
 	// AIL_start_sample on it (ui-FUN_0041d5f4.md steps 4 and 6).
