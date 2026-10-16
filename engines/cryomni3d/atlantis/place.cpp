@@ -64,7 +64,7 @@ static const char *const kWAMNames[] = {
 	"ATLAN5.WAM",
 };
 
-void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
+void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter, bool keepState) {
 	if (chapter < 1 || chapter >= (int)ARRAYSIZE(kWAMNames) || !kWAMNames[chapter])
 		error("No WAM for chapter %d", chapter);
 
@@ -86,7 +86,10 @@ void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 	// starts from the record atlantis.exe FUN_0042c054 sets up before the
 	// player menu: object 257 alone.  See atlantis-re:
 	// functions/graphics-FUN_0042b328.md.
-	if (chapter == 1) {
+	if (chapter == 1 && keepState) {
+		// FUN_0042de5c without a file (0x0042e249..0x0042e29e): LastVue = 1.
+		_lastVue = 1;
+	} else if (chapter == 1) {
 		inventoryReset(_inventory, _objects);
 		// FUN_00423760 zeroes the /con play counters and the timer offsets,
 		// and restarts Time1, when a game starts.
@@ -105,7 +108,9 @@ void CryOmni3DEngine_Atlantis::setupChapterWAM(int chapter) {
 		_lastVue = 1;
 	}
 
-	if ((uint)chapter != _currentCONChapter) {
+	// FUN_00427634 reloads the CON and runs its /INIT even when the chapter
+	// does not change (the in-play no-checkpoint branch, in chapter 1).
+	if ((uint)chapter != _currentCONChapter || keepState) {
 		_currentCONChapter = (uint)chapter;
 		loadConScript(chapter);
 	}
@@ -130,14 +135,19 @@ void CryOmni3DEngine_Atlantis::setupWAMByName(const Common::String &wamName) {
 	debugC(1, kDebugScript, "Loaded WAM '%s': %u places", wamName.c_str(), _wam.getPlaces().size());
 }
 
-void CryOmni3DEngine_Atlantis::changeChapter(int chapter) {
+void CryOmni3DEngine_Atlantis::changeChapter(int chapter, bool keepState) {
 	_currentChapter = (uint)chapter;
 	// The music is not touched: a chapter change keeps it (FUN_00427634);
 	// the new CON's startmusik continues the same track or switches.
 	// A direct chapter start (new game) begins with no hidden NPCs; the CON
 	// /INIT block establishes the initial set.  In-game /set(chapter=N)
 	// switches deliberately do NOT clear this list (see loadConScript).
-	_hiddenPersos.clear();
+	if (!keepState)
+		_hiddenPersos.clear();
+	// FUN_0042de5c step 4 (both branches): ZOOM = NEWSOUND = 0; NEWSOUND is
+	// one of the 7 variables the chapter change keeps.
+	_gameVars["zoom"] = 0;
+	_gameVars["newsound"] = 0;
 	// No checkpoint: the new-game start FUN_00423760 sets the loading flag
 	// 0x00496168 (0x00423778) before its chapter change FUN_00427634, whose
 	// write is skipped when the flag is set (0x00427656).
@@ -147,14 +157,21 @@ void CryOmni3DEngine_Atlantis::changeChapter(int chapter) {
 	// cinematic).  Clear _nextPlaceId first so we can detect that.
 	_nextPlaceId = uint(-1);
 	_arrivalScanPending = false;
-	setupChapterWAM(chapter);
-
 	const LevelInitialState &init = kChapterInitialStates[chapter - 1];
+	// The view angles: no function of the load path writes them, only an
+	// /INIT AngleWarpX / AngleWarpY (FUN_0042a100 @ 0x0042a9a9 / 0x0042a9e3);
+	// at boot they are 0 (.bss), kept otherwise.
+	if (!keepState) {
+		_omni3dMan.setAlpha(init.alpha);
+		_omni3dMan.setBeta(init.beta);
+	}
+	setupChapterWAM(chapter, keepState);
+
 	// A Vue= in /INIT has entered its place already (enterPlaceFromScript).
 	if (_nextPlaceId == uint(-1) && !_arrivalScanPending)
 		_nextPlaceId = init.placeId;   // fall back to the hardcoded start
-	_omni3dMan.setAlpha(init.alpha);
-	_omni3dMan.setBeta(init.beta);
+	// FUN_0042de5c step 7: CHAPTER = the chapter byte after the /INIT.
+	_gameVars["chapter"] = (int)_currentCONChapter;
 }
 
 void CryOmni3DEngine_Atlantis::doPlaceChange() {

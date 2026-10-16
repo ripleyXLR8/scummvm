@@ -107,7 +107,6 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_warpLoaded(false) {
 	memset(_spriteAnimLast, 0, sizeof(_spriteAnimLast));
 	_spriteAnimCurrent.resize(512, 0);
-	_placeVisits.resize(1500, 0);
 	_conPlayCounters.resize(kConPlayCounterCount, 0);
 	// malloc(0x12c000) @ 0x00418f83: both IX buffers, RGB565 640 x 480.
 	_ixVideoBuffers = new byte[2 * 640 * 480 * 2]();
@@ -557,8 +556,10 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 		nextStep = 28;
 	}
 	bool stopGame = false;
+	bool inPlayNewGame = false;   // a kAbortNewGame from play, not the player screen
 	while (!stopGame && !shouldQuit()) {
 		if (nextStep == 0) {
+			inPlayNewGame = false;
 			_isPlaying = false;
 			// Original-style startup player select / create / delete screen.
 			// An existing player resumes their current episode (the latest
@@ -582,14 +583,21 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 
 		_abortCommand = kAbortNoAbort;
 		_isPlaying = true;
-		if (nextStep == 28)
+		if (nextStep == 28) {
 			loadGame(_loadedSave);        // load: restores state + _nextPlaceId
-		else {
+			if (ConfMan.hasKey("atlantis_state_dump")) {
+				dumpLoadState(ConfMan.get("atlantis_state_dump"));
+				break;
+			}
+		} else {
 			// FUN_0042de5c with no checkpoint: the saved disc is 1 (@ 0x0042e285
 			// path, 0x00772914 = 1), asked for when another one is in use.
 			if (_currentDisc != 1)
 				changeDisc(0);
-			changeChapter(1);             // new game (also the fallback)
+			// The main loop runs the new-game init FUN_00423760 only on the
+			// boot pass (0x0041972b); in play the no-checkpoint branch keeps
+			// the rest of the state.
+			changeChapter(1, inPlayNewGame);   // new game (also the fallback)
 			_toolbar.resetInventoryFirst();   // FUN_0042de5c @ 0x0042e2ec
 			// FUN_0042de5c with no checkpoint: LastVue = 1 (0x0042e285), then
 			// ARRIVEEVUE = LastVue (FUN_00427634 @ 0x0042777d), whatever the
@@ -606,6 +614,7 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 			break;
 		case kAbortNewGame:
 			nextStep = 27;
+			inPlayNewGame = true;
 			break;
 		case kAbortQuit:
 			stopGame = true;

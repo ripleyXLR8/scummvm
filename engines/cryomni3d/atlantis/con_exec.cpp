@@ -748,9 +748,8 @@ class EngineConEvaluator : public ConEvaluator {
 public:
 	EngineConEvaluator(const ConVariableNames &names, const Inventory &inventory,
 	                   const Common::HashMap<Common::String, int> &vars,
-	                   const Common::Array<byte> &placeVisits,
 	                   int departZone, int currentVue) :
-		ConEvaluator(names, vars, inventory), _inventory(inventory), _placeVisits(placeVisits),
+		ConEvaluator(names, vars, inventory), _inventory(inventory),
 		_departZone(departZone), _currentVue(currentVue) {}
 
 protected:
@@ -772,7 +771,6 @@ protected:
 
 private:
 	const Inventory &_inventory;
-	const Common::Array<byte> &_placeVisits;
 	int _departZone, _currentVue;
 };
 
@@ -995,7 +993,7 @@ bool CryOmni3DEngine_Atlantis::evalSelSection(const ConSection &sec,
                                                int departZone, int currentVue) const {
 	if (sec.condOffset < 0)
 		return true;
-	EngineConEvaluator eval(_conVarNames, _inventory, _gameVars, _placeVisits,
+	EngineConEvaluator eval(_conVarNames, _inventory, _gameVars,
 	                        departZone, currentVue);
 	return eval.evaluate(_conScript.text(), (uint32)sec.condOffset);
 }

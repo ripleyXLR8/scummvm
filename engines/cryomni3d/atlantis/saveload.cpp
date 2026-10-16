@@ -24,6 +24,8 @@
 // profiles, the in-game load screen and the GMM save list layer on later.
 
 #include "common/debug.h"
+#include "common/file.h"
+#include "common/fs.h"
 #include "common/savefile.h"
 #include "common/str.h"
 #include "common/textconsole.h"
@@ -469,10 +471,12 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	// origin).  Saves before ext v8 did not keep it: 1, the earlier behaviour.
 	_lastVue = savedLastVue >= 0 ? (uint)savedLastVue : 1;
 	_currentPlaceId = 1;
-	_omni3dMan.setAlpha(alpha);
-	_omni3dMan.setBeta(beta);
-	for (byte &b : _placeVisits)      // visit counters aren't persisted yet
-		b = 0;
+	// The view angles are not in the checkpoint and FUN_0042de5c does not
+	// write them: the live ones stay, unless the /INIT below sets AngleWarpX /
+	// AngleWarpY (0x0042a9a9 / 0x0042a9e3).  72 of the 74 original checkpoints
+	// and the no-file branch keep them (atlantis-re tools/emu/ui_load_state.py).
+	(void)alpha;
+	(void)beta;
 
 	// Zero every persistent var before applying the save's (a persistent var
 	// live now but absent from the save was 0 when written).
@@ -531,6 +535,10 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 		_currentCONChapter = savedCONChapter;
 		loadConScript((int)savedCONChapter);
 	}
+	// Step 7: CHAPTER = the chapter byte after the /INIT (the checkpoint's
+	// variable 0 holds the chapter left: the writer runs before the store).
+	if (_currentCONChapter >= 1)
+		_gameVars["chapter"] = (int)_currentCONChapter;
 
 	_nextPlaceId = placeId;
 	_arrivalScanPending = false;   // VUE = the loaded place (0x0042777d area)
@@ -551,14 +559,10 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 
 	_inventory.deselectObject();
 
-	// Point the player's resume pointer at the loaded episode, so a relaunch
-	// reloads this chapter (the original writes the picked save's chapter back
-	// to the per-player chapter byte).
-	if (_currentPlayer >= 0 && _currentPlayer < (int)kMaxPlayers &&
-	        _currentCONChapter >= 1 && _currentCONChapter < kPlayerSlotStride) {
-		_playerChapter[_currentPlayer] = (int)_currentCONChapter;
-		savePlayers();
-	}
+	// The player's chapter byte (0x006ce246) and players.atl are not touched
+	// here: FUN_0042de5c reads the byte only; a row click of the load picker
+	// sets it, and only the checkpoint writer FUN_0042d6b8 and the player
+	// screen FUN_0041dea4 write the file.
 
 	debugC(1, kDebugScript, "loadGame: restored slot %u (chapter %u, place %u)",
 	      saveNum, chapter, placeId);
@@ -676,6 +680,57 @@ void CryOmni3DEngine_Atlantis::loadEpisodeNames() {
 	if (!_epiText.empty())
 		s->read(_epiText.data(), _epiText.size());
 	debugC(1, kDebugSaveLoad, "loadEpisodeNames: %u bytes", _epiText.size());
+}
+
+} // End of namespace Atlantis
+} // End of namespace CryOmni3D
+
+namespace CryOmni3D {
+namespace Atlantis {
+
+void CryOmni3DEngine_Atlantis::dumpLoadState(const Common::String &path) {
+	Common::DumpFile out;
+	if (!out.open(Common::FSNode(Common::Path(path, '/')))) {
+		warning("dumpLoadState: cannot write %s", path.c_str());
+		return;
+	}
+	Common::String s;
+	s += Common::String::format("L wam %s chapter %u place %d lastvue %u alpha %.9g beta %.9g incperso %u "
+	                            "disc %u invfirst %u\n", _currentWAMName.c_str(), _currentCONChapter,
+	                            (int)_nextPlaceId, _lastVue, _omni3dMan.getAlpha(), _omni3dMan.getBeta(),
+	                            _incPersoCount, _currentDisc, _toolbar.inventoryFirst());
+	s += "V";
+	for (uint i = 0; i < _conVarNames.size(); i++) {
+		const int v = _gameVars.getValOrDefault(_conVarNames.name(i), 0);
+		if (v)
+			s += Common::String::format(" %u:%d", i, v);
+	}
+	s += "\nI";
+	for (uint i = 0; i < _inventory.size(); i++)
+		if (_inventory[i])
+			s += Common::String::format(" %d:%u", (int)(_inventory[i] - _objects.begin()), _inventory[i]->idOBJ());
+	s += Common::String::format("\nG %u", _guests.count);
+	for (uint i = 0; i < _guests.count && i < AtlantisGuests::kSlots; i++)
+		s += Common::String::format(" %d:%u", _guests.id[i], _guests.sprite[i]);
+	s += "\nH";
+	for (int id : _hiddenPersos)
+		s += Common::String::format(" %d", id);
+	s += "\nC";
+	for (uint i = 0; i < _conPlayCounters.size(); i++)
+		if (_conPlayCounters[i])
+			s += Common::String::format(" %u:%u", i, _conPlayCounters[i]);
+	s += "\nS";
+	for (uint r = 0; r < ConSubjects::kRecords; r++) {
+		const Common::Array<uint8> &ids = _subjects.subjects((int)(0x200 + r));
+		if (ids.empty())
+			continue;
+		s += Common::String::format(" %u:", 0x200 + r);
+		for (uint k = 0; k < ids.size(); k++)
+			s += Common::String::format(k ? ",%u" : "%u", ids[k]);
+	}
+	s += "\n";
+	out.write(s.c_str(), s.size());
+	out.finalize();
 }
 
 } // End of namespace Atlantis

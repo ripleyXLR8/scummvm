@@ -243,9 +243,17 @@ public:
 private:
 	// --- Chapter / place lifecycle (place.cpp) ----------------------------
 	// Set up the chapter's WAM navigation map and load its CON script.
-	void setupChapterWAM(int chapter);
+	// keepState: the no-checkpoint branch of FUN_0042de5c reached in play
+	// (changeChapter below).
+	void setupChapterWAM(int chapter, bool keepState = false);
 	// Switch to the given chapter: load its WAM/CON and enter the start place.
-	void changeChapter(int chapter);
+	// keepState (chapter 1 only): FUN_0042de5c's no-checkpoint branch reached
+	// in play (game-over reload, load picker OK / RESTART EPISODE): the
+	// main loop skips the new-game init FUN_00423760 (0x0041972b), so the
+	// inventory, guests, hidden persos, /con counters, IncPerso, view angles
+	// and the variables 1, 3..6 are kept; the CON and its /INIT run again.
+	// See atlantis-re: experiments/2026-10-16-10-load-state.md.
+	void changeChapter(int chapter, bool keepState = false);
 	// Enter _nextPlaceId: load its cyclo panorama and point the viewer at it.
 	void doPlaceChange();
 	// Transition to the given place (currently a direct change; the UBB_VUE
@@ -691,7 +699,6 @@ private:
 	// game starts, saved with the game.
 	Common::Array<byte> _conPlayCounters;
 	void bumpConPlayCounter(int section);
-	Common::Array<byte> _placeVisits;          // per-place visit counts (nbvisite)
 
 	// Per-character dialog resource table parsed from DIALOG\INITDIAL.TXT.
 	// camUBB[0..3] = UBB talking-head video basenames for cameras 2..5 ("none"
@@ -894,6 +901,10 @@ private:
 	void loadInputScript(const Common::String &path);
 	bool _testDialogLineDone;   // port-only: atlantis_dialog_line played
 	void playTestDialogLine();
+	// Testing aid (port-only): atlantis_state_dump=<file> writes the state
+	// a load left (the rows of atlantis-re tools/emu/ui_load_state.py) and
+	// ends the game.
+	void dumpLoadState(const Common::String &path);
 	AbortCommand _abortCommand;
 	uint _loadedSave;          // 1-based slot a kAbortLoadGame should re-enter
 	bool _conInitRunning;      // a CON /INIT block runs (0x00496168): no checkpoint
