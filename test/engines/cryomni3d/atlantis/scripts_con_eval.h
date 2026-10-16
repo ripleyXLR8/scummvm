@@ -499,6 +499,133 @@ public:
 		TS_ASSERT_EQUALS(rows, 17u);
 		TS_ASSERT_EQUALS(mismatches, 0u);
 	}
+
+	// The sound on the moves whose video has a same-name APC (AT099100,
+	// AT100099, AT110109, CP026126, CP030130, FO050051, SP026027: NewSound
+	// entries 15..17, 98, 99, 108, 120), in every chapter where the move is
+	// reachable: the original's departure scan FUN_004280f8 with VUE =
+	// source, DEPARTVUE = CLICZONE = destination, ARRIVEEVUE = 0, over 64
+	// states, and the NEWSOUND values the section found sets (golden
+	// scripts_transition_sound.txt, atlantis-re
+	// tools/emu/scripts_transition_sound.py, experiment 2026-10-16-08).  The
+	// move itself plays no sound (FUN_00423ad8), which playTransitionVideo
+	// now follows.  Port: findSelEntry with the real ConEvaluator, the
+	// section's /set items and one /go.
+	void test_transition_sound_vs_original() {
+		using namespace CryOmni3D::Atlantis;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("transition sound: no game data configured, skipped");
+			return;
+		}
+		Common::Array<Common::String> golden;
+		TS_ASSERT(AtlantisTest::loadGoldenLines("scripts_transition_sound.txt", golden));
+		ScriptsTest::Big big;
+		Common::Array<char> varias;
+		TS_ASSERT(big.get("SCENAR\\VARIAS.CON", varias));
+		Common::Array<Common::String> varNames;
+		{
+			Common::String cur;
+			for (uint i = 0; i <= varias.size(); i++) {
+				const char ch = i < varias.size() ? varias[i] : '\n';
+				if (ch == '\r' || ch == '\n') {
+					if (!cur.empty()) {
+						cur.toLowercase();
+						varNames.push_back(cur);
+					}
+					cur.clear();
+				} else {
+					cur += ch;
+				}
+			}
+		}
+		uint rows = 0, states = 0, bad = 0;
+		for (uint g = 0; g < golden.size(); g++) {
+			int chapter = 0, src = 0, dst = 0, ref = 0;
+			char apc[32];
+			if (sscanf(golden[g].c_str(), "M chapter %d move %d->%d video-apc %31s ref %d:",
+			           &chapter, &src, &dst, apc, &ref) != 5)
+				continue;
+			rows++;
+			Common::Array<char> data;
+			TS_ASSERT(big.get(Common::String::format("SCENAR\\CHAPI%03d.CON", chapter), data));
+			ConScript script;
+			script.parse(data.begin(), data.size());
+			Common::Array<Common::String> lines;
+			ScriptsTest::condLines(data, lines);
+			const char *bar = strchr(golden[g].c_str(), '|');
+			Common::Array<Common::String> want;
+			for (const char *p = bar ? bar + 1 : ""; *p;) {
+				while (*p == ' ')
+					p++;
+				const char *e = p;
+				while (*e && *e != ' ')
+					e++;
+				if (e > p)
+					want.push_back(Common::String(p, e - p));
+				p = e;
+			}
+			TS_ASSERT_EQUALS(want.size(), 64u);
+			for (uint k = 0; k < want.size(); k++) {
+				ScriptsTest::VarState st;
+				if (k == 0) {
+					for (uint v = 0; v < varNames.size(); v++)
+						st.vars[varNames[v]] = 0;
+				} else {
+					ScriptsTest::makeState((uint)ref, k, varNames, lines[ref], st);
+				}
+				st.vars["vue"] = src;
+				st.vars["departvue"] = dst;
+				st.vars["cliczone"] = dst;
+				st.vars["arriveevue"] = 0;
+				struct Ctx {
+					const ConScript *script;
+					const ScriptsTest::VarState *st;
+					static bool test(const ConSection &sec, void *ctx) {
+						const Ctx *c = (const Ctx *)ctx;
+						if (sec.condOffset < 0)
+							return true;
+						const Common::Array<char> &t = c->script->text();
+						uint32 e = (uint32)sec.condOffset;
+						while (e < t.size() && t[e] != '\r' && t[e] != '\n')
+							e++;
+						return ScriptsTest::portEval(Common::String(t.begin() + sec.condOffset, e - sec.condOffset), *c->st);
+					}
+				};
+				Ctx ctx = { &script, &st };
+				const int idx = findSelEntry(script, &Ctx::test, &ctx);
+				Common::String got = "-:-";
+				if (idx >= 0) {
+					ConSection sec = script.sections()[idx];
+					const int id = sec.id;
+					Common::String snd;
+					for (uint hop = 0; hop < 2; hop++) {
+						for (uint it = 0; it < sec.items.size(); it++)
+							if (sec.items[it].isSet && scumm_strnicmp(sec.items[it].setCmd.c_str(), "newsound=", 9) == 0)
+								snd += Common::String(snd.empty() ? "" : ",") +
+								       Common::String::format("%d", atoi(sec.items[it].setCmd.c_str() + 9));
+						if (hop == 0 && sec.gotoId > 0) {
+							const int target = sec.gotoId;
+							if (!script.gotoSection(target, sec))
+								break;
+						} else {
+							break;
+						}
+					}
+					got = Common::String::format("/%d:", id) + (snd.empty() ? Common::String("-") : snd);
+				}
+				states++;
+				if (got != want[k]) {
+					bad++;
+					if (bad < 10)
+						warning("transition sound: chapter %d move %d->%d state %u: port %s, original %s",
+						        chapter, src, dst, k, got.c_str(), want[k].c_str());
+				}
+			}
+		}
+		TS_ASSERT(rows > 0);
+		TS_ASSERT_EQUALS(states, rows * 64u);
+		TS_ASSERT_EQUALS(bad, 0u);
+	}
 };
 
 #endif

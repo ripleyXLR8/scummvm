@@ -362,13 +362,18 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 	if (fromPlace != uint(-1) && toPlace != uint(-1))
 		ambientPrepareGlide(toPlace, (int32)decoder->getFrameCount());
 
-	// Play matching APC audio if present (e.g. WAV\CINEM020.APC for
-	// CINEM020.HNM).  AT*.HNM place-to-place transitions are intentionally
-	// silent — they have no APC on the disc.
-	// The cinema sound is the NewSound sample (FUN_0042a100 @ 0x0042a74e:
-	// NEWSOUND = 1, poller FUN_00432a64); the start-up videos also play
-	// theirs through NewSound (18, 19).
-	{
+	// The same-name sound of a cinematic or a start-up video (e.g.
+	// WAV\CINEM020.APC for CINEM020.HNM): the Cinema= handler names
+	// 0x007728c7 "cinem" + N + ".apc" and sets NEWSOUND = 1 (FUN_0042a100
+	// @ 0x0042a7c0..0x0042a881, poller FUN_00432a64); the start-up videos
+	// set NEWSOUND = 18 / 19 (logo15n.apc / preintro.apc, 0x00419653 /
+	// 0x004196bd).  A move's video (FUN_00423ad8) opens no sound: the 7
+	// transition-named APCs (AT099100, AT100099, AT110109, CP026126,
+	// CP030130, FO050051, SP026027) are NewSound entries 15..17, 98, 99,
+	// 108, 120 that the departure /sel sections play.
+	// See atlantis-re: experiments/2026-10-16-08-transition-sounds.md.
+	const bool isMove = fromPlace != uint(-1) && toPlace != uint(-1);
+	if (!isMove) {
 		const char *dot = strrchr(hnmName.c_str(), '.');
 		Common::String apcName = dot
 		    ? Common::String(hnmName.c_str(), dot - hnmName.c_str()) + ".APC"
