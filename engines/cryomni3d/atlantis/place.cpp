@@ -509,10 +509,15 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 #endif
 }
 
-void CryOmni3DEngine_Atlantis::fadeOutNewSound() {
+// The effects volume byte 0x00495e73 (0..127), from ScummVM's sfx volume.
+uint8 CryOmni3DEngine_Atlantis::effectsVolume127() const {
 	const int sfx = ConfMan.hasKey("sfx_volume") ? ConfMan.getInt("sfx_volume") : Audio::Mixer::kMaxMixerVolume;
+	return (uint8)(sfx * 127 / Audio::Mixer::kMaxMixerVolume);
+}
+
+void CryOmni3DEngine_Atlantis::fadeOutNewSound() {
 	Common::StackLock lock(_musicFade.mutex);
-	_musicFade.sfxVol0 = MAX(1, sfx * 127 / Audio::Mixer::kMaxMixerVolume);
+	_musicFade.sfxVol0 = MAX<int>(1, effectsVolume127());
 	_musicFade.sfxVol = _musicFade.sfxVol0;
 	_musicFade.sfxLast = _musicFade.ticks;
 	_musicFade.sfxMode = 2;
@@ -566,6 +571,7 @@ void CryOmni3DEngine_Atlantis::ambientEnterPlace() {
 		return;
 	milesSamples();
 	AmbientLoadCtx ctx = { this, _ambientOut, &_wam.getAmbientObjects() };
+	_ambient.setEffectsVolume(effectsVolume127());
 	_ambient.enterPlace(*_ambientOut, *place, _wam.getAmbientObjects(), &ambientLoadVariant, &ctx);
 }
 
@@ -632,8 +638,10 @@ AtlantisAmbientOutput &CryOmni3DEngine_Atlantis::milesSamples() {
 void CryOmni3DEngine_Atlantis::stopAmbient() {
 	if (!_ambientOut)
 		return;
-	if (_ambient.active())
+	if (_ambient.active()) {
+		_ambient.setEffectsVolume(effectsVolume127());
 		_ambient.stopAll(*_ambientOut);
+	}
 }
 
 void CryOmni3DEngine_Atlantis::recordPlaceTable() {

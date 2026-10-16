@@ -90,6 +90,9 @@ public:
 	           const AtlantisCentrePos &cam, float alpha, float beta, int32 chapterTime);
 	// FUN_00431e98.
 	void stopAll(AmbientSampleOutput &out);
+	// The effects volume 0x00495e73 (0..127) that FUN_00431e98 gives every
+	// sample before stopping it.
+	void setEffectsVolume(uint8 v) { _effectsVolume = v; }
 
 	// FUN_0043259c, before a move video: for each ambient sound of the place
 	// being left, the per-frame pan / volume steps from the last values
@@ -116,6 +119,7 @@ public:
 	};
 	Record _records[kSlots + 1];
 	bool _loopFlag;        // 0x00495e8c
+	uint8 _effectsVolume;  // 0x00495e73
 	// The last pan / volume set, as floats (0x006cc5d0 / 0x006cc548), and
 	// the video steps (0x006cc530 / 0x006cc5b8); nothing clears them.
 	float _curPan[kSlots], _curVol[kSlots];

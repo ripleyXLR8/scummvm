@@ -95,7 +95,7 @@ AmbientGains ambientGains(const float pos[3], float loudness, const AtlantisCent
 	return g;
 }
 
-AmbientSounds::AmbientSounds() : _loopFlag(false), _count(0), _active(false), _clock(nullptr), _clockCtx(nullptr) {
+AmbientSounds::AmbientSounds() : _loopFlag(false), _effectsVolume(0x6e), _count(0), _active(false), _clock(nullptr), _clockCtx(nullptr) {
 	for (uint i = 0; i < kSlots; i++)
 		_curPan[i] = _curVol[i] = _stepPan[i] = _stepVol[i] = 0.0f;
 	for (uint i = 0; i <= kSlots; i++) {
@@ -345,7 +345,7 @@ void AmbientSounds::videoFrame(AmbientSampleOutput &out, const AtlantisPlace &pl
 void AmbientSounds::stopAll(AmbientSampleOutput &out) {
 	for (uint i = 0; i < _count; i++) {
 		out.setPan(i, 0x40);
-		out.setVolume(i, (uint8)i);   // the loop index reaches AIL_set_sample_volume (0x00431eed)
+		out.setVolume(i, _effectsVolume);   // [0x00495e73], pushed @ 0x00431eec
 		out.stop(i);
 		out.release(_records[i].object);
 		_records[i].object = -1;
