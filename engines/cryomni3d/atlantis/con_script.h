@@ -58,7 +58,8 @@ struct ConLine {
 	// the cyclo view's alpha/beta before playing the line (the dialog line
 	// code, atlantis-re functions/video-FUN_0042ee88.md; FUN_00451915 stores
 	// the angles of the current view; the address 0x004283e7 cited here
-	// before is a jump inside FUN_0042831c, from an older decompilation).  Syntax in CON files:
+	// before is only a byte inside FUN_0042831c, the disp8 of the CMP at
+	// 0x004283e5, from an older decompilation).  Syntax in CON files:
 	//   [Speaker, X, Y, camN] text       — X,Y present (hasAngle = true)
 	//   [Speaker, camN] text             — no numeric tokens (hasAngle = false)
 	// X is a panorama-pixel offset for the horizontal angle; Y is the vertical

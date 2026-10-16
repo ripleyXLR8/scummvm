@@ -29,7 +29,8 @@ namespace Atlantis {
 static const uint32 kPlayersMagic   = 0x41504c52u;  // 'APLR'
 static const uint32 kPlayersVersion = 2;             // v2 appends resume chapters
 static const uint32 kOrigPlayersSize = 97;     // English build: 6 chapter, 6 letter bytes
-static const uint32 kOrigPlayersSizeFr = 95;   // French build: 5 and 5
+static const uint32 kOrigPlayersSizeFr = 95;   // French build: 5 and 5, [INFERRED] from one
+                                               // third-party file (atlantis-re formats/ui-players-atl.md)
 
 Common::String epiEpisodeName(const byte *text, uint32 size, uint chapter) {
 	// For chapter 1 the original scan only stops if the file does not start

@@ -58,9 +58,9 @@ public:
 	// The sample plays frames frames of the ring into out (interleaved
 	// stereo, 2 x frames samples).
 	void play(uint frames, int16 *out);
-	// The end of one timer period: FUN_00433310, then FUN_0043318c (under
-	// Wine the refill follows each release within one frame, experiment
-	// 2026-10-16-25).
+	// The end of one timer period: FUN_00433310, then FUN_0043318c, in the
+	// same period (a delay-0 model: under Wine the refill comes 3 to 6 ms
+	// after the release, experiment 2026-10-16-25).
 	void timer();
 	// play then timer: one 5 ms period.
 	void tick(uint frames, int16 *out) { play(frames, out); timer(); }

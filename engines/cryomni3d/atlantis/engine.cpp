@@ -472,8 +472,8 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	loadPlayers();
 
 	// Inventory: extract the exe object table, build the object catalogue and
-	// load the item icons.  20 carry slots; the toolbar refresh callback is
-	// wired when the toolbar lands.
+	// load the item icons.  The inventory itself holds 30 records, like the
+	// original's table at 0x006ce138.
 	loadAtlantisExeTables();
 	setupObjects();
 	importOriginalSaves();

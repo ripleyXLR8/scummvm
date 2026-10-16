@@ -44,8 +44,9 @@ void splitSubtitle(const Common::String &text, Common::Array<Common::String> &li
 		uint back = 0;
 		while (back < 100 && b[p - back] != ' ')
 			back++;
-		// No space in 100 characters: FUN_0042ffe8 never ends here (it
-		// loops forever); not met by the shipped texts.  Not reproduced:
+		// No space in 100 characters: FUN_0042ffe8 copies nothing and
+		// stores a NUL every 0x6e bytes past the line buffer until a write
+		// faults; not met by the shipped texts.  Not reproduced:
 		// kEnhGameBreakingBugFixes (atlantis-re decisions/0016, row 4).
 		if (back == 100)
 			back = 0;

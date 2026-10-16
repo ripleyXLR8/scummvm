@@ -52,8 +52,8 @@ static const uint   kSaveInvBaseSlots = 20;   // inventory slots in the base blo
 
 // Player-profile file (cannot collide with the "atlantis.NNNN" save files).
 static const char  *kPlayersFile    = "atlantis-players.dat";
-// The original's profile file, read when the port's own file is absent (its
-// p<L><N>.gam checkpoints are not read, so such a player starts anew).
+// The original's profile file, read when the port's own file is absent; its
+// p<L><N>.gam checkpoints are then imported once (importOriginalSaves).
 static const char  *kOrigPlayersFile = "players.atl";
 
 // Everything a save holds, in the order it is written (writePortSave).

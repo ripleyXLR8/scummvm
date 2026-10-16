@@ -139,8 +139,9 @@ void CryOmni3DEngine_Atlantis::loadDialInitData() {
 //   while (cam == prevCam || INITDIAL[persoId].camUBB[cam-2] is "none")
 //       cam = (rand() & 3) + 2;          // 2..5
 //
-// An explicit `camN` from a `[Speaker, X, Y, camN]` directive is honoured when
-// it is valid and available; otherwise we fall through to the random pick.
+// An explicit `camN` from the header is used as is (clamped to 2 when out of
+// 2..5), even when that cam's INITDIAL UBB is "none"; only lines without
+// camN draw at random (details below).
 // Returns 2..5.
 int CryOmni3DEngine_Atlantis::pickDialCam(int persoId, int explicitCam, bool sethLine, bool offLine) {
 	// atlantis.exe FUN_0042844c @ 0x004287c8..0x004289ea:
