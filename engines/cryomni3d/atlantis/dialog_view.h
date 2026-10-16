@@ -126,6 +126,13 @@ inline bool headOpenFails(bool voiceOnly, bool haveRecord) {
 	return !voiceOnly && !haveRecord;
 }
 
+// The text of that error box: the procedure 0x00419808 of dialog 0x65
+// builds, for code 0xc (@ 0x004199e9), "Fichier introuvable : " (0x004bbf18)
+// + the path 0x006cd9d0, copied from 0x006cd8c0 = the string 0x0049619f
+// (empty: never written) + "dialog\perso\" (0x004bbbfc) + the empty UBB
+// name (FUN_0042ee88 @ 0x0042ef9d..0x0042f031).  The box has an OK button.
+static const char *const kHeadOpenFailText = "Fichier introuvable : dialog\\perso\\";
+
 } // End of namespace DialogView
 
 } // End of namespace Atlantis

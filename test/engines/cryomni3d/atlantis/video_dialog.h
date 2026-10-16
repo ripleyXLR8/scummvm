@@ -287,6 +287,33 @@ public:
 		TS_ASSERT(!DialogView::headOpenFails(true, false));   // voice-only: no UBB opened
 	}
 
+	// The text of the error box shown for those lines, against the strings
+	// of the reference atlantis.exe: "Fichier introuvable : " (0x004bbf18,
+	// file offset 0x9d118) + "dialog\\perso\\" (0x004bbbfc, file offset
+	// 0x9cdfc; DGROUP at VA 0x00490000 = file 0x71200).
+	void test_head_open_fail_text_vs_exe() {
+		using namespace CryOmni3D::Atlantis;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("no game data configured; skipping");
+			return;
+		}
+		Common::File exe;
+		TS_ASSERT(exe.open(Common::FSNode(Common::Path(AtlantisTest::dataDir(), '/').appendComponent("atlantis.exe"))));
+		if (!exe.isOpen())
+			return;
+		auto cstr = [&exe](uint32 off) {
+			exe.seek(off);
+			Common::String r;
+			for (char c; (c = (char)exe.readByte()) != 0 && !exe.eos();)
+				r += c;
+			return r;
+		};
+		TS_ASSERT_EQUALS(exe.size(), 714240);
+		const Common::String want = cstr(0x9d118) + cstr(0x9cdfc);
+		TS_ASSERT_EQUALS(want, "Fichier introuvable : dialog\\perso\\");
+		TS_ASSERT_EQUALS(Common::String(DialogView::kHeadOpenFailText), want);
+	}
+
 	// Data test (atlantis-re experiments/2026-10-16-12-dialog-spf-frames.md):
 	// FUN_0042ee88 draws SPF frame 0x00496104 (FUN_0042ff90, no bound check)
 	// and sets it back to 0 when the UBB rewinds at its frame count (header
