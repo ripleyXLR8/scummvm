@@ -548,14 +548,17 @@ bool CryOmni3DEngine_Atlantis::loadGame(uint saveNum) {
 	// FUN_0042de5c @ 0x0042e2ec: the bar shows records 0..8 again.
 	_toolbar.resetInventoryFirst();
 
-	// Restore the music selection last: loadConScript above may have run
-	// musicStop(); musicUpdate() picks the saved track back up on the next
-	// frame.
-	_musicTrackId = savedMusicTrack;
-	// The original's handle / open track after a checkpoint reload are not
-	// established; the restored selection stands for both, as before.
-	_musicHandleSet = savedMusicTrack != 0;
-	_musicOpenTrack = savedMusicTrack;
+	// The music: FUN_0042de5c does not stop or start it (the track playing
+	// before the load goes on, with its handle 0x006ce0c0 and track
+	// 0x00772915; only the /INIT's StartMusik / StopMusik change it); step 8
+	// sets the music sample to the music volume and the current volume
+	// 0x00495e71 to it (0x0042e423..0x0042e499).  The port's save keeps a
+	// track number, unused.
+	(void)savedMusicTrack;
+	{
+		Common::StackLock lock(_musicFade.mutex);
+		_musicFade.cur = _musicFade.vol;
+	}
 
 	_inventory.deselectObject();
 

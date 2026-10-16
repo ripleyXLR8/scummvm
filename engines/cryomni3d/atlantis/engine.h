@@ -494,10 +494,10 @@ private:
 	void playQuitOutro();
 
 	// --- Music playlist (music.cpp) ----------------------------------------
-	// The CON commands startmusik=N / stopmusik own the *selection*
-	// (_musicTrackId); musicUpdate() keeps the mixer in sync every frame
-	// (pausing while music is muted, resuming the selected track on unmute
-	// or after a chapter change).
+	// The CON commands startmusik=N / stopmusik start and stop the track;
+	// nothing else does: the original's stream goes on through a volume of 0,
+	// a place change, a chapter change and a load (FUN_0042de5c), and a load
+	// only sets the current volume to the music volume (0x0042e494).
 	// Select and (re)play a numbered music track (1-based, matching the
 	// startmusik CON command IDs).  The track loops until changed.
 	void musicPlayTrack(int trackId);
@@ -505,10 +505,8 @@ private:
 	// chapter change, and the credits sequence.
 	void musicStop();
 	// Stop mixer playback and free the decoded buffer without clearing the
-	// selected track — used for the mute state and before a track switch.
+	// selected track — used before a track switch.
 	void musicHaltPlayback();
-	// Per-frame mixer sync (see above).
-	void musicUpdate();
 	// The original's music commands, with its fades:
 	// startmusik (FUN_0042a100 @ 0x0042ad53): the same track only re-arms the
 	// fade-in; another one first fades the playing track down to 1 %
@@ -795,8 +793,7 @@ private:
 	Atlantis_Toolbar _toolbar;
 
 	// Music playlist state (music.cpp).  The raw APC bytes stay resident for
-	// the life of the looping stream; _musicTrackId survives a halt so a
-	// muted/halted track resumes on the next musicUpdate().
+	// the life of the looping stream.
 	const char *_musicCurrentFile;
 	Audio::SoundHandle _musicHandle;
 	byte *_musicRawData;

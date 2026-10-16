@@ -284,8 +284,7 @@ void CryOmni3DEngine_Atlantis::musicUnduck(int percent) {
 		_musicFade.percent = (uint8)percent;
 }
 
-// Stop mixer playback and release the decoded buffer, keeping _musicTrackId so
-// the selected track can be resumed later (e.g. after unmuting).
+// Stop mixer playback and release the decoded buffer.
 void CryOmni3DEngine_Atlantis::musicHaltPlayback() {
 	// The fades are the original's (AtlantisMusicFade); this stops at once.
 	_mixer->stopHandle(_musicHandle);
@@ -302,8 +301,8 @@ void CryOmni3DEngine_Atlantis::musicStop() {
 	musicHaltPlayback();
 }
 
-// startmusik=N (CON) — select track N and start it looping.  Also used by
-// musicUpdate() to (re)start the selected track after a mute or chapter change.
+// FUN_00432ea8: open track N and start it looping (callers: musicSwitchTrack,
+// the StartMusik command and the credits).
 void CryOmni3DEngine_Atlantis::musicPlayTrack(int trackId) {
 	if (trackId < 1 || trackId >= (int)ARRAYSIZE(kMusicTrackNames)
 	        || !kMusicTrackNames[trackId]) {
@@ -313,11 +312,6 @@ void CryOmni3DEngine_Atlantis::musicPlayTrack(int trackId) {
 	_musicTrackId = trackId;
 
 	const char *musicFile = kMusicTrackNames[trackId];
-	// Already playing this track — leave it (a place re-issuing the same
-	// startmusik must not cause a restart hiccup).
-	if (_musicCurrentFile == musicFile && _mixer->isSoundHandleActive(_musicHandle))
-		return;
-
 	musicHaltPlayback();
 
 	Common::SeekableReadStream *apcFile = openBigFileStream(kFileTypeSound, musicFile);
@@ -333,31 +327,6 @@ void CryOmni3DEngine_Atlantis::musicPlayTrack(int trackId) {
 	_musicCurrentFile = musicFile;
 	startMusicFromBuffer(_mixer, _musicHandle, _musicRawData, _musicRawSize, &_musicFade);
 	debugC(1, kDebugMusic, "musicPlayTrack: track %d '%s'", trackId, musicFile);
-}
-
-// Called every frame.  The music *selection* is owned by the startmusik /
-// stopmusik CON commands (_musicTrackId); this only keeps the mixer in sync —
-// pausing playback while music is muted and resuming the selected track on
-// unmute or after a chapter change.
-void CryOmni3DEngine_Atlantis::musicUpdate() {
-	const bool muted = _mixer->isSoundTypeMuted(Audio::Mixer::kMusicSoundType)
-	                || _mixer->getVolumeForSoundType(Audio::Mixer::kMusicSoundType) == 0;
-	if (muted) {
-		musicHaltPlayback();   // keep _musicTrackId so unmuting resumes it
-		return;
-	}
-	if (_musicTrackId <= 0)
-		return;                // nothing selected, or stopped by stopmusik
-	if (_mixer->isSoundHandleActive(_musicHandle))
-		return;                // selected track already looping
-	musicPlayTrack(_musicTrackId);  // first play, or resume after a mute
-	// A track restarted from volume 0 (a loaded game) fades in, as the
-	// chapter's startmusik does in the original (@ 0x0042ae23).
-	Common::StackLock lock(_musicFade.mutex);
-	if (_musicCurrentFile && _musicFade.cur == 0 && _musicFade.mode == 0) {
-		_musicFade.mode = 1;
-		_musicFade.upTarget = _musicFade.vol;
-	}
 }
 
 // The tracks the original would find in its install folder, as a bit set

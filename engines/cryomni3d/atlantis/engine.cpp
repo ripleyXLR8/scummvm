@@ -715,9 +715,6 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 			const bool scan = takeArrivalAfterLoad(arrivee);
 			doPlaceChange();
 			_arrivalScanPending = false;
-			// Music persists across places — only startmusik/stopmusik (run
-			// by the new place's arrival CON sections, if any) change it.
-			musicUpdate();
 			if (_currentPlace && scan) {
 				_inPlaceArrivalScan = true;   // FUN_00423ad8's own scan
 				runArrivalSelSections((int)_currentPlaceId, arrivee);
@@ -730,7 +727,6 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 			_arrivalScanPending = false;
 			int arrivee = (int)_arrivalFromVue;
 			const bool scan = takeArrivalAfterLoad(arrivee);
-			musicUpdate();
 			if (_currentPlace && scan) {
 				_inPlaceArrivalScan = true;
 				runArrivalSelSections((int)_currentPlaceId, arrivee);
@@ -744,7 +740,6 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 			playTestDialogLine();
 
 		uint actionId = handleWarp();
-		musicUpdate();
 
 		// 66666 = handleWarp bailed (abort / menu / window close).
 		if (actionId == 66666) {
