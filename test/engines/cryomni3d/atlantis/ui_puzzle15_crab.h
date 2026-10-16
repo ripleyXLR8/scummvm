@@ -14,7 +14,8 @@
 // Per pass: the input, the sounds and comments, the md5 of the draws and
 // of the state (crab records, state, hand, last comment, cursor animation,
 // result, LCG seed, click flag).  A comment keeps its sample busy for
-// kCommentFrames passes; rand is the MSVC generator seeded per scenario.
+// kCommentFrames passes; rand is the Watcom generator of FUN_00453cd1
+// (1103515245, 12345) from a seed set by the scenario.
 //
 // Port code exercised directly: CrabGame (crab_game.cpp).
 
@@ -122,7 +123,7 @@ protected:
 	}
 	bool commentBusy() override { return (int)frames < commentUntil; }
 	int rand32767() override {
-		randSeed = randSeed * 214013u + 2531011u;
+		randSeed = randSeed * 1103515245u + 12345u;
 		return (int)((randSeed >> 16) & 0x7fff);
 	}
 	bool aborted() const override { return mismatches != 0; }
