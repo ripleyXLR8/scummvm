@@ -376,11 +376,8 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 			        atoi(item.setCmd.c_str() + 9) != 0) {
 				execConSetCommand(item.setCmd, item.offset);
 				pendingGameOver = atoi(item.setCmd.c_str() + 9);
-				if (itemIdx + 1 < sec.items.size() && !sec.items[itemIdx + 1].isSet &&
-				        sec.items[itemIdx + 1].line.speaker.hasPrefix("Narra")) {
-					gameOverText  = sec.items[itemIdx + 1].line.text;
+				if (conGameOverNarrator(sec.items, itemIdx, gameOverText))
 					gameOverTrack = conTrackLetter(lineIdx);
-				}
 				break;
 			}
 			execConSetCommand(item.setCmd, item.offset);
@@ -523,6 +520,28 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 			lineIdx = (int)letters;
 		}
 	}
+	// Game-over screen (GereGameOver, FUN_00426590): the executor calls it
+	// when GAMEOVER is set after a line (0x00428c05), before the end of the
+	// walk below (restores, music raised at 0x00428d8b), so the music stays
+	// lowered under the narrator.
+	if (pendingGameOver != 0) {
+		showGameOver(sec.id, pendingGameOver, gameOverText, gameOverTrack);
+		_gameVars["gameover"] = 0;   // FUN_0042de5c -> FUN_00426c68
+		// The place loop then returns and the main loop reloads the player's
+		// checkpoint (0x0041975d -> FUN_0042de5c): p<letter><N>.gam with N the
+		// player's chapter byte 0x006ce246 (_playerChapter, set by the
+		// checkpoint writer and by a row click in the load picker), not the
+		// current chapter.  No file: chapter 1, place 1.
+		const uint reload = (_currentPlayer >= 0) ? playerResumeSave((uint)_currentPlayer) : 0;
+		if (reload != 0) {
+			_loadedSave   = reload;
+			_abortCommand = kAbortLoadGame;
+		} else {
+			warning("playConSection: game-over with no checkpoint; restarting");
+			_abortCommand = kAbortNewGame;
+		}
+	}
+
 	// A /go target runs in the same walk of the original (below): the end
 	// of the walk, with its ClicPerso and angle restores, comes after it.
 	const bool chainGo = _currentCONChapter == entryChapter && sec.gotoId > 0 && !shouldAbort() &&
@@ -551,30 +570,6 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 	if (!chainGo)
 		restoreEntry();
 	musicUnduck();   // 0x00428d8b
-
-	// Game-over screen (GereGameOver): show the verdict image + narrator, then
-	// reload the chapter checkpoint.  Run after the loop so the click/key that
-	// ended the last dialog line has already drained.
-	if (pendingGameOver != 0) {
-		showGameOver(sec.id, pendingGameOver, gameOverText, gameOverTrack);
-		_gameVars["gameover"] = 0;   // restored to its pre-section value
-		// A game-over is gated on a persistent CON variable, so resuming in
-		// place would loop straight back into the death — reload the chapter
-		// checkpoint (the per-episode autosave), falling back to the player's
-		// resume save, or a fresh start when no checkpoint exists yet.
-		int ckSlot = (_currentPlayer >= 0)
-		           ? episodeSaveSlot((uint)_currentPlayer, _currentCONChapter) : -1;
-		uint reload = (ckSlot >= 0 && saveSlotExists(ckSlot))
-		            ? (uint)ckSlot + 1
-		            : (_currentPlayer >= 0 ? playerResumeSave((uint)_currentPlayer) : 0);
-		if (reload != 0) {
-			_loadedSave   = reload;
-			_abortCommand = kAbortLoadGame;
-		} else {
-			warning("playConSection: game-over with no checkpoint; restarting");
-			_abortCommand = kAbortNewGame;
-		}
-	}
 
 	// Restore the cursor to whatever it was before the section.
 	showMouse(cursorWasVisible);

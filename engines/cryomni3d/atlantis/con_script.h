@@ -161,6 +161,20 @@ inline char conTrackLetter(uint lineIdx) {
 	return (char)('A' + lineIdx);
 }
 
+// The narrator line of a game over: FUN_00426590 reads the line right after
+// the /set(gameover=N) line when it starts with "[Narra" (0x004267e0..
+// 0x004267f4) and takes its text from the byte after "[Narratrice]".
+// items[setIdx] is the gameover= item; false when no such line follows.
+// See atlantis-re: functions/scripts-FUN_00426590.md.
+inline bool conGameOverNarrator(const Common::Array<ConSectionItem> &items, uint setIdx,
+                                Common::String &text) {
+	if (setIdx + 1 >= items.size() || items[setIdx + 1].isSet ||
+	        !items[setIdx + 1].line.speaker.hasPrefix("Narra"))
+		return false;
+	text = items[setIdx + 1].line.text;
+	return true;
+}
+
 // Escape during a talking-head line (FUN_0041a298 @ 0x0041a3c0 sets
 // 0x00496134 while 0x00496188 == 1): after the line the section executor
 // FUN_0042844c (0x00428b6d..0x00428bcd) walks the text up to the next '/'

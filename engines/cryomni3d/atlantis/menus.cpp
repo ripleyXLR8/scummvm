@@ -42,6 +42,7 @@
 #include "cryomni3d/atlantis/subtitle_layout.h"
 #include "cryomni3d/atlantis/ambient_output.h"
 #include "cryomni3d/atlantis/engine.h"
+#include "cryomni3d/atlantis/gameover.h"
 #include "cryomni3d/atlantis/sprite_blend.h"
 
 namespace CryOmni3D {
@@ -186,7 +187,10 @@ void CryOmni3DEngine_Atlantis::drawCreditText(Graphics::ManagedSurface &dst,
 void CryOmni3DEngine_Atlantis::showGameOver(int sectionId, int n,
         const Common::String &narratorText, char narratorTrack) {
 	stopAmbient();   // FUN_00426590 @ 0x004265d5
-	Common::String name = Common::String::format("GOVER%02d.TGA", n);
+	// @ 0x00426616..0x00426647: NEWSOUND set, the NewSound sample fades out.
+	if (gameOverFadesNewSound(_gameVars.getValOrDefault("newsound", 0)))
+		fadeOutNewSound();
+	Common::String name = gameOverImageName(n);
 	Graphics::Surface *raw = loadTGA(kFileTypeImages, name.c_str());
 	if (!raw) {
 		warning("showGameOver: cannot load IMAGES\\%s", name.c_str());
@@ -203,8 +207,9 @@ void CryOmni3DEngine_Atlantis::showGameOver(int sectionId, int n,
 	// Narrator subtitle (FUN_00426590 -> FUN_0042ffe8 / FUN_00430178, as for
 	// dialog lines): split at 100 characters, line i of n at x 5,
 	// y 0x1ce - (n - i + 1) * 14, black shadow at (+1, +1); drawn when the
-	// subtitles are on.
-	if (showSubtitles() && !narratorText.empty()) {
+	// subtitles are on (the counter 0x00496098 only adds a call of
+	// FUN_00430178 that returns at once, 0x0043019a).
+	if (gameOverSubtitleDrawn(showSubtitles()) && !narratorText.empty()) {
 		const int leftMargin = 5;
 		int widthBudget = img.w - leftMargin - 5;
 		if (widthBudget < 32)
@@ -237,13 +242,30 @@ void CryOmni3DEngine_Atlantis::showGameOver(int sectionId, int n,
 	}
 	clearKeys();
 
-	// Narrator voice: WAV\ATA<section4d><track>.APC — wait for it (skippable),
-	// or hold the image ~5 s when there is no narrator audio.
-	Common::String apcName = Common::String::format("ATA%04d%c.APC", sectionId, narratorTrack);
+	// Narrator voice: WAV\ATA<section4d><track>.APC — wait for it, or hold
+	// the image 5 s when there is no narrator audio (gameOverWaitEnds).
+	Common::String apcName = gameOverVoiceName(sectionId, narratorTrack);
 	Common::SeekableReadStream *apcFile =
 	    narratorText.empty() ? nullptr : openBigFileStream(kFileTypeSound, apcName);
 	Audio::PacketizedAudioStream *apc = apcFile ? Audio::makeAPCStream(*apcFile) : nullptr;
 
+	// The input poll FUN_0041a298 with the flags of the moment (0x00496188,
+	// the talking head, is 0 here: cleared after every line, 0x00428b63).
+	VideoSkipState poll;
+	poll.bowMode = _bowMode;
+	poll.objectInHand = _inventory.selectedObject() != nullptr ||
+	                    _gameVars.getValOrDefault("objetenmain", 0) != 0;
+	poll.sectionPlay = _sectionPlay;
+	uint prevButton = getCurrentMouseButton();
+	auto waitPass = [&](bool withVoice, bool voiceDone, uint32 elapsed) {
+		pollEvents();
+		const uint button = getCurrentMouseButton();
+		const bool left = button == 1 && prevButton != 1;
+		const bool right = button == 2 && prevButton != 2;
+		prevButton = button;
+		const bool escape = checkKeysPressed(1, Common::KEYCODE_ESCAPE);
+		return gameOverWaitEnds(poll, withVoice, voiceDone, elapsed, left, right, escape);
+	};
 	if (apc) {
 		int64 remaining = apcFile->size() - apcFile->pos();
 		if (remaining > 0) {
@@ -255,26 +277,20 @@ void CryOmni3DEngine_Atlantis::showGameOver(int sectionId, int n,
 		Audio::SoundHandle handle;
 		_mixer->playStream(Audio::Mixer::kSpeechSoundType, &handle, apc);
 		debugC(1, kDebugScript, "showGameOver: GOVER%02d.TGA + %s", n, apcName.c_str());
-		// FUN_00426590 @ 0x00426b0c: until the sample ends or a left click
-		// (0x0049611c, set on a VK_LBUTTON edge by FUN_0041a298).
-		while (!shouldAbort() && _mixer->isSoundHandleActive(handle)) {
-			pollEvents();
-			if (getCurrentMouseButton() == 1)
-				break;
+		// FUN_00426590 @ 0x00426b0c: until the sample ends, a left press or
+		// Escape (when it would open the menu).
+		while (!shouldAbort() &&
+		        !waitPass(true, !_mixer->isSoundHandleActive(handle), 0))
 			g_system->delayMillis(10);
-		}
 		_mixer->stopHandle(handle);
 	} else if (!narratorText.empty()) {
 		// @ 0x00426ae0: a narrator line whose APC is missing holds the image
-		// for 5000 ms or until a left click.
+		// for 5000 ms or until a left press.
 		debugC(1, kDebugScript, "showGameOver: GOVER%02d.TGA (no narrator audio)", n);
-		uint32 deadline = g_system->getMillis() + 5000;
-		while (!shouldAbort() && g_system->getMillis() < deadline) {
-			pollEvents();
-			if (getCurrentMouseButton() == 1)
-				break;
+		const uint32 start = g_system->getMillis();
+		while (!shouldAbort() &&
+		        !waitPass(false, false, g_system->getMillis() - start))
 			g_system->delayMillis(10);
-		}
 	} else {
 		// @ 0x004267f4: no "[Narra" line after the command: no wait.
 		debugC(1, kDebugScript, "showGameOver: GOVER%02d.TGA (no narrator line)", n);

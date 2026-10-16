@@ -485,13 +485,8 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 	// fades it out, 2 volume steps every 25 ms from the effects volume
 	// (FUN_0041bc74 @ 0x0041be69..0x0041be9e arms 0x00495eb0 = 2).
 	if (skipped && videoSkipFades(skip, frameMs == kCinemaFrameMs) &&
-	        _mixer->isSoundHandleActive(_newSoundHandle)) {
-		const int sfx = ConfMan.hasKey("sfx_volume") ? ConfMan.getInt("sfx_volume") : Audio::Mixer::kMaxMixerVolume;
-		Common::StackLock lock(_musicFade.mutex);
-		_musicFade.sfxVol0 = MAX(1, sfx * 127 / Audio::Mixer::kMaxMixerVolume);
-		_musicFade.sfxVol = _musicFade.sfxVol0;
-		_musicFade.sfxMode = 2;
-	}
+	        _mixer->isSoundHandleActive(_newSoundHandle))
+		fadeOutNewSound();
 	delete decoder;
 	for (Common::SeekableReadStream *spf : spfStreams)
 		delete spf;
@@ -499,6 +494,15 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 #else
 	debugC(1, kDebugScript, "playTransitionVideo: %s (HNM not compiled)", videoName.c_str());
 #endif
+}
+
+void CryOmni3DEngine_Atlantis::fadeOutNewSound() {
+	const int sfx = ConfMan.hasKey("sfx_volume") ? ConfMan.getInt("sfx_volume") : Audio::Mixer::kMaxMixerVolume;
+	Common::StackLock lock(_musicFade.mutex);
+	_musicFade.sfxVol0 = MAX(1, sfx * 127 / Audio::Mixer::kMaxMixerVolume);
+	_musicFade.sfxVol = _musicFade.sfxVol0;
+	_musicFade.sfxLast = _musicFade.ticks;
+	_musicFade.sfxMode = 2;
 }
 
 // FUN_004315b4: the WAM's file reference 2 (by position) names the centre
