@@ -48,6 +48,7 @@
 #include "cryomni3d/atlantis/credits_layout.h"
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/omni3d.h"
+#include "cryomni3d/atlantis/place_loop_vars.h"
 
 #include "graphics/fontman.h"
 #include "graphics/fonts/ttf.h"
@@ -716,6 +717,7 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 			doPlaceChange();
 			_arrivalScanPending = false;
 			if (_currentPlace && scan) {
+				PlaceLoopVars::arrivalPrepared(_gameVars);   // FUN_00427548
 				_inPlaceArrivalScan = true;   // FUN_00423ad8's own scan
 				runArrivalSelSections((int)_currentPlaceId, arrivee);
 				_inPlaceArrivalScan = false;
@@ -728,6 +730,7 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 			int arrivee = (int)_arrivalFromVue;
 			const bool scan = takeArrivalAfterLoad(arrivee);
 			if (_currentPlace && scan) {
+				PlaceLoopVars::arrivalPrepared(_gameVars);   // FUN_00427548
 				_inPlaceArrivalScan = true;
 				runArrivalSelSections((int)_currentPlaceId, arrivee);
 				_inPlaceArrivalScan = false;
@@ -767,7 +770,9 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 		// Zone 999: a /sel scan with DepartVue = 999, no transition
 		// (FUN_00423ad8 @ 0x00423c47..0x00423c9b).
 		if (zone == 999) {
-			runDepartureSelSections(999);
+			PlaceLoopVars::zone999Begin(_gameVars);
+			runSelScan();
+			PlaceLoopVars::zone999End(_gameVars);
 			zone = 0;
 			if (shouldAbort())
 				break;
@@ -789,8 +794,8 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 		actionId = zone;
 
 		// A zone action in the place-id range is a navigation click: run the
-		// departure /sel sections (which may abort the move by clearing
-		// _nextPlaceId, or redirect it via /set(vue=N)), then transition.
+		// departure /sel sections (which may abort the move with AbortDepart,
+		// or redirect it via /set(vue=N)), then transition.
 		if (actionId >= 1 && actionId < 10000) {
 			_nextPlaceId = actionId;
 			// LastVue = the place being left (0x00423dcf), before the
@@ -801,19 +806,30 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 			uint transitionIndex = 0;
 			while (_currentPlace->transitions[transitionIndex].dstPlaceId != (uint16)zone)
 				transitionIndex++;
-			_departAborted = false;
-			runDepartureSelSections((int)actionId);
+			PlaceLoopVars::placeLookedUp(_gameVars, (int)actionId);   // FUN_00421cfc (0x00423dc5)
+			runDepartureSelSections();
+			// Game over ends the pass as it is (0x00423e13); then AbortDepart,
+			// set by this scan or any scan since the last arrival
+			// preparation, ends the move with ArriveeVue, AbortDepart and
+			// DepartVue cleared, so a Vue= of the scan gets no arrival scan
+			// (0x00423e2b..0x00423e7e).
+			const bool gameOver = _gameVars.getValOrDefault("gameover", 0) != 0;
+			const bool aborted = !gameOver && PlaceLoopVars::takeAbort(_gameVars);
+			if (aborted)
+				_arrivalScanPending = false;
 			if (_arrivalScanPending) {
 				// A Vue= inside a departure section already entered its place
-				// (CHAPI005 /113, CHAPI062 /864, CHAPI077 /010).  Game over and
-				// AbortDepart end the move; otherwise the place loop goes on
-				// with the turn and video of entry i of the new place's record.
+				// (CHAPI005 /113, CHAPI062 /864, CHAPI077 /010); the place loop
+				// goes on with the turn and video of entry i of the new
+				// place's record.
 				_nextPlaceId = uint(-1);
-				if (!shouldAbort() && !_departAborted && _gameVars.getValOrDefault("gameover", 0) == 0)
+				if (!shouldAbort() && !gameOver) {
 					transitionAfterDepartureVue(transitionIndex);
+					PlaceLoopVars::moveEnded(_gameVars);   // 0x00424089
+				}
 				continue;
 			}
-			if (!shouldAbort() && _nextPlaceId != uint(-1)) {
+			if (!shouldAbort() && !gameOver && !aborted && _nextPlaceId != uint(-1)) {
 				// A departure that is not aborted stops timer 1 and restarts
 				// Time1 (atlantis.exe FUN_00423ad8 @ 0x00423e8d).
 				_gameVars["testtime1"] = 0;
@@ -822,6 +838,7 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 				uint dest = _nextPlaceId;
 				_nextPlaceId = uint(-1);
 				executeTransition(dest);
+				PlaceLoopVars::moveEnded(_gameVars);   // 0x00424089
 			} else {
 				_nextPlaceId = uint(-1);
 			}

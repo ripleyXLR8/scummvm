@@ -19,6 +19,8 @@
 
 #include "scripts_con_common.h"
 
+#include "cryomni3d/atlantis/place_loop_vars.h"
+
 #include "common/system.h"
 
 namespace ScriptsEvalTest {
@@ -625,6 +627,120 @@ public:
 		TS_ASSERT(rows > 0);
 		TS_ASSERT_EQUALS(states, rows * 64u);
 		TS_ASSERT_EQUALS(bad, 0u);
+	}
+
+	// DEPARTVUE after a script Vue=N: FUN_00421cfc stores N (0x00421db3) and
+	// only a finished move, an abort, the zone-999 scan or a chapter change
+	// clears it, so the scans that follow see N; the port read 0 outside a
+	// departure scan.  Golden scripts_departvue_after_vue.txt (atlantis-re
+	// tools/emu/scripts_departvue_after_vue.py, experiment 2026-10-16-14):
+	// every /sel line, before the scan's first always-true line, whose value
+	// changes after a reachable Vue=, with the original evaluator's 64 state
+	// bits for DEPARTVUE = N and = 0.  The port's ConEvaluator on the
+	// variables PlaceLoopVars::placeLookedUp leaves (what enterPlaceFromScript
+	// now writes) must give the original's bits; with 0, the old port's.
+	void test_departvue_after_vue_vs_original() {
+		using namespace CryOmni3D::Atlantis;
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("DepartVue after Vue=: no game data configured, skipped");
+			return;
+		}
+		Common::Array<Common::String> golden;
+		TS_ASSERT(AtlantisTest::loadGoldenLines("scripts_departvue_after_vue.txt", golden));
+		ScriptsTest::Big big;
+		Common::Array<char> varias;
+		TS_ASSERT(big.get("SCENAR\\VARIAS.CON", varias));
+		Common::Array<Common::String> varNames;
+		{
+			Common::String cur;
+			for (uint i = 0; i <= varias.size(); i++) {
+				const char ch = i < varias.size() ? varias[i] : '\n';
+				if (ch == '\r' || ch == '\n') {
+					if (!cur.empty()) {
+						cur.toLowercase();
+						varNames.push_back(cur);
+					}
+					cur.clear();
+				} else {
+					cur += ch;
+				}
+			}
+		}
+		uint rows = 0, mismatches = 0;
+		int lastChapter = -1;
+		Common::Array<Common::String> lines;
+		for (uint g = 0; g < golden.size(); g++) {
+			int chapter = 0, vue = 0, src = 0, lineIdx = 0;
+			if (sscanf(golden[g].c_str(), "D chapter %d site %*s kind %*s Vue=%d from %d line %d",
+			           &chapter, &vue, &src, &lineIdx) != 4)
+				continue;
+			const uint o = golden[g].find(" orig="), p = golden[g].find(" port=");
+			TS_ASSERT(o != Common::String::npos && p != Common::String::npos);
+			const Common::String origBits = golden[g].substr(o + 6, 64), oldBits = golden[g].substr(p + 6, 64);
+			if (chapter != lastChapter) {
+				Common::Array<char> data;
+				TS_ASSERT(big.get(Common::String::format("SCENAR\\CHAPI%03d.CON", chapter), data));
+				lines.clear();
+				ScriptsTest::condLines(data, lines);
+				lastChapter = chapter;
+			}
+			TS_ASSERT((uint)lineIdx < lines.size());
+			if ((uint)lineIdx >= lines.size())
+				continue;
+			Common::String fixedBits, prevBits;
+			for (uint k = 0; k < 64; k++) {
+				ScriptsTest::VarState st;
+				ScriptsTest::makeState((uint)lineIdx, k, varNames, lines[lineIdx], st);
+				st.vars["vue"] = vue;
+				st.vars["arriveevue"] = src;
+				PlaceLoopVars::placeLookedUp(st.vars, vue);   // the fix
+				fixedBits += ScriptsTest::portEval(lines[lineIdx], st) ? '1' : '0';
+				st.vars["departvue"] = 0;                      // before
+				prevBits += ScriptsTest::portEval(lines[lineIdx], st) ? '1' : '0';
+			}
+			rows++;
+			if (fixedBits != origBits || prevBits != oldBits) {
+				mismatches++;
+				if (mismatches < 10)
+					warning("DepartVue after Vue=: %s", golden[g].c_str());
+			}
+		}
+		TS_ASSERT_EQUALS(rows, 327u);
+		TS_ASSERT_EQUALS(mismatches, 0u);
+	}
+
+	// The place loop's writes around its scans (atlantis.exe FUN_00423ad8,
+	// FUN_00427548, FUN_00427814, FUN_00421cfc; experiment 2026-10-16-14).
+	void test_place_loop_vars() {
+		using namespace CryOmni3D::Atlantis;
+		PlaceLoopVars::Vars v;
+		PlaceLoopVars::placeLookedUp(v, 30);           // script Vue=30
+		TS_ASSERT_EQUALS(v["departvue"], 30);
+		v["abortdepart"] = 1;                          // set by the next arrival scan
+		PlaceLoopVars::arrivalPrepared(v);             // FUN_00427548 runs before it
+		TS_ASSERT_EQUALS(v["abortdepart"], 0);
+		TS_ASSERT_EQUALS(v["departvue"], 30);          // not cleared there
+		v["abortdepart"] = 1;
+		v["arriveevue"] = 12;
+		PlaceLoopVars::placeLookedUp(v, 14);           // next move, destination 14
+		v["flagvue1"] = 3;
+		PlaceLoopVars::departureScanned(v);            // FUN_00427814 @ 0x00427843
+		TS_ASSERT_EQUALS(v["flagvue1"], 0);
+		TS_ASSERT(PlaceLoopVars::takeAbort(v));        // the stale AbortDepart cancels it
+		TS_ASSERT_EQUALS(v["arriveevue"], 0);
+		TS_ASSERT_EQUALS(v["abortdepart"], 0);
+		TS_ASSERT_EQUALS(v["departvue"], 0);
+		PlaceLoopVars::placeLookedUp(v, 14);
+		TS_ASSERT(!PlaceLoopVars::takeAbort(v));
+		TS_ASSERT_EQUALS(v["departvue"], 14);
+		PlaceLoopVars::moveEnded(v);                   // 0x00424089
+		TS_ASSERT_EQUALS(v["departvue"], 0);
+		PlaceLoopVars::zone999Begin(v);
+		TS_ASSERT_EQUALS(v["departvue"], 999);
+		PlaceLoopVars::zone999End(v);
+		TS_ASSERT_EQUALS(v["departvue"], 0);
+		TS_ASSERT(PlaceLoopVars::vueQueuesArrivalScan(false));
+		TS_ASSERT(!PlaceLoopVars::vueQueuesArrivalScan(true));   // cleared @ 0x00423be7
 	}
 };
 

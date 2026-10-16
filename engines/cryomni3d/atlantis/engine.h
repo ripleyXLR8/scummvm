@@ -356,8 +356,6 @@ private:
 	// -1 when `Vue` is the current place.
 	int _vueVarOverride = -1;
 	int vueVariable() const { return _vueVarOverride >= 0 ? _vueVarOverride : (int)_currentPlaceId; }
-	// AbortDepart was set by the departure /sel scan in progress.
-	bool _departAborted = false;
 	// atlantis.exe place table 0x006ce274: one record per WAM place, by its
 	// position in the WAM.  FUN_00421ebc writes each record's transitions
 	// [0, count) and clears nothing, so an entry past the count keeps what an
@@ -383,14 +381,14 @@ private:
 	void playPuzzle(int puzzleId);
 	void runPuzzleZone(int puzzleId);
 	// Evaluate a /sel section's condition list (left-to-right short-circuit).
-	bool evalSelSection(const ConSection &sec, int departZone, int currentVue) const;
+	bool evalSelSection(const ConSection &sec, int currentVue) const;
 	// Execute a fired section's body (its /set commands and /go redirect; the
 	// dialog lines are played once the dialog layer lands).
 	// chain: the walk's entry angles and ClicPerso, carried into a /go target.
 	void playConSection(ConSection &sec, const DialogView::Walk *chain = nullptr);
 	// Fire the first matching arrival/departure /sel section, in file order.
 	void runArrivalSelSections(int arrivedVue, int fromVue);
-	void runDepartureSelSections(int departZone);
+	void runDepartureSelSections();
 
 	// Handle a click on NPC `persoId`: play the first condition-passing
 	// /con(clicperso=N) section for them (the subject topic menu lands with

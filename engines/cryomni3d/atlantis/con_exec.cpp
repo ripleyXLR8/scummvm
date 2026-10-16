@@ -40,6 +40,7 @@
 #include "cryomni3d/atlantis/con_eval.h"
 #include "cryomni3d/atlantis/engine.h"
 #include "cryomni3d/atlantis/inventory.h"
+#include "cryomni3d/atlantis/place_loop_vars.h"
 #include "cryomni3d/atlantis/puzzle_eclipse.h"
 #include "cryomni3d/atlantis/puzzle_ogregame.h"
 #include "cryomni3d/atlantis/puzzle_dispatch.h"
@@ -421,7 +422,7 @@ void CryOmni3DEngine_Atlantis::runSelScan() {
 	for (ConSection &sec : _conScript.sections()) {
 		if (!sec.isEntry || sec.isCon || sec.isTimer)
 			continue;
-		if (!evalSelSection(sec, 0, vueVariable()))
+		if (!evalSelSection(sec, vueVariable()))
 			continue;
 		debugC(1, kDebugScript, "runSelScan: section %d", sec.id);
 		playConSection(sec);
@@ -524,17 +525,10 @@ void CryOmni3DEngine_Atlantis::execConSetCommand(const Common::String &cmd, int3
 		return;
 	}
 
-	// abortdepart=1 — cancel the pending place departure.  Fired by the
-	// departure /sel sections that lock the player into an area (the
-	// catch-all pattern is /sel(departvue>0)&(vue>A)&(vue<B) -> a refusal
-	// bark + /set(abortdepart=1)); gameStep sees _nextPlaceId cleared and
-	// skips the transition.
-	if (key == "abortdepart") {
-		_nextPlaceId = uint(-1);
-		if (value != 0)
-			_departAborted = true;
-		return;
-	}
+	// abortdepart=1 is stored as any variable: the move path reads it after
+	// the departure scan (atlantis.exe FUN_00423ad8 @ 0x00423e2b), so a set
+	// in an earlier scan since the last arrival preparation cancels the move
+	// too (place_loop_vars.h).
 
 	// chapter=N — switch the active CON script to chapter N.  This is the
 	// story-progression command (e.g. CHAPI013's /014 section fires
@@ -748,15 +742,15 @@ class EngineConEvaluator : public ConEvaluator {
 public:
 	EngineConEvaluator(const ConVariableNames &names, const Inventory &inventory,
 	                   const Common::HashMap<Common::String, int> &vars,
-	                   int departZone, int currentVue) :
+	                   int currentVue) :
 		ConEvaluator(names, vars, inventory), _inventory(inventory),
-		_departZone(departZone), _currentVue(currentVue) {}
+		_currentVue(currentVue) {}
 
 protected:
+	// DEPARTVUE is not live: it is the stored variable the place loop and
+	// FUN_00421cfc write (place_loop_vars.h).
 	bool liveValue(const Common::String &key, int &out) const override {
-		if (key == "departvue") {
-			out = _departZone;
-		} else if (key == "vue") {
+		if (key == "vue") {
 			out = _currentVue;
 		} else if (key == "objetenmain") {
 			// Live held-object id, not the stored game variable: a pickup or
@@ -771,7 +765,7 @@ protected:
 
 private:
 	const Inventory &_inventory;
-	int _departZone, _currentVue;
+	int _currentVue;
 };
 
 } // End of anonymous namespace
@@ -812,7 +806,7 @@ bool CryOmni3DEngine_Atlantis::runConTimers(bool fromWarp) {
 		for (ConSection &sec : _conScript.sections()) {
 			if (!sec.isEntry || !sec.isTimer || sec.timerNum != timer)
 				continue;
-			if (!evalSelSection(sec, 0, vueVariable()))
+			if (!evalSelSection(sec, vueVariable()))
 				continue;
 			debugC(1, kDebugScript, "runConTimers: /tim%d section %d", timer, sec.id);
 			// A timer run counts as a play (flag 0x00496174).
@@ -839,7 +833,8 @@ void CryOmni3DEngine_Atlantis::enterPlaceFromScript(uint placeId) {
 	// transition video, ArriveeVue = the previous place, ClicPerso = 0.  The
 	// rest of the section then plays in the new place; the place loop
 	// FUN_00423ad8 runs the arrival /sel scan when it comes round
-	// (ArriveeVue != 0 @ 0x00423b48).
+	// (ArriveeVue != 0 @ 0x00423b48), unless the Vue= ran inside that very
+	// scan: ArriveeVue is cleared right after it (@ 0x00423be7).
 	const uint from = _currentPlaceId;
 	for (const AtlantisSubWAM &sub : _wam.getSubWAMs()) {
 		if (sub.srcPlaceId == from && sub.dstPlaceId == placeId) {
@@ -856,9 +851,14 @@ void CryOmni3DEngine_Atlantis::enterPlaceFromScript(uint placeId) {
 	doPlaceChange();
 	if (_currentPlaceId != placeId)
 		_vueVarOverride = (int)placeId;   // place not found: `Vue` = N anyway
+	else
+		PlaceLoopVars::placeLookedUp(_gameVars, (int)placeId);   // FUN_00421cfc (0x0042a66d)
+	// A missing place makes FUN_00421cfc read past the last record; the one
+	// reachable case (CHAPI005 /113) ends in a game over before a scan reads
+	// DEPARTVUE, so it is left as it is.
 	_gameVars["arriveevue"] = (int)from;
 	_gameVars["clicperso"] = 0;
-	_arrivalScanPending = true;
+	_arrivalScanPending = PlaceLoopVars::vueQueuesArrivalScan(_inPlaceArrivalScan);
 	_arrivalFromVue = from;
 	debugC(1, kDebugScript, "enterPlaceFromScript: %u -> %u", from, placeId);
 }
@@ -950,7 +950,7 @@ void CryOmni3DEngine_Atlantis::runConClick() {
 	struct Ctx {
 		static bool test(const ConSection &sec, void *ctx) {
 			const CryOmni3DEngine_Atlantis *e = (const CryOmni3DEngine_Atlantis *)ctx;
-			return e->evalSelSection(sec, 0, e->vueVariable());
+			return e->evalSelSection(sec, e->vueVariable());
 		}
 	};
 	int idx = findConClickEntry(_conScript, _conPlayCounters, &Ctx::test, this);
@@ -989,12 +989,10 @@ void CryOmni3DEngine_Atlantis::bumpConPlayCounter(int section) {
 		warning("bumpConPlayCounter: section %d out of range", section);
 }
 
-bool CryOmni3DEngine_Atlantis::evalSelSection(const ConSection &sec,
-                                               int departZone, int currentVue) const {
+bool CryOmni3DEngine_Atlantis::evalSelSection(const ConSection &sec, int currentVue) const {
 	if (sec.condOffset < 0)
 		return true;
-	EngineConEvaluator eval(_conVarNames, _inventory, _gameVars,
-	                        departZone, currentVue);
+	EngineConEvaluator eval(_conVarNames, _inventory, _gameVars, currentVue);
 	return eval.evaluate(_conScript.text(), (uint32)sec.condOffset);
 }
 
@@ -1016,7 +1014,7 @@ void CryOmni3DEngine_Atlantis::runArrivalSelSections(int arrivedVue, int fromVue
 		int vue;
 		static bool test(const ConSection &sec, void *ctx) {
 			const Ctx *c = (const Ctx *)ctx;
-			return c->e->evalSelSection(sec, 0, c->vue);
+			return c->e->evalSelSection(sec, c->vue);
 		}
 	};
 	Ctx ctx = { this, arrivedVue };
@@ -1031,19 +1029,11 @@ void CryOmni3DEngine_Atlantis::runArrivalSelSections(int arrivedVue, int fromVue
 	_gameVars["arriveevue"] = 0;
 }
 
-void CryOmni3DEngine_Atlantis::runDepartureSelSections(int departZone) {
-	// Same single-fire /sel scan; departure sections gate on (departvue=N) or
-	// (departvue>0), arrival-only sections self-exclude (arriveevue is 0 here).
-	for (ConSection &sec : _conScript.sections()) {
-		if (!sec.isEntry || sec.isCon || sec.isTimer)
-			continue;
-		if (!evalSelSection(sec, departZone, vueVariable()))
-			continue;
-		debugC(1, kDebugScript, "runDepartureSelSections: zone=%d firing section %d",
-		      departZone, sec.id);
-		playConSection(sec);
-		break;
-	}
+void CryOmni3DEngine_Atlantis::runDepartureSelSections() {
+	// atlantis.exe FUN_00427814: the /sel scan FUN_004277c8 with DEPARTVUE
+	// already = the destination (FUN_00421cfc), then FLAGVUE1 = 0.
+	runSelScan();
+	PlaceLoopVars::departureScanned(_gameVars);
 }
 
 void CryOmni3DEngine_Atlantis::playArcMagique() {
@@ -1191,7 +1181,7 @@ void CryOmni3DEngine_Atlantis::interactNPC(int persoId) {
 		// under the pointer (set by the warp loop's caller).
 		if (!conEntryAllowed(sec, _conPlayCounters))
 			continue;
-		if (!evalSelSection(sec, 0, vueVariable()))
+		if (!evalSelSection(sec, vueVariable()))
 			continue;
 
 		const bool hasSuj = sec.sujId != 0 || !sec.sujIds.empty();
