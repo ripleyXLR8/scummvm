@@ -106,7 +106,7 @@ public:
 		}
 		AtlantisTest::Golden golden;
 		if (!AtlantisTest::loadGolden("video_mouth.txt", golden)) {
-			TS_WARN("video_mouth.txt missing: dialog head test skipped");
+			TS_FAIL("video_mouth.txt missing from the configured golden directory");
 			return;
 		}
 		VideoTest::Big big;
@@ -138,7 +138,7 @@ public:
 		}
 		AtlantisTest::Golden golden;
 		if (!AtlantisTest::loadGolden("video_mouth.txt", golden)) {
-			TS_WARN("video_mouth.txt missing: dialog head test skipped");
+			TS_FAIL("video_mouth.txt missing from the configured golden directory");
 			return;
 		}
 		VideoTest::Big big;

@@ -57,6 +57,8 @@ public:
 		Common::Array<CreditsEvent> ev;
 		CreditsLayout::build(txt.data(), txt.size(), widths, ev);
 		Common::Array<Common::String> out;
+		// The golden's "returned 1" (FUN_0041a72c's return value) is matched
+		// by construction: CreditsLayout::build returns void.
 		out.push_back("returned 1");
 		out.push_back(Common::String::format("events %u", ev.size()));
 		for (uint i = 0; i < ev.size(); i++) {

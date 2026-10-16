@@ -5,6 +5,17 @@
 // atlantis-re/tools/emu/scripts_musik.py: the presence test FUN_0041f9f8 is
 // answered from a set, the copy FUN_0041f380, the menu and DeleteFileA are
 // recorded.  Port: conMusicList and conMusicApply (con_eval.h).
+//
+// Compared: the copies (from the "copy N" events) and the on-disk set after
+// the command.  The "test", "menu" and "present" events are not compared
+// (menu / present: no WAIT menu, atlantis-re decisions/0014); "delete" events
+// for indexes below 32 are checked through the after-set.  For list indexes
+// of 32 or more (value 33 and above, used by no shipped CON script) the
+// original FUN_0041faa0 calls DeleteFileA on a path built from the bytes
+// after the 31-entry name table 0x00495eec (index 32: "<folder>\=\nAB"),
+// which names no file; the port skips such indexes and bitsOf() drops them,
+// with the same observable effect.  The harness reports "delete None" for any
+// index past 29 (its name scan covers 0..29 only, cine194.apc is index 30).
 
 #ifndef TEST_ATLANTIS_SCRIPTS_CON_MUSIK_H
 #define TEST_ATLANTIS_SCRIPTS_CON_MUSIK_H

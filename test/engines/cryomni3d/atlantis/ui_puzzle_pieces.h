@@ -153,8 +153,12 @@ public:
 				const Rules::Click c = r.click(map, x, y);
 				const int snd = (c == Rules::kClickMove || c == Rules::kClickReset || c == Rules::kClickBoard) ? 1 : 0;
 				const int win = r.solved() ? 1 : 0;
+				// The harness's r is the original's puzzle RESULT 0x004974c0
+				// after the click: 2 for a leave click (as RotatingPiecesPuzzle
+				// sets it on kClickLeave), else 0.
+				const int res = c == Rules::kClickLeave ? 2 : 0;
 				lines.push_back(stateRepr(cur) + " " + name + " -> " + stateRepr(r) +
-				                Common::String::format(" r=0 win=%d snd=%d", win, snd));
+				                Common::String::format(" r=%d win=%d snd=%d", res, win, snd));
 				const Common::String key = stateRepr(r);
 				if (!seen.contains(key)) {
 					seen[key] = true;

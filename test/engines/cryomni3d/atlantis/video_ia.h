@@ -320,11 +320,12 @@ public:
 		}
 		AtlantisTest::Golden golden;
 		if (!AtlantisTest::loadGolden("video_ia_composite.txt", golden)) {
-			TS_WARN("video_ia_composite.txt missing: UBB composite test skipped");
+			TS_FAIL("video_ia_composite.txt missing from the configured golden directory");
 			return;
 		}
 		VideoTest::Big big;
 		Common::Array<Common::String> ubbs = big.names(".UBB");
+		TS_ASSERT_EQUALS(ubbs.size(), 124u);
 		uint16 *bg = new uint16[N];
 		uint16 *dst = new uint16[N];
 		byte *flat = new byte[N];
@@ -375,6 +376,9 @@ public:
 		TS_WARN(Common::String::format("UBB composite: %d frames, %d without IA stream; "
 		        "walk (stand-in blend) differs on %d (first %s); real blend differs on %d (first %s)",
 		        frames, noOps, badStandin, firstStandin.c_str(), badReal, firstReal.c_str()).c_str());
+		// Every frame of the golden (a stand-in and a real key each) compared.
+		TS_ASSERT(frames > 0);
+		TS_ASSERT_EQUALS(frames, (int)golden.size() / 2);
 		TS_ASSERT_EQUALS(noOps, 0);
 		TS_ASSERT_EQUALS(badStandin, 0);
 		TS_ASSERT_EQUALS(badReal, 0);

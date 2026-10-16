@@ -1091,12 +1091,12 @@ public:
 		TSM_ASSERT_EQUALS("knob X values (of 212) where the port's volume differs", mismatches, 0);
 	}
 
+	// Default knob X (SONMENU.TXT 460/465/470/490) through the port's
+	// menuVolumeFromKnob vs the original's default volumes.
 	void test_volume_defaults() {
 		const int knob[4] = { 460, 465, 470, 490 };
-		for (int t = 0; t < 4; t++) {
-			double ail = ((double)(knob[t] - 305)) / 213.0 * 127.0;
-			TS_ASSERT_EQUALS(CLIP((int)(ail + 0.5), 0, 127), kUiOrigVolumeDefault[t]);
-		}
+		for (int t = 0; t < 4; t++)
+			TS_ASSERT_EQUALS(CryOmni3D::Atlantis::menuVolumeFromKnob(knob[t]), kUiOrigVolumeDefault[t]);
 	}
 
 	// SUBTITLES toggle: the original forces OFF on every second click of a
@@ -1114,6 +1114,12 @@ public:
 		}
 	}
 
+	// OMNI 3D toggle: a check of the golden constant kUiOrigOmniClicks only
+	// (FUN_0041d5f4 @ 0x0041d706, DAT_004960ac = (DAT_004960ac == 0)).  No
+	// port code runs here: the port's toggle is the generic
+	// '(selected + 1) % options.size()' step inside
+	// CryOmni3DEngine_Atlantis::displayOptionsMenu (menus.cpp), engine code
+	// the test runner does not link, and the loop below recomputes it.
 	void test_omni_toggle_sequence() {
 		int sel = 1;   // MODE 1 (DAT_004960ac == 0)
 		for (int k = 0; k < 4; k++) {
@@ -1155,7 +1161,9 @@ public:
 		for (uint i = 0; i < port.size() && i < ARRAYSIZE(kUiOrigNameField); i++) {
 			TS_ASSERT_EQUALS(port[i], Common::String::format("%d,%d,%c", kUiOrigNameField[i][0],
 			                 kUiOrigNameField[i][1], kUiOrigNameField[i][2]));
-			TS_ASSERT_EQUALS(kUiOrigNameField[i][3], 1);   // always the hover font
+			// kUiOrigNameField[i][3] (always 1, the hover font) is not compared:
+			// the port's renderer for the name field (kFontMinNameField) is
+			// chosen in displayPlayerScreen (menus.cpp), outside the test.
 		}
 	}
 

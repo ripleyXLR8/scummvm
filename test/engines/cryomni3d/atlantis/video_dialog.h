@@ -106,9 +106,11 @@ public:
 	// Self-contained: synthetic speaker tokens, port's real
 	// resolveSpeakerPersoId with _heroPersoId = 512 (the value the port's
 	// loadDialInitData derives from the shipped INITDIAL.TXT, row "hero").
-	// Expected: the ORIGINAL's result. Known differences (see REPORT):
-	// first-match order (Reinem/Reinep -> 560), Seth -> hero 512 instead of
-	// 514, case-insensitive matching (SOLD/sold/enne/GARD/SETH).
+	// Expected: the ORIGINAL's result. The port's resolveSpeakerPersoId
+	// (con_exec.cpp, since ScummVM 7496685ded5) runs the original
+	// FUN_00428f58 chain in code order, memcmp case-sensitive, last hit wins,
+	// so Reinem -> 561, Reinep -> 562, Seth -> 514, and SOLD/sold/enne/GARD/
+	// SETH -> 0 as in the original; no case may differ.
 	void test_speaker_synthetic_vs_original() {
 		VideoPeek::Eng *e = VideoPeek::rawEngine();
 		e->_heroPersoId = 512;
@@ -404,8 +406,9 @@ public:
 		d.camUBB[2] = "pecan2c4";
 		d.camUBB[3] = "pecan2c5";
 		e->_dialInitData[524] = d;
-		// Original: explicit cam2 is used as is (the UBB load of "none.ubb"
-		// then fails); port: falls back to a random available cam.
+		// Original and port (since ScummVM 7496685ded5): explicit cam2 is
+		// used as is, even though INITDIAL's UBB for cam2 is "none" (the
+		// original's load of "none.ubb" then fails).
 		int cam = e->pickDialCam(524, 2);
 		TS_ASSERT_EQUALS(cam, 2);
 	}

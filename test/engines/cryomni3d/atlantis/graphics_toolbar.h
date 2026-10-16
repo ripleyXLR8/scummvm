@@ -279,7 +279,8 @@ public:
 	}
 
 	// Icon hotspots: original (i*70+42, 443); port = centre of the toolbar's
-	// zone rect (rects from the faithful copy of init()), origin y = 480-82.
+	// zone rect (rects from the real Atlantis_Toolbar::setupZones(), called by
+	// initToolbarNoGfx), origin y = 480-82.
 	void test_icon_hotspots() {
 		CryOmni3D::Atlantis::Atlantis_Toolbar tb;
 		GraphicsToolbarTest::initToolbarNoGfx(tb, nullptr);

@@ -13,6 +13,13 @@
 // Port: music.cpp kMusicTrackNames (static, read from the source file because
 // it cannot be linked) and readNewSoundNames (exe_newsound.h), which
 // loadAtlantisExeTables calls.
+//
+// The music-table test compares a transcription (kOrigMusic) with a text
+// parse of music.cpp ('//' comments and a '};' terminator only), not with
+// linked port code or a stored golden (scripts_music.txt holds only the
+// newsound digests; the harness's music_names md5 is not stored).  The 31
+// names match the 13-byte records at 0x00495eec of the reference exe
+// (checked 2026-10-16).  Without src= the test is skipped.
 
 #include "scripts_con_common.h"
 

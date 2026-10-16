@@ -1,9 +1,13 @@
 // Verifier "ui": importing the original's checkpoints (owner decision,
 // 2026-10-14).
 //
-// Original layouts: atlantis-re formats/ui-gam.md and ui-players-atl.md,
-// checked on 74 real checkpoints and two players.atl (experiments
-// 2026-10-14-12). Port: parseOriginalCheckpoint, readOriginalPlayersLetters
+// Original layouts: atlantis-re formats/ui-gam.md (checked on 74 real French
+// checkpoints, experiments 2026-10-14-12) and formats/ui-players-atl.md
+// (English 97-byte layout emulated, two real English files decoded; French
+// 95-byte layout [INFERRED] from the single third-party file of
+// evidence/saves: names 0x00..0x54, byte 0x55 = 85 = the chapter of its last
+// checkpoint pa85, letters "abcde" at 0x5a; the French executable has not
+// been read). Port: parseOriginalCheckpoint, readOriginalPlayersLetters
 // (saveload_format.h), called directly on synthetic files laid out as the
 // original writes them.
 
@@ -62,7 +66,9 @@ public:
 	}
 
 	// The English build's players.atl has 6 chapter and 6 letter bytes (97),
-	// the French one 5 and 5 (95, the letters at 0x5a).
+	// the French one 5 and 5 (95, the letters at 0x5a) -- the French split is
+	// [INFERRED] from the size of one third-party file (85 + 5 + 5), not read
+	// from the French executable.
 	void test_players_letters_both_builds() {
 		using namespace CryOmni3D::Atlantis;
 		for (int fr = 0; fr < 2; fr++) {

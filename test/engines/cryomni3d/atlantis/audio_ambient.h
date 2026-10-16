@@ -121,10 +121,11 @@ public:
 			return;
 		}
 		Common::File f;
-		if (!f.open(Common::FSNode(Common::Path(AtlantisTest::goldenDir(), '/').appendComponent("audio_ambient_gain.txt")))) {
-			TS_WARN("audio_ambient_gain.txt missing: ambient gains test skipped");
+		// A configured golden directory without the file is a failure, not a skip.
+		const bool opened = f.open(Common::FSNode(Common::Path(AtlantisTest::goldenDir(), '/').appendComponent("audio_ambient_gain.txt")));
+		TS_ASSERT(opened);
+		if (!opened)
 			return;
-		}
 		uint cases = 0, bad = 0;
 		while (!f.eos()) {
 			Common::String line = f.readLine();

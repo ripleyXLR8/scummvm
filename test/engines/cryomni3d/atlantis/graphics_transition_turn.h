@@ -17,6 +17,18 @@
 // Port code exercised directly: TransitionTurn (transition_turn.h), which
 // CryOmni3DEngine_Atlantis::executeTransition runs, and
 // Omni3DManagerAtlantis::exePi.
+//
+// The golden's end columns are ALPHA BETA SAVED_A SAVED_B ZOOM of the
+// original after FUN_004212cc returns.  Only the frames (md5) and the reached
+// angles (SAVED_A / SAVED_B = endAlpha / endBeta of TransitionTurn::run) are
+// produced by the port code under test.  The final FUN_0045179a(75.187, 50)
+// entry appended to the frame list, the post-jump ALPHA / BETA written as the
+// test's own da / db and the ZOOM 0 column are the original's end actions,
+// which the port does outside TransitionTurn::run and which this test does
+// not check: the FOV handling and the ZOOM clear in
+// CryOmni3DEngine_Atlantis::turnToTransition (place.cpp, which restores the
+// warp's HFov instead of holding 75.187 through the video) and the jump to
+// dstAlpha / dstBeta in its callers (place.cpp, after playTransitionVideo).
 
 namespace TransitionTurnTest {
 

@@ -58,7 +58,9 @@ class VideoHnmRegressTestSuite : public CxxTest::TestSuite {
 		return true;
 	}
 
-	// Returns the number of differing frames; frames decoded in *nframes.
+	// Returns the number of differing frames; frames decoded in *nframes.  A
+	// file either decoder fails to load counts every expected frame as
+	// differing (at least 1), so it cannot cancel a genuine difference.
 	static int compare(const byte *data, uint32 size, const Graphics::PixelFormat &fmt,
 	                   bool loop, uint32 frames, int &decoded) {
 		byte *c1 = new byte[size];
@@ -69,7 +71,7 @@ class VideoHnmRegressTestSuite : public CxxTest::TestSuite {
 		VideoUpstream::HNMDecoder up(fmt, loop);
 		if (!cur.loadStream(new Common::MemoryReadStream(c1, size, DisposeAfterUse::YES)) ||
 		    !up.loadStream(new Common::MemoryReadStream(c2, size, DisposeAfterUse::YES)))
-			return -1;
+			return frames > 0 ? (int)frames : 1;
 		int bad = 0;
 		for (uint32 i = 0; i < frames; i++) {
 			const Graphics::Surface *a = cur.decodeNextFrame();
@@ -149,6 +151,7 @@ public:
 		        nfiles, decoded, bad, badFiles, report.c_str(), loopSkipped).c_str());
 		TS_ASSERT_EQUALS(nfiles, 342);
 		TS_ASSERT_EQUALS(bad, 0);
+		TS_ASSERT_EQUALS(badFiles, 0);
 	}
 
 	void test_cyclo_warp_vs_original() {
@@ -158,7 +161,7 @@ public:
 		}
 		AtlantisTest::Golden golden;
 		if (!AtlantisTest::loadGolden("video_warp_frames.txt", golden)) {
-			TS_WARN("video_warp_frames.txt missing: warp test skipped");
+			TS_FAIL("video_warp_frames.txt missing from the configured golden directory");
 			return;
 		}
 		VideoTest::Big big;
@@ -275,7 +278,7 @@ public:
 		}
 		AtlantisTest::Golden golden;
 		if (!AtlantisTest::loadGolden("video_ix_frames.txt", golden)) {
-			TS_WARN("video_ix_frames.txt missing: IX test skipped");
+			TS_FAIL("video_ix_frames.txt missing from the configured golden directory");
 			return;
 		}
 		Common::HashMap<Common::String, uint> framesOf;
@@ -306,8 +309,14 @@ public:
 			dec.start();
 			for (uint k = 0; k < it->_value; k++) {
 				const Graphics::Surface *f = dec.decodeNextFrame();
-				if (!f)
+				if (!f) {
+					// The decoder stopped early: every frame the golden
+					// still expects counts as differing.
+					bad += (int)(it->_value - k);
+					if (report.size() < 300)
+						report += Common::String::format(" %s %u (end)", it->_key.c_str(), k);
 					break;
+				}
 				Common::Array<byte> le(f->w * f->h * 2);
 				for (int y = 0; y < f->h; y++) {
 					const uint16 *row = (const uint16 *)f->getBasePtr(0, y);

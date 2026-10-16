@@ -1,8 +1,12 @@
 // Audit "graphics", element 1: sprite decoders and edge blending.
 //
 // Every expected value here was produced by the ORIGINAL code of
-// atlantis-cd-en-714240 run unmodified under Unicorn:
-//   atlantis-re/tools/emu/graphics_sprites.py  (tables / sweep / synthetic / spr / spw / spf)
+// atlantis-cd-en-714240 run unmodified under Unicorn, except two tests:
+//   atlantis-re/tools/emu/graphics_sprites.py  (tables / sweep / synthetic / spr / spw / spf / tga)
+// test_menu_dim_exhaustive compares against a per-channel closed form read
+// from FUN_004108e0's asm, and test_spf_index_past_end against a reading of
+// FUN_004256e8 @ 0x004257b6..0x004257be (both [CONFIRMED-STATIC], not
+// emulated).
 // Original functions: FUN_0042b930 + FUN_00452ac8 (blend tables),
 // FUN_00410782 (SPR colour table RGB555 -> RGB565), FUN_00410430/FUN_0041047f
 // (SPR blit), FUN_00452bde (SPW/SPF frame draw).

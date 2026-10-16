@@ -19,11 +19,11 @@
 //   FUN_00442360 ogre turn          FUN_00442a0c queen walk
 //
 // Port code exercised directly: OgreRules (ogre_rules.cpp), the rules
-// OgreGamePuzzle runs; PortCopy::Game adds a scripted random source and the
+// OgreGamePuzzle runs; PortRules::Game adds a scripted random source and the
 // drop / catch / ogre-turn sequence of OgreGamePuzzle::run().
 
 namespace UiOgre {
-namespace PortCopy {
+namespace PortRules {
 
 // The port's rules (OgreRules, ogre_rules.cpp) with a scripted random source
 // for walkQueen and the drop branch of OgreGamePuzzle::run().
@@ -55,7 +55,7 @@ struct Game : public CryOmni3D::Atlantis::OgreRules {
 static const int kCellPX[7] = { 143, 203, 263, 323, 383, 443, 503 };
 static const int kCellPY[7] = { 59, 119, 179, 239, 299, 359, 419 };
 
-} // namespace PortCopy
+} // namespace PortRules
 
 static Common::String md5Of(const Common::String &s) {
 	return AtlantisTest::md5Hex((const byte *)s.c_str(), s.size());
@@ -90,7 +90,7 @@ static int origPathRow(int y) {
 } // namespace UiOgre
 
 class UiPuzzleOgreTestSuite : public CxxTest::TestSuite {
-	typedef UiOgre::PortCopy::Game Game;
+	typedef UiOgre::PortRules::Game Game;
 
 	static Common::String stateKey(const Game &g) {
 		Common::String s = Common::String::format("%d,%d,%d,%d,%d,%d,", g.p[0].x, g.p[0].y,
@@ -107,6 +107,10 @@ class UiPuzzleOgreTestSuite : public CxxTest::TestSuite {
 
 public:
 	// Initial records (FUN_0044203c + FUN_004422b8): hero (0,0), ogres (6,6), (0,6).
+	// This checks only the test's stateKey() helper against the original's
+	// values: the port's start positions are set by the OgreGamePuzzle
+	// constructor (puzzle_ogregame.cpp), engine-bound code not linked here, so
+	// a wrong start position in the port is not caught by this test.
 	void test_initial_pieces() {
 		// Original: 0x495e4c = {1,0,0}, ogre 2 {1,6,6}, ogre 3 {1,0,6} (set by FUN_004422b8).
 		Game g;
@@ -162,16 +166,16 @@ public:
 
 	// legal-move mask and path for every
 	// hero cell x every target cell (mouse at the cell centre).  Straight
-	// moves agree (test_path_builder_nondiagonal); for diagonal moves the
-	// original picks the elbow from the cursor offset to the hero cell centre
-	// (FUN_00443f94 @ 0x44409f: (cx,hy) if |mx-(colEdge[hx]+30)| >
-	// |my-(rowEdge[hy]+30)| else (hx,cy)); the port's |dx| < |dy| test is
-	// never true for a diagonal step, so it always uses (hx,cy).
+	// moves agree (test_path_builder_nondiagonal); for diagonal moves both
+	// the original and the port pick the elbow from the cursor offset to the
+	// hero cell centre (FUN_00443f94 @ 0x44409f: (cx,hy) if
+	// |mx-(colEdge[hx]+30)| > |my-(rowEdge[hy]+30)| else (hx,cy);
+	// OgreRules::buildMoveMask since ScummVM f0df37b8d0c).
 	void test_path_builder_all_cells() { checkPathBuilder(false, "e29742f19eeb72dfcb3f80f6a1a28fb6"); }
 	void test_path_builder_nondiagonal() { checkPathBuilder(true, "1ef75c21692f3319d86d4988a04c4319"); }
 
 	// Concrete diagonal case: hero (6,0), cursor at the centre of (5,1)
-	// (143+60*5, 59+60) = (443,119): original elbow (5,0), port (6,1).
+	// (143+60*5, 59+60) = (443,119): elbow (5,0) (original and port).
 	void test_diagonal_elbow_example() {
 		Game g;
 		g.p[0].x = 6; g.p[0].y = 0;
@@ -189,7 +193,7 @@ public:
 						if (nondiagOnly && hx != cx && hy != cy) continue;
 						Game g;
 						g.p[0].x = hx; g.p[0].y = hy;
-						g.buildMoveMask(UiOgre::PortCopy::kCellPX[cx], UiOgre::PortCopy::kCellPY[cy]);
+						g.buildMoveMask(UiOgre::PortRules::kCellPX[cx], UiOgre::PortRules::kCellPY[cy]);
 						Common::String cells;
 						for (int i = 0; i < 49; i++)
 							if (g.mask[i] == 1) {
@@ -225,7 +229,7 @@ public:
 								Game g;
 								g.p[0].x = hx; g.p[0].y = hy;
 								g.p[1].x = qx; g.p[1].y = qy;
-								int mx = UiOgre::PortCopy::kCellPX[cx], my = UiOgre::PortCopy::kCellPY[cy];
+								int mx = UiOgre::PortRules::kCellPX[cx], my = UiOgre::PortRules::kCellPY[cy];
 								g.buildMoveMask(mx, my);
 								if (g.drop(mx, my, false) == 255)
 									lines.push_back(Common::String::format("%d %d %d %d %d %d", hx, hy, cx, cy, qx, qy));
@@ -255,7 +259,7 @@ public:
 									for (int cont = 0; cont < 2; cont++) {
 										Game g;
 										g.p[0].x = hx; g.p[0].y = hy;
-										g.buildMoveMask(UiOgre::PortCopy::kCellPX[cx], UiOgre::PortCopy::kCellPY[cy]);
+										g.buildMoveMask(UiOgre::PortRules::kCellPX[cx], UiOgre::PortRules::kCellPY[cy]);
 										g.p[1].x = qx; g.p[1].y = qy;
 										g.rnd.push_back((first & 1) ? 20000 : 100);
 										g.rnd.push_back((first & 2) ? 20000 : 100);
@@ -274,10 +278,11 @@ public:
 
 	// the original ogre diversion
 	// (FUN_00442360, scan loop @ 0x442586) tests occupancy at (x0 + xx, yy) and moves
-	// to (x0, yy) -- x0 = max(ogre.x-1, 0) -- instead of (xx, yy).
+	// to (x0, yy) -- x0 = max(ogre.x-1, 0) -- instead of (xx, yy); the port
+	// (OgreRules::ogreStep) reproduces it.
 	// Concrete case: hero drops on (3,0) from (2,0), ogres at (4,4) and
-	// (2,4): ogre A goes to (3,3); ogre B is diverted to (1,5) in the
-	// original, (3,5) in the port.
+	// (2,4): ogre A goes to (3,3); ogre B is diverted to (1,5) in both the
+	// original and the port.
 	void test_ogre_diversion_example() {
 		Game g;
 		g.p[0].flag = 0; g.p[0].x = 2; g.p[0].y = 0;
@@ -285,7 +290,7 @@ public:
 		g.p[2].flag = 1; g.p[2].x = 4; g.p[2].y = 4;
 		g.p[3].flag = 1; g.p[3].x = 2; g.p[3].y = 4;
 		g.occ[4 * 7 + 4] = 1; g.occ[4 * 7 + 2] = 1;
-		int mx = UiOgre::PortCopy::kCellPX[3], my = UiOgre::PortCopy::kCellPY[0];
+		int mx = UiOgre::PortRules::kCellPX[3], my = UiOgre::PortRules::kCellPY[0];
 		g.buildMoveMask(mx, my);
 		TS_ASSERT_EQUALS(g.drop(mx, my, true), 0);
 		TS_ASSERT_EQUALS(g.p[2].x, 3); TS_ASSERT_EQUALS(g.p[2].y, 3);
@@ -317,7 +322,7 @@ public:
 			for (int cy = 0; cy < 7; cy++)
 				for (int cx = 0; cx < 7; cx++) {
 					Game g = cur;
-					int mx = UiOgre::PortCopy::kCellPX[cx], my = UiOgre::PortCopy::kCellPY[cy];
+					int mx = UiOgre::PortRules::kCellPX[cx], my = UiOgre::PortRules::kCellPY[cy];
 					g.buildMoveMask(mx, my);
 					int r = g.drop(mx, my, true);
 					if (r < 0) continue;

@@ -104,9 +104,14 @@ public:
 
 	// The INITDIAL row (0x0077290c): ClicPerso's low byte for other lines
 	// (0x00428924), the IncPerso count for Seth lines (0x00428a91).
-	// Emulated rows: CHAPI056 /744 A [Anna] with ClicPerso 329 -> 585,
-	// CHAPI065 /901 A [Sorciere] with ClicPerso 323 -> 579, CHAPI016 Agatha
-	// clicked as 539 -> 539, Seth with IncPerso 2 -> 514.
+	// Rows from the golden (video_dialog_line_view.txt): CHAPI056 /744 A
+	// [Anna] with ClicPerso 329 -> 585, CHAPI065 /901 A [Sorciere] with
+	// ClicPerso 323 -> 579, CHAPI016 /406 C [Seth] with IncPerso 2 -> 514.
+	// Agatha clicked as 539 -> 539 is not in the golden (the shipped
+	// ClicPerso-539 sections /207, /209, /210 open with a Seth line); it is
+	// the low-byte store at 0x00428924 (539 = 0x21b -> row 0x200 + 0x1b),
+	// emulated ad hoc with tools/emu/video_dialog_line_view.py CHAPI016
+	// --fixed --click 539 206 -> 206A [Agathe,cam2] orig head row 539.
 	void test_dial_row() {
 		using CryOmni3D::Atlantis::DialogView::dialRow;
 		TS_ASSERT_EQUALS(dialRow(false, 329, 0), 585);

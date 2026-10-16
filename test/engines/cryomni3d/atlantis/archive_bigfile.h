@@ -95,7 +95,8 @@ public:
 
 	// cryo.dll seeks to header_len + entry.adr (dword 6), so data stored out of
 	// directory order is still found: ONE "11111", TWO "22", THREE "333333333".
-	// The port assumes members are stored back to back in directory order.
+	// The port seeks to headerLen + adr as well (bigfile.cpp, since ScummVM
+	// 93229c165cc), so out-of-order data is found.
 	void test_synthetic_adr_order() {
 		CryOmni3D::Atlantis::BigFileArchive big;
 		TS_ASSERT(ArchiveBigTest::mountSynthetic(big, "archive_synth_adr.big",

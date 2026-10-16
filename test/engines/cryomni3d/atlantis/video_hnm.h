@@ -83,7 +83,7 @@ class VideoHnmTestSuite : public CxxTest::TestSuite {
 		}
 		AtlantisTest::Golden golden;
 		if (!AtlantisTest::loadGolden("video_ubb_frames.txt", golden)) {
-			TS_WARN("video_ubb_frames.txt missing: UBB frame test skipped");
+			TS_FAIL("video_ubb_frames.txt missing from the configured golden directory");
 			return;
 		}
 		VideoTest::Big big;

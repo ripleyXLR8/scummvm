@@ -7,8 +7,11 @@
 // atlantis-re/tools/emu/scripts_gameover.py (golden scripts_gameover.txt,
 // experiment 2026-10-16-09) on the narrator pointer the executor passes at
 // every gameover= of the 75 CON files: image, voice, subtitle blits for
-// SUBTITLES x counter 0x00496098, the NewSound fade, and the wait for 7
-// inputs with and without the voice.
+// SUBTITLES x counter 0x00496098, the NewSound fade, and the poll count of
+// the wait for 7 inputs with and without the voice.  Of the golden's W rows
+// only the poll count is compared: ms (250 / 750 / 5250), started (1 / 0) and
+// the flags after the wait (the same in all 2016 rows: cleared 1 keep 1
+// menu 0 click 0 rclick 0 x118 0 bar 0 x6cd7f4 0) are not.
 //
 // Port: conGameOverNarrator / conTrackLetter (con_script.h) as
 // playConSection captures the game over, gameOverImageName,

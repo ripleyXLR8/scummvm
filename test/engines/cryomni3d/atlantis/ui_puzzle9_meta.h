@@ -23,6 +23,13 @@
 // (with the md5 of the class map).
 //
 // Port code exercised directly: MetaGame (meta_game.cpp).
+//
+// The whole runs cover MetaGame with the current place fixed at 0
+// (Replay::currentPlace() returns 0, loadPicture is discarded), i.e. picture
+// 1 and no initial board turn.  The place-dependent branch of MetaGame::setUp
+// (place % 10 == 5 -> picture 3, 6 -> picture 4, 8 -> picture 2, with pic-1
+// board turns, from FUN_004478d4 '_DAT_006cd7c0 % 10') is not exercised: the
+// harness never sets 0x006cd7c0 and stubs the picture loader FUN_00447478.
 
 namespace UiMeta {
 

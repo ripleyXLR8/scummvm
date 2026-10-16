@@ -20,7 +20,10 @@
 //
 // Port code exercised directly: epiEpisodeName, readPlayersFile and
 // checkpointWritten (saveload_format.cpp), which the engine's saveload.cpp
-// and menus.cpp call.
+// and menus.cpp call.  test_original_players_atl_layout and
+// test_original_gam_layout are format documentation checks of the constants
+// produced by tools/emu/ui_saves.py (md5 d6dc6710e13f848b85e8ccf3d4a2a02d and
+// ccc24a09a35582201e2818ff5f9f0c57); no port code runs in them.
 
 namespace UiSaves {
 
@@ -151,20 +154,27 @@ public:
 		TS_ASSERT_EQUALS(memcmp(b, kOrigPlayersAtl, 97), 0);
 
 		OrigProfiles p = origDecodePlayersAtl(kOrigPlayersAtl);
-		// Emulated reader: 3 rows (Alice, Bob, "#New Player").
+		// Row rule of the original reader @ 0x419275..0x4192e0 as transcribed
+		// in origDecodePlayersAtl: 3 rows (Alice, Bob, "#New Player"); the
+		// emulated reader gives the same 3 rows (ui_saves.py run_reader_players).
 		TS_ASSERT_EQUALS(p.rows, 3u);
 		TS_ASSERT_EQUALS(p.names[0], "Alice");
 		TS_ASSERT_EQUALS(p.chapters[0], 12);
 		TS_ASSERT_EQUALS(p.letters[1], 'b');
 		// The resume save of a player is p<letter><chapter>.gam.
 		TS_ASSERT_EQUALS(origSaveName(p.letters[0], p.chapters[0]), "pa12.gam");
-		TS_ASSERT_EQUALS(origSaveName('c', 40), "pc40.gam");   // emulated writer, player 2, letters "edcba"
+		// Name rule 0x42d7db..0x42d86b, example from formats/ui-gam.md; not
+		// produced by the shipped harness run (player 0, chapter 12, "abcdef").
+		TS_ASSERT_EQUALS(origSaveName('c', 40), "pc40.gam");
 	}
 
 	// Format documentation check: p<L><N>.gam is a raw dump of 25 globals,
-	// 2639 bytes.  Each field filled with marker bytes by the harness; the
-	// writer fixes chapter=12, 0x496920=0, 0x6cd7c0=0 and copies the old
-	// 0x6cd7a8 into 0x6cd7b4.  MD5 of the emulated writer output embedded.
+	// 2639 bytes.  Each field filled with marker bytes by the harness, which
+	// also sets chapter 0x772909 = 12, 0x496920 = 0 and 0x6cd7c0 = 0 before the
+	// call; the writer itself only copies the old 0x6cd7a8 into 0x6cd7b4
+	// (0x0042d917..0x0042d91c; its place-table lookup 0x0042d928..0x0042d977
+	// finds nothing with the zeroed table).  MD5 of the emulated writer output
+	// embedded.
 	void test_original_gam_layout() {
 		using namespace UiSaves;
 		Common::Array<byte> g;
@@ -193,10 +203,11 @@ public:
 		Common::String players[5];
 		int chapters[5];
 		portLoadPlayers(&s, players, chapters);
-		OrigProfiles want = origDecodePlayersAtl(kOrigPlayersAtl);
-		TS_ASSERT_EQUALS(players[0], want.names[0]);   // "Alice"
-		TS_ASSERT_EQUALS(players[1], want.names[1]);   // "Bob"
-		TS_ASSERT_EQUALS(chapters[0], (int)want.chapters[0]);   // 12
+		// Expected: the emulated writer's file (names Alice, Bob; player 0's
+		// resume chapter 12), not the test-local transcription.
+		TS_ASSERT_EQUALS(players[0], "Alice");
+		TS_ASSERT_EQUALS(players[1], "Bob");
+		TS_ASSERT_EQUALS(chapters[0], 12);
 	}
 
 	// EPI.TXT: chapter N's save is shown with line N-1 (0-based).  Synthetic

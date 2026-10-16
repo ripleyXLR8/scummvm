@@ -170,7 +170,8 @@ public:
 	}
 
 	// A place whose 13-byte name slot starts with NUL: the original keeps an
-	// empty name ("P 0  0 0"); the port skips leading NULs.
+	// empty name ("P 0  0 0"), and so does the port since ScummVM 93229c165cc
+	// (readFixedName13 copies up to the first NUL, as FUN_00421ebc).
 	void test_synthetic_parse_leading_nul_name() {
 		CryOmni3D::Atlantis::AtlantisWAMParser w;
 		ArchiveWamTest::parse(w, ArchiveWamTest::k_wam_leading_nul, sizeof(ArchiveWamTest::k_wam_leading_nul));

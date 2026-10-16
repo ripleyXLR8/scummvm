@@ -187,6 +187,9 @@ public:
 	// Unicorn with the same law and the same 5 ms periods (golden
 	// audio_music_ring_wine.txt, atlantis-re tools/emu/audio_music_stream.py
 	// --wine --pcm, experiment 2026-10-16-28; decisions/0016 row 1).
+	// The position law (measured under Wine, experiment 2026-10-16-17) and
+	// the 5 ms timer period (experiment 2026-10-16-25) are inputs of both
+	// sides of the comparison; this test does not verify them.
 	void test_music_ring_vs_original() {
 		if (!AtlantisTest::haveData()) {
 			TS_WARN("audio_apc_data: no game data configured, skipped");

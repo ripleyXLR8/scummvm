@@ -13,7 +13,7 @@
 // EclipsePuzzle runs.
 
 namespace UiEclipse {
-namespace PortCopy {
+namespace PortRules {
 
 // The port's rules (EclipseRules, eclipse_rules.h); click() keeps the
 // tests' 'E' for an exit click.
@@ -23,7 +23,7 @@ struct Puzzle : public CryOmni3D::Atlantis::EclipseRules {
 	}
 };
 
-} // namespace PortCopy
+} // namespace PortRules
 
 // Original .data record table @ 0x49745e (dir, x, y, min, max, curr).
 static const int kOrigTable[7][6] = {
@@ -42,7 +42,7 @@ class UiPuzzleEclipseTestSuite : public CxxTest::TestSuite {
 public:
 	// Geometry of the record table (x, y, min, max) and the initial frame.
 	void test_record_table_geometry() {
-		UiEclipse::PortCopy::Puzzle p;
+		UiEclipse::PortRules::Puzzle p;
 		for (int i = 0; i < 7; i++) {
 			TS_ASSERT_EQUALS(p.r[i].x, UiEclipse::kOrigTable[i][1]);
 			TS_ASSERT_EQUALS(p.r[i].y, UiEclipse::kOrigTable[i][2]);
@@ -58,7 +58,7 @@ public:
 	// Record 0 (PZ2L frames 0..7) has dir = 1 in the original table, so it
 	// cycles on its own like record 1.
 	void test_record_dirs() {
-		UiEclipse::PortCopy::Puzzle p;
+		UiEclipse::PortRules::Puzzle p;
 		for (int i = 0; i < 7; i++)
 			TS_ASSERT_EQUALS(p.r[i].dir, UiEclipse::kOrigTable[i][0]);
 	}
@@ -70,7 +70,7 @@ public:
 			if (y)
 				all += '\n';
 			for (int x = 0; x < 640; x++) {
-				UiEclipse::PortCopy::Puzzle p;
+				UiEclipse::PortRules::Puzzle p;
 				int before[7];
 				for (int i = 0; i < 7; i++) before[i] = p.r[i].curr;
 				char c = p.click(x, y);
@@ -95,7 +95,7 @@ public:
 		for (int o1 = 0; o1 < 71; o1++)
 			for (int o2 = 0; o2 < 71; o2++)
 				for (int k = 0; k < 4; k++) {
-					UiEclipse::PortCopy::Puzzle p;
+					UiEclipse::PortRules::Puzzle p;
 					for (int i = 2; i < 7; i++) {
 						int n = p.r[i].max - p.r[i].min + 1;
 						int off = (i == 2 || i == 5 || i == 6) ? o1 : o2;
@@ -138,7 +138,7 @@ public:
 	}
 
 	void test_win_state() {
-		UiEclipse::PortCopy::Puzzle p;
+		UiEclipse::PortRules::Puzzle p;
 		for (int i = 0; i < 34; i++) p.click(180, 400);
 		TS_ASSERT(!p.isWin());
 		for (int i = 0; i < 35; i++) p.click(490, 400);
