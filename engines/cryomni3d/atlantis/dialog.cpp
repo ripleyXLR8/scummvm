@@ -1113,11 +1113,18 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 			if (!delayVoice)
 				startVoice();
 
+			uint prevButton = getCurrentMouseButton();
 			while (!shouldAbort() && (!voiceStarted || _mixer->isSoundHandleActive(handle))) {
 				drawFrame();
 				if (!voiceStarted && ubbFramesShown >= 2)
 					startVoice();
 				pollEvents();
+				// FUN_0041a298 in both line loops: a right press sets
+				// 0x00496120 and toggles the bar request (bar_session.h).
+				const uint button = getCurrentMouseButton();
+				if (button == 2 && prevButton != 2)
+					BarSessionRules::rightPressed(_barSession, _sectionPlay, false);
+				prevButton = button;
 				const bool escape = escapeSkips && checkKeysPressed(1, Common::KEYCODE_ESCAPE);
 				if (escape || getCurrentMouseButton() == 1) {
 					// Escape also sets the dialog-skip flag 0x00496134 that
@@ -1134,8 +1141,10 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 				_mixer->stopHandle(handle);
 			else
 				delete apc;   // never handed to the mixer
-			if (voiceStarted && camNum == 0)
+			if (voiceStarted && camNum == 0) {
 				musicUnduck();
+				BarSessionRules::voiceLineEnded(_barSession);   // 0x004305cb
+			}
 		}
 		delete apcFile;
 	}

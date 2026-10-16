@@ -437,7 +437,8 @@ bool Atlantis_Toolbar::handleToolbarEvents(const Graphics::Surface *original) {
 	uint32 nextScrollMs = 0;
 
 	uint prevButton = _engine->getCurrentMouseButton();
-	bool leftClick = false, gameOver = false;
+	bool leftClick = false, gameOver = false, sectionClosed = false;
+	BarSessionRules::opened(_engine->_barSession);   // 0x0042c8c4
 	while (!_engine->shouldAbort()) {
 		_engine->pollEvents();
 		const uint button = _engine->getCurrentMouseButton();
@@ -452,6 +453,13 @@ bool Atlantis_Toolbar::handleToolbarEvents(const Graphics::Surface *original) {
 		// closes the bar (0x0042cb67).
 		if (barTick(original)) {
 			gameOver = true;
+			break;
+		}
+		// A timer section that played a video, a voice-only line or a music
+		// change (or saw a right press) cleared the request: the loop leaves
+		// (0x0042cb76).
+		if (BarSessionRules::timersEndBar(_engine->_barSession)) {
+			sectionClosed = true;
 			break;
 		}
 		// No key closes the bar: FUN_0041a298 never reads VK_SPACE, and its
@@ -478,6 +486,9 @@ bool Atlantis_Toolbar::handleToolbarEvents(const Graphics::Surface *original) {
 	}
 	if (_engine->shouldAbort())
 		return false;
+	// FUN_0042c098 step 6 clears both flags whatever the exit.
+	const BarSession session = _engine->_barSession;
+	BarSessionRules::flagsReset(_engine->_barSession);
 
 	// The exit test of FUN_0042c8ac (0x0042cbfe): the guest portrait under
 	// the pointer.  The conversation then runs from the caller after the
@@ -494,6 +505,10 @@ bool Atlantis_Toolbar::handleToolbarEvents(const Graphics::Surface *original) {
 	// hand is left as it is [INFERRED: the dialog clears the click flags
 	// 0x0049611c / 0x00496120 that would empty it].
 	if (_guestClicked != 0)
+		return false;
+	// Left by a timer section: no item click (the request is 0); the hand is
+	// emptied only by a right press seen during it (0x0042c1c9).
+	if (sectionClosed && !BarSessionRules::exitEmptiesHand(session))
 		return false;
 
 	const int rec = leftClick ? clickedRecord(at.x, at.y, _inventoryOffset) : -1;

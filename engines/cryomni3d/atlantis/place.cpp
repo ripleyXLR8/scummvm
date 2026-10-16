@@ -429,6 +429,9 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 	skip.objectInHand = _inventory.selectedObject() != nullptr ||
 	                    _gameVars.getValOrDefault("objetenmain", 0) != 0;
 	skip.sectionPlay = _sectionPlay;
+	// The bar request as it stands: 1 for a Cinema= of a timer run by the
+	// bar loop (FUN_0042c8ac), so Escape does not end it then.
+	skip.barRequest = _barSession.request;
 	bool stopAfterFrame = false, skipped = false;
 	uint prevButton = getCurrentMouseButton();
 	while (!shouldAbort() && !decoder->endOfVideo()) {
@@ -508,6 +511,7 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 	for (Common::SeekableReadStream *spf : spfStreams)
 		delete spf;
 	composite.free();
+	BarSessionRules::flagsReset(_barSession);   // 0x0041bf5b..0x0041bf8d
 #else
 	debugC(1, kDebugScript, "playTransitionVideo: %s (HNM not compiled)", videoName.c_str());
 #endif

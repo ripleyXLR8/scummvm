@@ -245,6 +245,8 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 	// block): a mouse motion since the port last wrote it (warp exit, panorama
 	// load) is the WM_MOUSEMOVE that set it in the original (warp_pointer.h).
 	syncWarpPointerMouse();
+	// The entry block also clears 0x00496120 and 0x004960c4 (0x0041bff4).
+	BarSessionRules::flagsReset(_barSession);
 
 	showMouse(true);
 	setMousePos(Common::Point(320, 240));

@@ -242,6 +242,10 @@ void CryOmni3DEngine_Atlantis::musicStartCommand(int trackId) {
 		_musicFade.upTarget = _musicFade.vol;
 		return;
 	}
+	// Closing the open stream for another track resets the input flags,
+	// the bar request among them (FUN_0042a100 @ 0x0042add3..0x0042ae05).
+	if (_musicHandleSet)
+		BarSessionRules::flagsReset(_barSession);
 	musicSwitchTrack(trackId);
 }
 
@@ -265,6 +269,7 @@ void CryOmni3DEngine_Atlantis::musicStopCommand() {
 	if (_musicHandleSet) {
 		_musicHandleSet = false;
 		_musicOpenTrack = 0;
+		BarSessionRules::flagsReset(_barSession);   // 0x0042af26..0x0042af58
 	}
 	_musicTrackId = 0;
 }

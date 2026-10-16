@@ -35,6 +35,7 @@
 #include "graphics/surface.h"
 
 #include "cryomni3d/cryomni3d.h"
+#include "cryomni3d/atlantis/bar_session.h"
 #include "cryomni3d/objects.h"
 #include "cryomni3d/sprites.h"
 #include "cryomni3d/atlantis/inventory.h"
@@ -535,5 +536,49 @@ public:
 		TS_ASSERT_EQUALS(tb.inventoryFirst(), n - 7);
 		tb.updateZones();
 		TS_ASSERT_EQUALS(tb.inventoryFirst(), n - 7);
+	}
+
+	// The bar session after a timer section (atlantis.exe FUN_0042c8ac,
+	// FUN_0042c098; atlantis-re experiment 2026-10-16-16).  Sequences of the
+	// shipped data: CHAPI003 /34 (/tim2, Cinema=), a timer with a voice-only
+	// line, a timer with talking-head lines only (43 sections).
+	void test_bar_session_after_timer_section() {
+		using namespace CryOmni3D::Atlantis;
+		BarSession s;
+		// Cinema= from the bar: the video starts with the request at 1 (Escape
+		// cannot end it), its end and the Cinema= handler reset the flags, the
+		// loop leaves, the hand is kept.
+		BarSessionRules::opened(s);
+		TS_ASSERT(s.request);
+		TS_ASSERT(!BarSessionRules::timersEndBar(s));
+		BarSessionRules::rightPressed(s, false, false);   // a right press during the video
+		BarSessionRules::flagsReset(s);                  // 0x0041bf8d, 0x0042a939
+		TS_ASSERT(BarSessionRules::timersEndBar(s));
+		TS_ASSERT(!BarSessionRules::exitEmptiesHand(s));
+		// A voice-only line: the request goes to 0 but a right press seen
+		// during it stays set, so the hand is emptied.
+		BarSessionRules::opened(s);
+		BarSessionRules::rightPressed(s, false, false);
+		BarSessionRules::voiceLineEnded(s);              // 0x004305cb
+		TS_ASSERT(BarSessionRules::timersEndBar(s));
+		TS_ASSERT(BarSessionRules::exitEmptiesHand(s));
+		BarSessionRules::flagsReset(s);                  // FUN_0042c098 step 6
+		// Talking-head lines only: the bar stays up unless a right press
+		// toggled the request; two presses toggle it back.
+		BarSessionRules::opened(s);
+		TS_ASSERT(!BarSessionRules::timersEndBar(s));
+		BarSessionRules::rightPressed(s, false, false);
+		TS_ASSERT(BarSessionRules::timersEndBar(s));
+		BarSessionRules::rightPressed(s, false, false);
+		TS_ASSERT(!BarSessionRules::timersEndBar(s));
+		TS_ASSERT(s.rightPress);
+		// No toggle while a clicked section plays (0x00496170) or the menu is
+		// requested (0x00496138); 0x00496120 is set all the same.
+		BarSessionRules::flagsReset(s);
+		BarSessionRules::opened(s);
+		BarSessionRules::rightPressed(s, true, false);
+		BarSessionRules::rightPressed(s, false, true);
+		TS_ASSERT(s.request);
+		TS_ASSERT(s.rightPress);
 	}
 };

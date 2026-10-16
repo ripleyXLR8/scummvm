@@ -38,6 +38,7 @@
 #include "cryomni3d/cryomni3d.h"
 #include "cryomni3d/omni3d.h"
 
+#include "cryomni3d/atlantis/bar_session.h"
 #include "cryomni3d/atlantis/ambient_sounds.h"
 #include "cryomni3d/atlantis/bigfile.h"
 #include "cryomni3d/atlantis/chapter_start.h"
@@ -929,6 +930,8 @@ private:
 	// frozen (no FUN_0041c75c).  played: a timer section ran.  True when the
 	// bar must close: GameOver or Exit set, or the engine is quitting.
 	bool barFrameTick(bool &played);
+	// 0x004960c4 / 0x00496120 while the bar is up (bar_session.h).
+	BarSession _barSession;
 };
 
 } // End of namespace Atlantis
