@@ -47,6 +47,9 @@ static const int16 kStages[4][MetaGame::kNumPieces][4] = {
 // The turn centres by picture (x: shorts from 0x00497120, y: from 0x0049712a).
 static const int16 kCentreX[5] = { 0, 319, 320, 320, 319 };
 static const int16 kCentreY[5] = { 0, 239, 239, 240, 240 };
+// pzmetam.bmp holds two bytes after its 640x480 map (0x436 + 0x4b000 + 2 =
+// 0x4b438 bytes, the size FUN_004472cc allocates).
+static const uint32 kMapFileTail = 2;
 // The drop offsets (shorts from 0x00497134 and 0x00497158; 17 entries).
 static const int16 kDropDx[17] = { 0, -1, 0, 0, 1, -1, -1, 1, 1, -2, 2, 0, 0, -2, 2, 2, -2 };
 static const int16 kDropDy[17] = { 0, 0, 1, -1, 0, 1, -1, 1, -1, 0, 0, 2, -2, 2, -2, 2, -2 };
@@ -217,7 +220,24 @@ void MetaGame::turnBoard(bool advance) {
 		o += 80;
 		int32 s = src;
 		for (int k = 0; k < 480; k++) {
-			work[o++] = (s >= 0 && (uint32)s < kMapSize) ? map[s] : 0;
+			byte v = 0;
+			if (s >= 0 && (uint32)s < kMapSize) {
+				v = map[s];
+			} else if ((uint32)s >= kMapSize + kMapFileTail) {
+				// Past the map's end: the original's pool (FUN_004475b4, a
+				// bump allocator) puts the work buffer (0x96000 bytes,
+				// FUN_0044763c @ 0x00447688) right after pzmetam.bmp
+				// (0x4b438 bytes, FUN_004472cc), so these reads take the
+				// work bytes written so far.  Only a turn in place of
+				// picture 3 (the set-up of a place % 10 == 5) reads there:
+				// s = kMapSize + 81..557, in the work buffer's first row
+				// of 0x1f.  Every turn reads s >= 80 (no read before the
+				// map).
+				const uint32 w = (uint32)s - kMapSize - kMapFileTail;
+				if (w < o)
+					v = work[w];
+			}
+			work[o++] = v;
 			s -= 640;
 		}
 		o += 80;

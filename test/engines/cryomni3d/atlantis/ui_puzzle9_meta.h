@@ -8,6 +8,7 @@
 #include "common/memstream.h"
 #include "common/ptr.h"
 #include "common/str.h"
+#include "common/util.h"
 
 #include "cryomni3d/atlantis/bigfile.h"
 #include "cryomni3d/atlantis/meta_game.h"
@@ -17,19 +18,25 @@
 // Expected values come from the ORIGINAL FUN_00448ad0 + FUN_0044763c of
 // atlantis-cd-en-714240 run under Unicorn (the sprite blitter running for
 // real) with scripted players: stages 1..3 won in one memory, stage 4 and
-// stage 1 played at random, a leave:
+// stage 1 played at random, a leave, and stage 1 played at random in four
+// places that take each arm of the place-dependent picture branch:
 // atlantis-re/tools/emu/ui_puzzle9_meta.py -> evidence/golden/ui_puzzle9_meta.txt.
 // Per pass: the input, the sounds, the md5 of the draws and of the state
 // (with the md5 of the class map).
 //
-// Port code exercised directly: MetaGame (meta_game.cpp).
+// Port code exercised directly: MetaGame (meta_game.cpp).  test_coverage_vs_original
+// compares MetaGame::readCoverage with the original blitter FUN_00410430
+// (atlantis-re/tools/emu/ui_puzzle9_coverage.py -> ui_puzzle9_coverage.txt).
 //
-// The whole runs cover MetaGame with the current place fixed at 0
-// (Replay::currentPlace() returns 0, loadPicture is discarded), i.e. picture
-// 1 and no initial board turn.  The place-dependent branch of MetaGame::setUp
-// (place % 10 == 5 -> picture 3, 6 -> picture 4, 8 -> picture 2, with pic-1
-// board turns, from FUN_004478d4 '_DAT_006cd7c0 % 10') is not exercised: the
-// harness never sets 0x006cd7c0 and stubs the picture loader FUN_00447478.
+// Each scenario line ends with 'place P picture K turns T': the current place
+// 0x006cd7c0 of the run (0, or 15 / 26 / 38 / 47 in the place* scenarios), the
+// picture the original's FUN_004478d4 chose from place % 10 (the name passed
+// to the stubbed loader FUN_00447478, pzMetaK.tga) and its board turns.
+// Replay::currentPlace() returns the scenario's place, so the place-dependent
+// branch of MetaGame::setUp (place % 10 == 5 -> picture 3, 6 -> 4, 8 -> 2,
+// else 1, then picture - 1 board turns) runs on the same input; the first
+// picture it loads is compared, and the turns show in the per-pass states
+// (piece positions, class map md5).
 
 namespace UiMeta {
 
@@ -65,8 +72,10 @@ public:
 	int mismatches;
 	Common::String firstMismatch, draws, sounds;
 	uint frames;
+	int place, firstPicture;
 
-	Replay() : data(nullptr), lines(nullptr), next(0), end(0), mismatches(0), frames(0) {}
+	Replay() : data(nullptr), lines(nullptr), next(0), end(0), mismatches(0), frames(0), place(0),
+	           firstPicture(0) {}
 
 	void parse(uint idx, int &mx, int &my, bool &click, bool &right) {
 		mx = 320;
@@ -139,7 +148,10 @@ protected:
 		closeLine();
 		parse(next, mx, my, click, right);
 	}
-	void loadPicture(int) override {}
+	void loadPicture(int n) override {
+		if (!firstPicture)
+			firstPicture = n;
+	}
 	void reloadMap() override { map = data->map; }
 	void add(const Common::String &s) {
 		if (!draws.empty())
@@ -155,7 +167,7 @@ protected:
 	void playSound(int slot) override {
 		sounds += (sounds.empty() ? "" : " ") + Common::String::format("%d", slot);
 	}
-	int currentPlace() override { return 0; }
+	int currentPlace() override { return place; }
 	bool aborted() const override { return mismatches != 0; }
 };
 
@@ -183,7 +195,7 @@ public:
 		for (uint i = 0; i < golden.size(); i++) {
 			if (!golden[i].hasPrefix("scenario "))
 				continue;
-			// "scenario NAME variant V held H frames N result R"
+			// "scenario NAME variant V held H frames N result R place P picture K turns T"
 			Common::Array<Common::String> tok;
 			Common::String cur;
 			for (uint k = 0; k <= golden[i].size(); k++) {
@@ -204,14 +216,79 @@ public:
 			g->end = i + 1 + (uint)atoi(tok[7].c_str());
 			g->frames = 0;
 			g->objectInHand = atoi(tok[5].c_str());
+			TS_ASSERT(tok.size() >= 16 && tok[10] == "place" && tok[12] == "picture");
+			if (tok.size() < 16)
+				continue;
+			g->place = atoi(tok[11].c_str());
+			g->firstPicture = 0;
 			const int got = g->run(atoi(tok[3].c_str()));
 			g->closeLine();
 			TS_ASSERT_EQUALS(g->firstMismatch, Common::String());
 			TS_ASSERT_EQUALS(g->mismatches, 0);
 			TS_ASSERT_EQUALS(g->frames, (uint)atoi(tok[7].c_str()));
 			TS_ASSERT_EQUALS(got, atoi(tok[9].c_str()));
+			TS_ASSERT_EQUALS(g->firstPicture, atoi(tok[13].c_str()));
 			scenarios++;
 		}
-		TS_ASSERT_EQUALS(scenarios, 6);
+		TS_ASSERT_EQUALS(scenarios, 10);
+	}
+
+	// The coverage MetaGame::readCoverage reads from pzmetap1.spr (the pixels
+	// the placement test FUN_00448404 checks) against the ORIGINAL blitter
+	// FUN_00410430 drawing every frame at (320, 240) into a zeroed buffer
+	// (atlantis-re tools/emu/ui_puzzle9_coverage.py -> golden
+	// ui_puzzle9_coverage.txt, 48 frames): per frame the number of covered
+	// pixels, their bounding box and the md5 of the 0/1 mask over the box.
+	void test_coverage_vs_original() {
+		using namespace UiMeta;
+		if (AtlantisTest::goldenDir().empty() || AtlantisTest::dataDir().empty()) {
+			TS_WARN("ui_puzzle9_meta: no golden or data directory configured, skipped");
+			return;
+		}
+		Common::Array<Common::String> golden;
+		TS_ASSERT(AtlantisTest::loadGoldenLines("ui_puzzle9_coverage.txt", golden));
+		Data data;
+		TS_ASSERT(readData(data));
+		Common::Array<MetaGame::Coverage> cov;
+		TS_ASSERT(MetaGame::readCoverage(data.spr.data(), data.spr.size(), cov));
+		uint frames = 0;
+		for (uint i = 0; i < golden.size(); i++) {
+			if (!golden[i].hasPrefix("frame "))
+				continue;
+			const uint f = frames++;
+			if (f >= cov.size()) {
+				TS_FAIL(("port has no frame for: " + golden[i]).c_str());
+				continue;
+			}
+			const MetaGame::Coverage &c = cov[f];
+			Common::Array<byte> buf(640 * 480, 0);
+			for (uint k = 0; k < c.dx.size(); k++) {
+				const int x = 320 + c.dx[k], y = 240 + c.dy[k];
+				if (x >= 0 && x < 640 && y >= 0 && y < 480)
+					buf[y * 640 + x] = 1;
+			}
+			int count = 0, x0 = 640, y0 = 480, x1 = -1, y1 = -1;
+			for (int y = 0; y < 480; y++)
+				for (int x = 0; x < 640; x++)
+					if (buf[y * 640 + x]) {
+						count++;
+						x0 = MIN(x0, x); x1 = MAX(x1, x);
+						y0 = MIN(y0, y); y1 = MAX(y1, y);
+					}
+			Common::String port;
+			if (!count) {
+				port = Common::String::format("frame %u empty", f);
+			} else {
+				Common::Array<byte> mask;
+				for (int y = y0; y <= y1; y++)
+					for (int x = x0; x <= x1; x++)
+						mask.push_back(buf[y * 640 + x]);
+				port = Common::String::format("frame %u count %d box %d %d %d %d md5 ", f, count, x0, y0, x1, y1) +
+				       AtlantisTest::md5Hex(mask.data(), mask.size());
+			}
+			TS_ASSERT_EQUALS(port, golden[i]);
+		}
+		TS_ASSERT_EQUALS(frames, 48u);
+		TS_ASSERT_EQUALS(cov.size(), 48u);
 	}
 };
