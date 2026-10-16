@@ -10,20 +10,19 @@
 //  - /set(NewSound=N) only stores the variable; FUN_00432a64 (polled by
 //    FUN_00428da8 after every script line) plays "wav\" + ptrtable[N],
 //    ptrtable = 0x00496224 (N used as is, 0 = no sound).
-// Port: music.cpp kMusicTrackNames (static, read from the source file because
-// it cannot be linked) and readNewSoundNames (exe_newsound.h), which
-// loadAtlantisExeTables calls.
+// Port: kMusicTrackNames (music_tracks.cpp, linked) and readNewSoundNames
+// (exe_newsound.h), which loadAtlantisExeTables calls.
 //
-// The music-table test compares a transcription (kOrigMusic) with a text
-// parse of music.cpp ('//' comments and a '};' terminator only), not with
-// linked port code or a stored golden (scripts_music.txt holds only the
-// newsound digests; the harness's music_names md5 is not stored).  The 31
-// names match the 13-byte records at 0x00495eec of the reference exe
-// (checked 2026-10-16).  Without src= the test is skipped.
+// The music-table test compares the port's linked table with the golden
+// scripts_music.txt (music_names: md5 of the 31 upper-cased names joined
+// with '\n', as atlantis-re tools/emu/scripts_music.py computes it from the
+// loaded image) and with the transcription kOrigMusic, which the range test
+// below uses.  Without golden= the golden half is skipped.
 
 #include "scripts_con_common.h"
 
 #include "cryomni3d/atlantis/exe_newsound.h"
+#include "cryomni3d/atlantis/music_tracks.h"
 
 #include "common/system.h"
 
@@ -41,21 +40,6 @@ static const char *const kOrigMusic[] = {
 };
 
 
-inline bool readSource(const char *rel, Common::String &out) {
-	Common::String src = AtlantisTest::configValue("src");
-	if (src.empty())
-		return false;
-	Common::FSNode node(Common::Path(src, '/').join(rel));
-	Common::File f;
-	if (!f.open(node))
-		return false;
-	Common::Array<char> buf(f.size() + 1);
-	f.read(buf.begin(), f.size());
-	buf[f.size()] = 0;
-	out = buf.begin();
-	return true;
-}
-
 // The port's newsound table reader (exe_newsound.h).
 inline void portNewSoundNames(Common::File &exe, Common::Array<Common::String> &names) {
 	CryOmni3D::Atlantis::readNewSoundNames(exe, names);
@@ -71,35 +55,32 @@ public:
 	// kMusicTrackNames[N] (port, 1-based) must name the file the original
 	// opens for StartMusik=N, i.e. table[N-1]; entry 0 unused.
 	void test_music_table_matches_original() {
-		Common::String text;
-		if (!ScriptsMusicTest::readSource("engines/cryomni3d/atlantis/music.cpp", text)) {
-			TS_WARN("scripts_music: no src= in atlantis_test.cfg, skipped");
+		using CryOmni3D::Atlantis::kMusicTrackNames;
+		using CryOmni3D::Atlantis::kMusicTrackCount;
+		TS_ASSERT_EQUALS((uint)kMusicTrackCount, ARRAYSIZE(ScriptsMusicTest::kOrigMusic) + 1);
+		TS_ASSERT(kMusicTrackNames[0] == nullptr);
+		Common::String joined;
+		for (uint n = 1; n < (uint)kMusicTrackCount; n++) {
+			TS_ASSERT(kMusicTrackNames[n] != nullptr);
+			if (!kMusicTrackNames[n])
+				continue;
+			if (n <= ARRAYSIZE(ScriptsMusicTest::kOrigMusic))
+				TS_ASSERT(Common::String(kMusicTrackNames[n]).equalsIgnoreCase(ScriptsMusicTest::kOrigMusic[n - 1]));
+			Common::String s = kMusicTrackNames[n];
+			s.toUppercase();
+			if (n > 1)
+				joined += "\n";
+			joined += s;
+		}
+		if (AtlantisTest::goldenDir().empty()) {
+			TS_WARN("scripts_music: no golden= in atlantis_test.cfg, golden comparison skipped");
 			return;
 		}
-		const char *st = strstr(text.c_str(), "kMusicTrackNames[] = {");
-		TS_ASSERT(st);
-		if (!st)
-			return;
-		const char *en = strstr(st, "};");
-		TS_ASSERT(en);
-		Common::Array<Common::String> port;   // index 0 = first initializer
-		for (const char *p = st + 22; p < en; p++) {
-			if (!strncmp(p, "nullptr", 7)) {
-				port.push_back("");
-				p += 6;
-			} else if (*p == '"') {
-				const char *q = strchr(p + 1, '"');
-				port.push_back(Common::String(p + 1, q - p - 1));
-				p = q;
-			} else if (p[0] == '/' && p[1] == '/') {
-				while (p < en && *p != '\n')
-					p++;
-			}
-		}
-		TS_ASSERT_EQUALS(port.size(), ARRAYSIZE(ScriptsMusicTest::kOrigMusic) + 1);
-		TS_ASSERT(port.size() > 0 && port[0].empty());
-		for (uint n = 1; n < port.size() && n <= ARRAYSIZE(ScriptsMusicTest::kOrigMusic); n++)
-			TS_ASSERT(port[n].equalsIgnoreCase(ScriptsMusicTest::kOrigMusic[n - 1]));
+		AtlantisTest::Golden golden;
+		TS_ASSERT(AtlantisTest::loadGolden("scripts_music.txt", golden));
+		TS_ASSERT(golden.contains("music_names"));
+		TS_ASSERT_EQUALS(AtlantisTest::md5Hex((const byte *)joined.c_str(), joined.size()),
+		                 golden["music_names"]);
 	}
 
 	// Data test: the port's newsound name list (readNewSoundNames, reading the

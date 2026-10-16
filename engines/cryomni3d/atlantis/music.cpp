@@ -33,48 +33,13 @@
 
 #include "cryomni3d/atlantis/apc_stream.h"
 #include "cryomni3d/atlantis/music_ring.h"
+#include "cryomni3d/atlantis/music_tracks.h"
 #include "cryomni3d/atlantis/engine.h"
 
 namespace CryOmni3D {
 namespace Atlantis {
 
-// Music track table — 1-based, matching the startmusik / stopmusik / loadmusik
-// CON command IDs.  Transcribed in full from atlantis.exe's table at VA
-// 0x00495eec (13-byte records).  Filenames live in the BigFile's WAV\ dir.
-static const char *const kMusicTrackNames[] = {
-	nullptr,           // index 0 unused
-	"01ATLAN1.APC",    // track  1 — Atlantis area 1 ambient
-	"10ATLAN2.APC",    // track  2
-	"23_PALA1.APC",    // track  3
-	"02AUBERG.APC",    // track  4
-	"24_RATS.APC",     // track  5
-	"DAUPHINS.APC",    // track  6
-	"05SSTRON.APC",    // track  7
-	"METAMORF.APC",    // track  8
-	"LABYRINT.APC",    // track  9
-	"31CRANES.APC",    // track 10
-	"STONEHEG.APC",    // track 11
-	"ASCENSE1.APC",    // track 12
-	"FORET_35.APC",    // track 13
-	"23_PRET1.APC",    // track 14
-	"20SORCIE.APC",    // track 15
-	"06SPITZ2.APC",    // track 16
-	"30SHAMAN.APC",    // track 17
-	"21PACQUE.APC",    // track 18
-	"08TISSE2.APC",    // track 19
-	"33INTRO.APC",     // track 20 — narration for CINEM020.HNM
-	"HANGAR1.APC",     // track 21
-	"04GENERI.APC",    // track 22
-	"TETE1.APC",       // track 23
-	"TETE2.APC",       // track 24
-	"03ATTACK.APC",    // track 25
-	"09VOLTOT.APC",    // track 26
-	"CINE101.APC",     // track 27
-	"LAC.APC",         // track 28
-	"CINE147.APC",     // track 29
-	"CINE172.APC",     // track 30
-	"CINE194.APC",     // track 31
-};
+// kMusicTrackNames (1-based, atlantis.exe 0x00495eec): music_tracks.cpp.
 
 // Number of per-channel samples to fade in/out at each loop boundary (~46ms at 22050 Hz).
 // Both ends ramp to zero so the loop-point discontinuity (IMA predictor reset) is inaudible.

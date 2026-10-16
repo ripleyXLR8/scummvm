@@ -49,6 +49,7 @@ MODULE_OBJS += \
 	atlantis/menus.o \
 	atlantis/music.o \
 	atlantis/music_ring.o \
+	atlantis/music_tracks.o \
 	atlantis/navigation.o \
 	atlantis/options_widget.o \
 	atlantis/npc_click.o \
