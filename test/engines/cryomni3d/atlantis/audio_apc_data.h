@@ -17,6 +17,8 @@
 #include "audio/decoders/apc.h"
 #include "common/memstream.h"
 
+#include "cryomni3d/atlantis/apc_stream.h"
+
 class AudioApcDataTestSuite : public CxxTest::TestSuite {
 public:
 	// File access and the APC stream's queue need an OSystem.
@@ -79,6 +81,62 @@ public:
 		}
 		if (mismatches)
 			TS_WARN(Common::String::format("audio_apc_data: %u of %u files differ:", mismatches, files) + list);
+		TS_ASSERT_EQUALS(files, 2468u);
+		TS_ASSERT_EQUALS(mismatches, 0u);
+	}
+
+	// makeAtlantisAPCStream (apc_stream.cpp), the decoder every Atlantis
+	// sound now goes through, ends where FUN_004101ce ends: the header's
+	// frame count, not the extra data byte every file has.  Expected: the
+	// original's frame count and PCM MD5 of apc_whole_game.txt.
+	void test_atlantis_stream_stops_at_original() {
+		if (!AtlantisTest::haveData()) {
+			TS_WARN("audio_apc_data: no game data configured, skipped");
+			return;
+		}
+		Common::Array<Common::String> golden;
+		TS_ASSERT(AtlantisTest::loadGoldenLines("apc_whole_game.txt", golden));
+		ScriptsTest::Big big;
+		uint files = 0, mismatches = 0;
+		Common::String list;
+		for (uint g = 0; g < golden.size(); g++) {
+			char name[64], kind[16], chans[16], md5[40];
+			unsigned long frames = 0;
+			if (sscanf(golden[g].c_str(), "F %63s %15s %15s frames %lu md5 %39s", name, kind, chans, &frames, md5) != 5)
+				continue;
+			files++;
+			Common::Array<char> data;
+			TS_ASSERT(big.get(Common::String("WAV\\") + name, data));
+			Common::MemoryReadStream file((const byte *)data.begin(), data.size());
+			Audio::AudioStream *s = CryOmni3D::Atlantis::makeAtlantisAPCStream(file);
+			if (!s) {
+				mismatches++;
+				continue;
+			}
+			const uint32 samples = (uint32)frames * (strcmp(chans, "stereo") ? 1 : 2);
+			Common::Array<int16> pcm;
+			pcm.resize(samples + 64);
+			uint32 got = 0;
+			for (;;) {
+				const int n = s->readBuffer(pcm.begin() + got, MIN<uint32>(pcm.size() - got, 65536));
+				if (n <= 0)
+					break;
+				got += (uint32)n;
+				if (got >= pcm.size())
+					break;
+			}
+			const bool ended = s->endOfData();
+			delete s;
+			for (uint32 i = 0; i < MIN(got, samples); i++)
+				pcm[i] = (int16)TO_LE_16((uint16)pcm[i]);
+			if (got != samples || !ended || AtlantisTest::md5Hex((const byte *)pcm.begin(), samples * 2) != md5) {
+				mismatches++;
+				if (mismatches <= 10)
+					list += Common::String::format(" %s(%u/%u)", name, got, samples);
+			}
+		}
+		if (mismatches)
+			TS_WARN(Common::String::format("audio_apc_data: %u of %u streams differ:", mismatches, files) + list);
 		TS_ASSERT_EQUALS(files, 2468u);
 		TS_ASSERT_EQUALS(mismatches, 0u);
 	}

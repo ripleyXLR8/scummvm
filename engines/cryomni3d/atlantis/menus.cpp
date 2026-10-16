@@ -39,6 +39,7 @@
 #include "graphics/managed_surface.h"
 #include "graphics/surface.h"
 
+#include "cryomni3d/atlantis/apc_stream.h"
 #include "cryomni3d/atlantis/subtitle_layout.h"
 #include "cryomni3d/atlantis/ambient_output.h"
 #include "cryomni3d/atlantis/engine.h"
@@ -247,7 +248,7 @@ void CryOmni3DEngine_Atlantis::showGameOver(int sectionId, int n,
 	Common::String apcName = gameOverVoiceName(sectionId, narratorTrack);
 	Common::SeekableReadStream *apcFile =
 	    narratorText.empty() ? nullptr : openBigFileStream(kFileTypeSound, apcName);
-	Audio::PacketizedAudioStream *apc = apcFile ? Audio::makeAPCStream(*apcFile) : nullptr;
+	Audio::AudioStream *apc = apcFile ? makeAtlantisAPCStream(*apcFile) : nullptr;
 
 	// The input poll FUN_0041a298 with the flags of the moment (0x00496188,
 	// the talking head, is 0 here: cleared after every line, 0x00428b63).
@@ -267,13 +268,6 @@ void CryOmni3DEngine_Atlantis::showGameOver(int sectionId, int n,
 		return gameOverWaitEnds(poll, withVoice, voiceDone, elapsed, left, right, escape);
 	};
 	if (apc) {
-		int64 remaining = apcFile->size() - apcFile->pos();
-		if (remaining > 0) {
-			byte *buf = new byte[remaining];
-			apcFile->read(buf, (uint32)remaining);
-			apc->queuePacket(new Common::MemoryReadStream(buf, remaining, DisposeAfterUse::YES));
-		}
-		apc->finish();
 		Audio::SoundHandle handle;
 		_mixer->playStream(Audio::Mixer::kSpeechSoundType, &handle, apc);
 		debugC(1, kDebugScript, "showGameOver: GOVER%02d.TGA + %s", n, apcName.c_str());
@@ -1166,16 +1160,8 @@ void CryOmni3DEngine_Atlantis::displaySoundMenu(const Graphics::ManagedSurface &
 		milesSamples().stop(1);
 		Common::SeekableReadStream *f = openBigFileStream(kFileTypeSound, "VAGUE_10.APC");
 		if (f) {
-			Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*f);
+			Audio::AudioStream *apc = makeAtlantisAPCStream(*f);
 			if (apc) {
-				int64 remaining = f->size() - f->pos();
-				if (remaining > 0) {
-					byte *buf = new byte[remaining];
-					f->read(buf, (uint32)remaining);
-					apc->queuePacket(new Common::MemoryReadStream(buf, remaining,
-					                                              DisposeAfterUse::YES));
-				}
-				apc->finish();
 				milesSamples().playOn(1, apc, Audio::Mixer::kMaxChannelVolume,
 				                      rightChannel ? 127 : -127);
 			}

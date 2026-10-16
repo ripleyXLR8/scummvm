@@ -31,6 +31,7 @@
 #include "common/system.h"
 #include "common/util.h"
 
+#include "cryomni3d/atlantis/apc_stream.h"
 #include "cryomni3d/atlantis/engine.h"
 
 namespace CryOmni3D {
@@ -81,6 +82,7 @@ static const char *const kMusicTrackNames[] = {
 // The caller must not free `data` while the stream is alive (it reads only during this call).
 static Audio::AudioStream *buildLoopingMusicStream(const byte *data, uint32 size) {
 	Common::MemoryReadStream *raw = new Common::MemoryReadStream(data, size, DisposeAfterUse::NO);
+	const uint32 frames = apcHeaderFrames(*raw);
 	Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*raw);
 	if (!apc) {
 		delete raw;
@@ -106,6 +108,11 @@ static Audio::AudioStream *buildLoopingMusicStream(const byte *data, uint32 size
 	byte *pcmBytes = new byte[(uint32)(totalSamples * 2)];  // int16 = 2 bytes
 	int got = apc->readBuffer((int16 *)pcmBytes, (int)totalSamples);
 	delete apc;
+	// FUN_004101ce stops at the header's frame count: the data byte past it
+	// is not played (FUN_0043318c restarts from the header at each loop).
+	const int64 headerSamples = (int64)frames * (stereo ? 2 : 1);
+	if (got > headerSamples)
+		got = (int)headerSamples;
 
 	// Apply fade-in to the first kLoopFadeSamples per-channel frames and
 	// fade-out to the last kLoopFadeSamples per-channel frames, so the loop

@@ -36,6 +36,7 @@
 #include "audio/mixer.h"
 
 #include "cryomni3d/objects.h"
+#include "cryomni3d/atlantis/apc_stream.h"
 #include "cryomni3d/atlantis/ambient_output.h"
 #include "cryomni3d/atlantis/con_eval.h"
 #include "cryomni3d/atlantis/engine.h"
@@ -229,18 +230,11 @@ int CryOmni3DEngine_Atlantis::playPuzzleSound(const char *name, PuzzleSamplePlay
 		return -1;
 	}
 
-	Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*apcFile);
+	Audio::AudioStream *apc = makeAtlantisAPCStream(*apcFile);
 	if (!apc) {
 		delete apcFile;
 		return -1;
 	}
-	int64 remaining = apcFile->size() - apcFile->pos();
-	if (remaining > 0) {
-		byte *buf = new byte[remaining];
-		apcFile->read(buf, (uint32)remaining);
-		apc->queuePacket(new Common::MemoryReadStream(buf, remaining, DisposeAfterUse::YES));
-	}
-	apc->finish();
 	delete apcFile;
 	// Pan 0x40 (centre, balance 0) and volume 0x6e from the puzzle's sample
 	// set-up (FUN_0043cb8c / FUN_0043d150 / FUN_0043d204).
@@ -1248,19 +1242,12 @@ void CryOmni3DEngine_Atlantis::pollNewSound() {
 		_gameVars["newsound"] = 0;              // missing file: NEWSOUND = 0
 		return;
 	}
-	Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*apcFile);
+	Audio::AudioStream *apc = makeAtlantisAPCStream(*apcFile);
 	if (!apc) {
 		_gameVars["newsound"] = 0;              // bad header: NEWSOUND = 0
 		delete apcFile;
 		return;
 	}
-	const int64 remaining = apcFile->size() - apcFile->pos();
-	if (remaining > 0) {
-		byte *buf = new byte[remaining];
-		apcFile->read(buf, (uint32)remaining);
-		apc->queuePacket(new Common::MemoryReadStream(buf, remaining, DisposeAfterUse::YES));
-	}
-	apc->finish();
 	_mixer->playStream(Audio::Mixer::kSFXSoundType, &_newSoundHandle, apc);
 	_newSoundPlaying = true;
 	_newSoundLast = value;

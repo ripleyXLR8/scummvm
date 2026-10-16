@@ -35,6 +35,7 @@
 #include "common/util.h"
 
 #include "audio/mixer.h"
+#include "cryomni3d/atlantis/apc_stream.h"
 #include "cryomni3d/atlantis/ambient_output.h"
 #include "audio/decoders/apc.h"
 #include "graphics/paletteman.h"
@@ -397,17 +398,8 @@ void CryOmni3DEngine_Atlantis::playTransitionVideo(const Common::String &videoNa
 		    : hnmName + ".APC";
 		Common::SeekableReadStream *apcFile = openBigFileStream(kFileTypeSound, apcName);
 		if (apcFile) {
-			// makeAPCStream reads the file header; queue remaining bytes as one packet.
-			Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*apcFile);
+			Audio::AudioStream *apc = makeAtlantisAPCStream(*apcFile);
 			if (apc) {
-				int64 remaining = apcFile->size() - apcFile->pos();
-				if (remaining > 0) {
-					byte *buf = new byte[remaining];
-					apcFile->read(buf, (uint32)remaining);
-					apc->queuePacket(new Common::MemoryReadStream(buf, remaining,
-					                                              DisposeAfterUse::YES));
-				}
-				apc->finish();
 				_mixer->stopHandle(_newSoundHandle);
 				_mixer->playStream(Audio::Mixer::kSFXSoundType, &_newSoundHandle, apc);
 				_newSoundLast = 1;

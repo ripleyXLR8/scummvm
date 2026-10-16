@@ -35,6 +35,7 @@ ifdef ENABLE_ATLANTIS
 MODULE_OBJS += \
 	atlantis/ambient_output.o \
 	atlantis/ambient_sounds.o \
+	atlantis/apc_stream.o \
 	atlantis/bigfile.o \
 	atlantis/con_eval.o \
 	atlantis/con_exec.o \

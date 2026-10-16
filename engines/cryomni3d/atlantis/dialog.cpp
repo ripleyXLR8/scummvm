@@ -49,6 +49,7 @@
 #endif
 
 #include "cryomni3d/omni3d.h"
+#include "cryomni3d/atlantis/apc_stream.h"
 #include "cryomni3d/atlantis/dialog_view.h"
 #include "cryomni3d/atlantis/sprite_decode.h"
 #include "cryomni3d/atlantis/engine.h"
@@ -1082,16 +1083,8 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 	if (!apcFile) {
 		debugC(1, kDebugScript, "playSingleConLine: no %s, line skipped", apcName.c_str());
 	} else {
-		Audio::PacketizedAudioStream *apc = Audio::makeAPCStream(*apcFile);
+		Audio::AudioStream *apc = makeAtlantisAPCStream(*apcFile);
 		if (apc) {
-			int64 remaining = apcFile->size() - apcFile->pos();
-			if (remaining > 0) {
-				byte *buf = new byte[remaining];
-				apcFile->read(buf, (uint32)remaining);
-				apc->queuePacket(new Common::MemoryReadStream(buf, remaining,
-				                                              DisposeAfterUse::YES));
-			}
-			apc->finish();
 			Audio::SoundHandle handle;
 			// With a talking head (FUN_0042ee88's loop) the voice starts at
 			// the end of the iteration whose frame index, once incremented,
