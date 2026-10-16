@@ -77,6 +77,17 @@ void inventoryRemove(Inventory &inventory, uint objId) {
 	}
 }
 
+Object *conInvent(Objects &objects, Inventory &inventory, uint objId, int value) {
+	if (!value) {
+		inventoryRemove(inventory, objId);
+		return nullptr;
+	}
+	Object *obj = findInventoryObject(objects, objId);
+	if (obj)
+		inventoryAppend(inventory, obj);
+	return obj;
+}
+
 void inventoryCompact(Inventory &inventory) {
 	uint used = 0;
 	for (uint i = 0; i < inventory.size(); i++)

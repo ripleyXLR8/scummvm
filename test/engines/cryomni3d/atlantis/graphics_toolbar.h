@@ -20,8 +20,8 @@
 // inventoryRemove, inventoryReset), Atlantis_Toolbar::hitTestZones /
 // callbackInventory / setupZones / menuSpriteTop (toolbar.cpp); init()
 // itself cannot run (see initToolbarNoGfx).
-// portInvent() repeats the "inventN" branch of execConSetCommand
-// (con_exec.cpp), which only calls the inventory unit.
+// portInvent() calls conInvent (inventory.cpp), the "inventN" branch of
+// execConSetCommand (con_exec.cpp).
 
 #include "atlantis_test_helper.h"
 #include "../../../system/null_osystem.h"
@@ -57,18 +57,9 @@ inline void portSetupObjects(CryOmni3D::Objects &objects, const Common::Array<ui
 	CryOmni3D::Atlantis::buildInventoryCatalogue(sprites, ids, objects);
 }
 
-// The inventN branch of execConSetCommand (con_exec.cpp).
+// The inventN branch of execConSetCommand (con_exec.cpp): the real conInvent.
 inline void portInvent(CryOmni3D::Objects &objects, CryOmni3D::Inventory &inv, uint objId, int value) {
-	if (value) {
-		CryOmni3D::Object *obj = CryOmni3D::Atlantis::findInventoryObject(objects, objId);
-		if (obj)
-			CryOmni3D::Atlantis::inventoryAppend(inv, obj);
-	} else {
-		CryOmni3D::Atlantis::inventoryRemove(inv, objId);
-		CryOmni3D::Object *sel = inv.selectedObject();
-		if (sel && sel->idOBJ() == objId)
-			inv.deselectObject();
-	}
+	CryOmni3D::Atlantis::conInvent(objects, inv, objId, value);
 }
 
 // Ids carried, in toolbar order (holes skipped, as drawToolbar skips them).
@@ -135,6 +126,29 @@ public:
 	void test_inventory_remove_one_of_duplicates() {
 		static const uint ops[][2] = {{300, 1}, {301, 1}, {300, 1}, {300, 0}};
 		runScenario("remove_one_of_duplicates", ops, ARRAYSIZE(ops), "301 300");
+	}
+
+	// inventN=0 on the object in hand: FUN_0042b3ec removes the record and
+	// leaves OBJETENMAIN alone (atlantis-re functions/graphics-FUN_0042b328.md,
+	// resolved question 1, STATIC: the hand's writers are listed there and
+	// FUN_0042b3ec is not one of them; decisions/0016 row 15).  The port
+	// emptied the hand.
+	void test_invent_zero_keeps_hand() {
+		Common::Array<uint> ids;
+		ids.push_back(257);
+		ids.push_back(258);
+		CryOmni3D::Objects objects;
+		GraphicsToolbarTest::portSetupObjects(objects, ids);
+		CryOmni3D::Inventory inv;
+		GraphicsToolbarTest::NullCb nc;
+		inv.init(20, new Common::Functor1Mem<uint, void, GraphicsToolbarTest::NullCb>(&nc, &GraphicsToolbarTest::NullCb::cb));
+		GraphicsToolbarTest::portInvent(objects, inv, 257, 1);
+		GraphicsToolbarTest::portInvent(objects, inv, 258, 1);
+		inv.setSelectedObject(inv[1]);   // 258 in hand
+		GraphicsToolbarTest::portInvent(objects, inv, 258, 0);
+		TS_ASSERT_EQUALS(GraphicsToolbarTest::order(inv), Common::String("257"));
+		TS_ASSERT(inv.selectedObject() != nullptr);
+		TS_ASSERT(inv.selectedObject() && inv.selectedObject()->idOBJ() == 258u);
 	}
 
 	// Start-up inventory: FUN_0042c054 (called at 0x00419605) leaves object

@@ -65,6 +65,13 @@ void inventoryAppend(Inventory &inventory, Object *obj);
 // Does nothing when the id is not carried.  Does not touch the held object.
 void inventoryRemove(Inventory &inventory, uint objId);
 
+// The inventN=v command of FUN_0042a100: v != 0 appends object N
+// (FUN_0042b328), v == 0 removes its first record (FUN_0042b3ec).  The held
+// object (OBJETENMAIN) is left alone in both cases, as in the original
+// (atlantis-re functions/graphics-FUN_0042b328.md).  Returns the object
+// appended, or nullptr.
+Object *conInvent(Objects &objects, Inventory &inventory, uint objId, int value);
+
 // Move the used slots to the front, keeping their order.
 void inventoryCompact(Inventory &inventory);
 

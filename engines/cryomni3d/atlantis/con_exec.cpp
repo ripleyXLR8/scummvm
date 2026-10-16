@@ -102,6 +102,9 @@ void CryOmni3DEngine_Atlantis::loadConScript(int chapter) {
 				persist[kv._key] = kv._value;
 		_gameVars = persist;
 	}
+	// OBJETENMAIN is variable 30 (FUN_00429d20 over VARIAS.CON), so the same
+	// clear empties the hand; the port keeps the hand as the selection.
+	_inventory.setSelectedObject(nullptr);
 	// Subject-enable state is per-chapter; reset it with the variables.
 	// The hidden-perso list PERSISTS across chapter switches — it is the
 	// exe's persistent list at 0x611010, distinct from the per-chapter CON
@@ -429,10 +432,9 @@ void CryOmni3DEngine_Atlantis::execConInventCommand(uint objId, int value) {
 	// atlantis.exe FUN_0042b328 appends a record without a duplicate check;
 	// FUN_0042b3ec removes the first record with that id and shifts the rest
 	// down.  See atlantis-re: functions/graphics-FUN_0042b328.md.
+	Object *obj = conInvent(_objects, _inventory, objId, value);
 	if (value) {
-		Object *obj = findInventoryObject(_objects, objId);
 		if (obj) {
-			inventoryAppend(_inventory, obj);
 			// Remember the just-given object so it shows centre-bottom for
 			// the rest of the dialog (atlantis.exe DAT_0049619c); the sprite
 			// index is the object's slot in _objects (parallel to _objSprites).
@@ -442,10 +444,8 @@ void CryOmni3DEngine_Atlantis::execConInventCommand(uint objId, int value) {
 			debugC(1, kDebugScript, "execConSetCommand: invent%u=1 — object not defined", objId);
 		}
 	} else {
-		inventoryRemove(_inventory, objId);
-		Object *sel = _inventory.selectedObject();
-		if (sel && sel->idOBJ() == objId)
-			_inventory.deselectObject();
+		// The hand keeps the object (FUN_0042b3ec leaves OBJETENMAIN alone;
+		// atlantis-re decisions/0016, row 15).
 		debugC(1, kDebugScript, "execConSetCommand: removed object %u from inventory", objId);
 	}
 }
