@@ -15,7 +15,7 @@ jobs:
       engines: ${{ steps.lint.outputs.engines }}
       activate: ${{ steps.lint.outputs.activate }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
           filter: blob:none
@@ -31,7 +31,7 @@ jobs:
     if: needs.lint.outputs.engines != ''
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: sudo apt-get update && sudo apt-get install -y $APT_PACKAGES
       - uses: hendrikmuhs/ccache-action@v1.2
         with:
@@ -46,7 +46,7 @@ jobs:
     if: needs.lint.outputs.activate != ''
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: sudo apt-get update && sudo apt-get install -y $APT_PACKAGES
       - uses: hendrikmuhs/ccache-action@v1.2
         with:
@@ -61,7 +61,7 @@ jobs:
           .github/ai/check.sh build $ENGINES || exit 1
           rc=0; for e in $ENGINES; do .github/ai/check.sh activate "$e" || rc=1; done; exit $rc
       - if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: activation-logs
           path: |

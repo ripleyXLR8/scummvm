@@ -13,6 +13,7 @@ For everything else (building, platforms, the engine API), the upstream [README]
 2. **Every engine has a `PROVENANCE.md`**, copied from [the template](.github/ai/PROVENANCE.md) with every section filled in.
 3. **Code is GPLv3+. Reimplementations are clean-room:** no decompiled, leaked or copyrighted code pasted in verbatim, and no copyrighted game assets committed.
 4. A human takes responsibility for every line, AI-written or not.
+5. **Disclose AI help with an `Assisted-by: AGENT:MODEL` commit trailer, not `Co-Authored-By`.** The upstream workflow `check-commit-authors.yml` (inherited, so this fork can't change it) closes any PR whose commits list an AI as co-author.
 
 ## Proposing an engine (status `no`)
 
