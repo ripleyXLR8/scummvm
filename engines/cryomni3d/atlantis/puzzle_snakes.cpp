@@ -56,6 +56,7 @@ SnakesPuzzle::SnakesPuzzle(CryOmni3DEngine_Atlantis *engine)
 	}
 	memcpy(_rules.snakes, g_lastSnakes, sizeof(g_lastSnakes));
 	_rules.setup();
+	_rules.fixFirstRunWin = _engine->enhancementEnabled(kEnhMinorBugFixes);
 	_loaded = ok;
 }
 

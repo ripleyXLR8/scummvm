@@ -240,4 +240,22 @@ public:
 		for (uint i = 0; i < out.size() && i < want.size(); i++)
 			TS_ASSERT_EQUALS(out[i], want[i]);
 	}
+
+	// The original wins a first run when piece 0 is carried to (0, 0): the
+	// snakes not yet released hold the zeroed memory.  fixFirstRunWin
+	// (kEnhMinorBugFixes, decision 0016 row 21) requires every snake
+	// released.
+	void test_first_run_win_fix() {
+		CryOmni3D::Atlantis::SnakesRules orig;
+		orig.place(orig.pieces[0].x, orig.pieces[0].y);
+		orig.result = 0;
+		TS_ASSERT(orig.frame(0, 0));
+		TS_ASSERT_EQUALS(orig.result, 255);
+		CryOmni3D::Atlantis::SnakesRules withFix;
+		withFix.fixFirstRunWin = true;
+		withFix.place(withFix.pieces[0].x, withFix.pieces[0].y);
+		withFix.result = 0;
+		TS_ASSERT(!withFix.frame(0, 0));
+		TS_ASSERT_EQUALS(withFix.result, 0);
+	}
 };

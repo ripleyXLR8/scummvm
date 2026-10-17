@@ -57,8 +57,10 @@ public:
 	Snake snakes[kNumSnakes];  // 0x0049751c
 	int carried;               // 0x007bebf8: piece + 1, 0 for none
 	int result;                // 0x004974c0
+	// Fix of the original's first-run win (kEnhMinorBugFixes): see frame().
+	bool fixFirstRunWin;
 
-	SnakesRules() : carried(0), result(0) {
+	SnakesRules() : carried(0), result(0), fixFirstRunWin(false) {
 		memset(snakes, 0, sizeof(snakes));
 		setup();
 	}
@@ -277,11 +279,20 @@ public:
 	}
 
 	// FUN_0043bebc's state part: the carried piece follows the mouse, then
-	// the win test (every head on its piece).
+	// the win test (every head on its piece).  On a first run the snakes
+	// not yet released hold the zeroed memory (place (0, 0), piece 0), so
+	// carrying piece 0 to (0, 0) wins, as in the original; with
+	// fixFirstRunWin the win also needs every snake released, as a real
+	// win has (atlantis-re decision 0016 row 21).
 	bool frame(int mouseX, int mouseY) {
 		if (carried) {
 			pieces[carried - 1].x = mouseX;
 			pieces[carried - 1].y = mouseY;
+		}
+		if (fixFirstRunWin) {
+			for (int k = 0; k < kNumSnakes; k++)
+				if (!snakes[k].active)
+					return false;
 		}
 		for (int k = 0; k < kNumSnakes; k++) {
 			const Piece &p = pieces[snakes[k].piece & 3];
