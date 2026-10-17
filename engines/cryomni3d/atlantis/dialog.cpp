@@ -971,17 +971,18 @@ void CryOmni3DEngine_Atlantis::playSingleConLine(int sectionId, char track,
 					head->render((uint16 *)ubbConvFrame.getPixels(), ubbConvFrame.pitch / 2);
 				}
 
-				// Per-cam SPF overlay (INITDIAL columns 10..13).  The
-				// original engine composites the matching SPF frame on top
-				// of every UBB frame in the dialog playback loop (loaded by
-				// FUN_0042fc90, drawn by FUN_0042ff90), sharing the UBB's
-				// frame counter.  We mirror that exactly, plus a
-				// modulo so the SPF LOOPS when the UBB outlives it —
-				// compositeSpfFrame draws nothing past the last frame,
-				// which would drop the overlay while the head keeps talking
-				// (visible on EnnemiPilot whose UBB runs 30+ frames against
-				// a much shorter SPF).  Drawn on top of the UBB head.
-				if (spfStream) {
+				// Per-cam SPF overlay (INITDIAL columns 10..13: the guards'
+				// mail coif, the pilot's scarf), loaded by FUN_0042fc90 and
+				// drawn by FUN_0042ff90 after the head.  The original draws it
+				// into the locked screen surface (FUN_0041a254 = 0x00772968),
+				// which the full copy of the back buffer (FUN_00410f36
+				// @ 0x0042f57e) then overwrites: the overlay is never seen and
+				// the mouth stays in front of the coif (atlantis-re experiment
+				// 2026-10-17-09).  Drawn on top of the head under
+				// kEnhMinorBugFixes (decision 0016 row 20).  The modulo loops
+				// the SPF when the UBB outlives it (compositeSpfFrame draws
+				// nothing past the last frame).
+				if (spfStream && enhancementEnabled(kEnhMinorBugFixes)) {
 					const uint sfi = (spfFrameCount > 0)
 					    ? (spfFrameIdx % spfFrameCount)
 					    : spfFrameIdx;
