@@ -480,18 +480,14 @@ int CryOmni3DEngine_Atlantis::displayPlayerScreen() {
 	MenuLayout decor;
 	loadMenuLayout("SELEMENU.TXT", decor);
 	Common::Array<Common::Rect> decorRects;
-	// Locate the interactive "OK" and "DELETE PLAYER NAME" labels so they can
-	// be hover-lit and hit-tested each frame — "OK" validates a name being
-	// typed, "DELETE PLAYER NAME" toggles delete mode.
-	int okIdx = -1, delIdx = -1;
-	for (uint i = 0; i < decor.items.size(); i++) {
-		if (decor.items[i].kind != MenuItem::kText)
-			continue;
-		if (decor.items[i].text == "OK")
-			okIdx = (int)i;
-		else if (decor.items[i].text == "DELETE PLAYER NAME")
-			delIdx = (int)i;
-	}
+	// The interactive "OK" and "DELETE PLAYER NAME" labels, hover-lit and
+	// hit-tested each frame — "OK" validates a name being typed, "DELETE
+	// PLAYER NAME" toggles delete mode.  FUN_0041dea4 tests them by record
+	// number, OK 5 and DELETE 6 (the title, four sprites, then the two
+	// labels), not by text: the French SELEMENU.TXT says "SUPPRIMER UN
+	// JOUEUR".
+	const int okIdx = decor.items.size() > 5 && decor.items[5].kind == MenuItem::kText ? 5 : -1;
+	const int delIdx = decor.items.size() > 6 && decor.items[6].kind == MenuItem::kText ? 6 : -1;
 	// Player-row layout — the exact grid the original hit-tests with
 	// (atlantis.exe FUN_004211f0, captured live): a row's clickable cell is
 	// [kGridY0 + j*kGridStep, kGridY0 + (j+1)*kGridStep) x [kGridX0, +kGridW).

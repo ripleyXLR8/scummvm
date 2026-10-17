@@ -21,6 +21,7 @@
 #include "cryomni3d/atlantis/bigfile.h"
 #include "cryomni3d/atlantis/con_script.h"
 #include "cryomni3d/atlantis/exe_build.h"
+#include "cryomni3d/atlantis/menu_layout.h"
 
 class AtlantisExeBuildsTestSuite : public CxxTest::TestSuite {
 	static uint32 fileOff(uint32 va) { return va - 0x400000 - 0x90000 + 0x71200; }
@@ -116,6 +117,34 @@ public:
 		items.push_back(line("Seth", "not a narrator"));
 		TS_ASSERT_EQUALS(conAltGameOverNarration(items, 0, count), 0u);   // reset
 		TS_ASSERT_EQUALS(count, 1);
+	}
+
+	// FUN_0041dea4 tests the player screen's OK and DELETE by record number
+	// (5 and 6), which menus.cpp takes as layout items 5 and 6.  In every
+	// language's SELEMENU.TXT they are the two labels after the title and
+	// four sprites; the delete label's text differs ("SUPPRIMER UN JOUEUR").
+	void test_selemenu_records_all_languages() {
+		using namespace CryOmni3D::Atlantis;
+		const Common::String gog = AtlantisTest::configValue("gog");
+		if (gog.empty()) { TS_WARN("gog not configured; skipped"); return; }
+		static const char *const kLangs[] = { "en-US", "fr-FR", "de-DE", "es-ES", "it-IT" };
+		for (uint l = 0; l < ARRAYSIZE(kLangs); l++) {
+			Common::File f;
+			TSM_ASSERT(kLangs[l], f.open(Common::FSNode(Common::Path(gog + "/" + kLangs[l] + "/SPRLIST/SELEMENU.TXT", '/'))));
+			MenuLayout layout;
+			TS_ASSERT(layout.loadFromStream(f));
+			TSM_ASSERT_EQUALS(kLangs[l], layout.items.size(), 7u);
+			if (layout.items.size() < 7)
+				continue;
+			for (uint i = 1; i <= 4; i++)
+				TS_ASSERT_EQUALS(layout.items[i].kind, MenuItem::kSprite);
+			TS_ASSERT_EQUALS(layout.items[5].kind, MenuItem::kText);
+			TS_ASSERT_EQUALS(layout.items[5].text, "OK");
+			TS_ASSERT_EQUALS(layout.items[6].kind, MenuItem::kText);
+			TS_ASSERT_EQUALS(layout.items[6].anchorY, 420);
+			if (l == 1)
+				TS_ASSERT_EQUALS(layout.items[6].text, "SUPPRIMER UN JOUEUR");
+		}
 	}
 
 	// GOG French: the stub BIGCD1.BIG holds 14 sounds; everything else comes
