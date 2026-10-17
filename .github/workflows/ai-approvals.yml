@@ -1,0 +1,37 @@
+name: AI engine approvals
+# A PR that activates or changes an active engine needs approvals from people with write access,
+# on its latest commit. Separate from ai-engines.yml so review events don't re-run the builds.
+on:
+  pull_request:
+  pull_request_review:
+    types: [submitted, dismissed]
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  approvals:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+      - id: lint
+        env:
+          BASE: origin/${{ github.event.pull_request.base.ref }}
+        run: .github/ai/check.sh lint "$BASE" >/dev/null || true # errors are reported by ai-engines.yml
+      - if: steps.lint.outputs.activate != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          NEED: ${{ vars.AI_REQUIRED_APPROVALS || 2 }}
+          ENGINES: ${{ steps.lint.outputs.activate }}
+        run: |
+          got=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/reviews" | jq -s --arg sha "$HEAD_SHA" '
+            add | map(select(.state != "COMMENTED")) | group_by(.user.login) | map(last)
+            | map(select(.state == "APPROVED" and .commit_id == $sha
+                         and (.author_association | test("OWNER|MEMBER|COLLABORATOR"))))
+            | length')
+          echo "Active engines touched: $ENGINES. Approvals on $HEAD_SHA: $got/$NEED"
+          [ "$got" -ge "$NEED" ] || { echo "::error::Needs $NEED approvals from maintainers on the latest commit, has $got"; exit 1; }

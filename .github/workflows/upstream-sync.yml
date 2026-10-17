@@ -1,0 +1,33 @@
+name: Upstream sync
+# Daily: merge scummvm/scummvm master into the upstream-sync branch and open a PR to master.
+# ai-engines.yml then rebuilds every AI engine against the new upstream on that PR.
+# Needs secret SYNC_TOKEN (PAT with contents, pull-requests and workflows write): pushes made with
+# GITHUB_TOKEN can't touch .github/workflows/ and don't trigger the PR checks.
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+permissions: {}
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+          filter: blob:none
+          token: ${{ secrets.SYNC_TOKEN }}
+      - env:
+          GH_TOKEN: ${{ secrets.SYNC_TOKEN }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git fetch https://github.com/scummvm/scummvm.git master
+          if [ "$(git rev-list --count HEAD..FETCH_HEAD)" = 0 ]; then echo "Up to date"; exit 0; fi
+          git checkout -B upstream-sync
+          git merge --no-edit -m "Merge upstream ScummVM $(git rev-parse --short FETCH_HEAD)" FETCH_HEAD
+          git push -f origin upstream-sync
+          gh pr view upstream-sync --json state -q .state 2>/dev/null | grep -qx OPEN ||
+            gh pr create --base master --head upstream-sync --title "Merge upstream ScummVM" \
+              --body "Automated daily merge of scummvm/scummvm master. Merge with **Create a merge commit** (never squash or rebase) so upstream history is kept. If an AI engine fails to build here, upstream changed an API it uses: ping the engine's responsible human (PROVENANCE.md)."

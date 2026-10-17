@@ -1,0 +1,71 @@
+name: AI engines
+# Checks for AI-proposed engines (README-AI.md). Logic lives in .github/ai/check.sh.
+on: [pull_request]
+permissions:
+  contents: read
+env:
+  APT_PACKAGES: liba52-dev libcurl4-openssl-dev libfaad-dev libflac-dev libfluidsynth-dev libfreetype6-dev libfribidi-dev libgif-dev libjpeg-turbo8-dev libmad0-dev libmikmod-dev libmpeg2-4-dev libogg-dev libpng-dev libsdl2-dev libsdl2-net-dev libtheora-dev libvorbis-dev libvpx-dev zlib1g-dev
+defaults:
+  run:
+    shell: bash
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    outputs:
+      engines: ${{ steps.lint.outputs.engines }}
+      activate: ${{ steps.lint.outputs.activate }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+      - id: lint
+        env:
+          BASE: origin/${{ github.event.pull_request.base.ref }}
+          SYNC: ${{ github.event.pull_request.head.ref == 'upstream-sync' && github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          if [ "$SYNC" = true ]; then .github/ai/check.sh lint-all; else .github/ai/check.sh lint "$BASE"; fi
+
+  build:
+    needs: lint
+    if: needs.lint.outputs.engines != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y $APT_PACKAGES
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ai-build
+      - env:
+          CXX: ccache g++
+          ENGINES: ${{ needs.lint.outputs.engines }}
+        run: .github/ai/check.sh build $ENGINES
+
+  activation:
+    needs: lint
+    if: needs.lint.outputs.activate != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y $APT_PACKAGES
+      - uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: ai-asan
+      - env:
+          CXX: ccache g++
+          CXXFLAGS: -fsanitize=undefined
+          LDFLAGS: -fsanitize=undefined
+          CONFIGURE_FLAGS: --enable-asan --enable-eventrecorder
+          ENGINES: ${{ needs.lint.outputs.activate }}
+        run: |
+          .github/ai/check.sh build $ENGINES || exit 1
+          rc=0; for e in $ENGINES; do .github/ai/check.sh activate "$e" || rc=1; done; exit $rc
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: activation-logs
+          path: |
+            build.log
+            detect.log
+            playback.log
+          if-no-files-found: ignore
