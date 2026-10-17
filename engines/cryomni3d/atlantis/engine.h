@@ -915,6 +915,7 @@ private:
 	int _scriptPendingUp;
 	void loadInputScript(const Common::String &path);
 	bool _testDialogLineDone;   // port-only: atlantis_dialog_line played
+	bool _startSetsDone;        // port-only: atlantis_start_sets run
 	void playTestDialogLine();
 	// Testing aid (port-only): atlantis_state_dump=<file> writes the state
 	// a load left (the rows of atlantis-re tools/emu/ui_load_state.py) and

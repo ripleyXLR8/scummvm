@@ -31,6 +31,7 @@
 #include "common/ptr.h"
 #include "common/scummsys.h"
 #include "common/system.h"
+#include "common/tokenizer.h"
 #include "common/textconsole.h"
 #include "common/util.h"
 #include "engines/util.h"
@@ -88,6 +89,7 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
 	_currentPlace(nullptr),
 	_isPlaying(false), _shotCountdown(0), _inputScriptPos(0), _pollCount(0), _scriptPendingUp(0),
 	_testDialogLineDone(false),
+	_startSetsDone(false),
 	_puzzleCursor(),
 	_abortCommand(kAbortQuit),
 	_loadedSave(0),
@@ -752,6 +754,23 @@ void CryOmni3DEngine_Atlantis::gameStep() {
 
 		if (!_testDialogLineDone && _warpLoaded && ConfMan.hasKey("atlantis_dialog_line"))
 			playTestDialogLine();
+
+		// Testing aid (port-only): atlantis_start_sets="<cmd>;<cmd>;..."
+		// runs those /set commands once, as a CON section would, when the
+		// first place is shown; e.g. "changeWam=trone.wam;Vue=278;chapter=10"
+		// enters chapter 10 where CHAPI009 enters chapter 11.
+		if (!_startSetsDone && _warpLoaded && ConfMan.hasKey("atlantis_start_sets")) {
+			_startSetsDone = true;
+			Common::StringTokenizer cmds(ConfMan.get("atlantis_start_sets"), ";");
+			while (!cmds.empty()) {
+				const Common::String cmd = cmds.nextToken();
+				if (cmd.empty())
+					continue;
+				debugC(1, kDebugScript, "atlantis_start_sets: /set(%s)", cmd.c_str());
+				execConSetCommand(cmd);
+			}
+			continue;
+		}
 
 		uint actionId = handleWarp();
 
