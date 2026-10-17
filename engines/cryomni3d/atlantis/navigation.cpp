@@ -351,6 +351,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				in.id = (uint)MAX(centrePerso, 0);
 				in.held = heldObj->idOBJ();
 				in.hidden = false;
+				in.idRule = _exeBuild->cursorIdRule;
 				in.edgeScroll = false;
 				const int overlay = warpCursorStep(_warpCursor, in).sprite;
 				if (heldObj != curHeldObj || overlay != curHeldOverlay) {
@@ -374,6 +375,7 @@ int CryOmni3DEngine_Atlantis::handleWarp() {
 				in.id = (uint)MAX(centrePerso, 0);
 				in.held = 0;
 				in.hidden = false;
+				in.idRule = _exeBuild->cursorIdRule;
 				in.edgeScroll = false;
 				showWarpCursorSprite(warpCursorStep(_warpCursor, in).sprite);
 			}

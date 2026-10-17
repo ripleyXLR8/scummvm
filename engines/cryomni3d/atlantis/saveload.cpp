@@ -598,7 +598,7 @@ void CryOmni3DEngine_Atlantis::loadPlayers() {
 		in = _saveFileMan->openForLoading(kOrigPlayersFile);
 	if (!in)
 		return;
-	if (!readPlayersFile(*in, _players, _playerChapter))
+	if (!readPlayersFile(*in, _players, _playerChapter, _newPlayerMarker))
 		warning("loadPlayers: unrecognised players file");
 	delete in;
 }

@@ -176,6 +176,34 @@ inline bool conGameOverNarrator(const Common::Array<ConSectionItem> &items, uint
 	return true;
 }
 
+// The 1999 build's alternative game-over narrations (FUN_00426570 of
+// atlantis-gog-714752 @ 0x004267ce..0x00426882 and 0x004269e3; the 2001
+// reference resets the counter before the test, 0x004267d9).  `count` is
+// the per-section byte 0x6cccac[section]: 2 or more -> 0; n > 0 -> the
+// line n lines after the first narrator line is used when it is also a
+// narrator line (else the counter goes back to 0); then the counter is
+// incremented.  Returns how many lines after the first narrator line the
+// narration is (0 or n); the track letter grows by as much.  The first
+// narration's letter is the reference's count of the section's lines; the
+// 1999 build takes 0x004961a8 as left by the lines before, not shown to
+// differ.  items[setIdx] is the gameover= item, items[setIdx + 1] its
+// narrator line.  See atlantis-re: experiments/2026-10-17-08.
+inline uint conAltGameOverNarration(const Common::Array<ConSectionItem> &items, uint setIdx,
+                                    uint8 &count) {
+	if (count >= 2)
+		count = 0;
+	uint pick = 0;
+	if (count != 0) {
+		const uint k = setIdx + 1 + count;
+		if (k < items.size() && !items[k].isSet && items[k].line.speaker.hasPrefix("Narra"))
+			pick = count;
+		else
+			count = 0;
+	}
+	count++;
+	return pick;
+}
+
 // Escape during a talking-head line (FUN_0041a298 @ 0x0041a3c0 sets
 // 0x00496134 while 0x00496188 == 1): after the line the section executor
 // FUN_0042844c (0x00428b6d..0x00428bcd) walks the text up to the next '/'

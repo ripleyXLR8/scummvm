@@ -81,6 +81,7 @@ CryOmni3DEngine_Atlantis::CryOmni3DEngine_Atlantis(OSystem *syst,
         const CryOmni3DGameDescription *gamedesc) :
 	CryOmni3DEngine(syst, gamedesc),
 	_currentCONChapter(0),
+	_exeBuild(&kAtlantisExeBuilds[0]), _newPlayerMarker("#New Player"), _newPlayerLabel("New Player"),
 	_currentChapter(uint(-1)),
 	_currentPlaceId(uint(-1)),
 	_nextPlaceId(uint(-1)),
@@ -428,11 +429,17 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 
 	// Open the game's data archives.  The full game spans four discs
 	// (BIGCD1-4.BIG), all merged into one index.  Disc 1 is required; discs
-	// 2-4 are mounted if present.
+	// 2-4 are mounted if present.  The GOG release has its files unpacked
+	// in sub-directories and BIGCD*.BIG stubs (atlantis-re experiment
+	// 2026-10-17-05): the tree is added behind the archives.
+	const Common::FSNode gameDir(ConfMan.getPath("path"));
+	const bool unpacked = gameDir.getChild("SCENAR").isDirectory() || gameDir.getChild("scenar").isDirectory();
+	if (unpacked)
+		_bigFile.addLooseRoot(gameDir);
 	Common::Path bigFilePath("BIGCD1.BIG");
 	if (!_bigFile.open(bigFilePath)) {
 		bigFilePath = Common::Path("bigcd1.big");
-		if (!_bigFile.open(bigFilePath))
+		if (!_bigFile.open(bigFilePath) && !unpacked)
 			return Common::Error(Common::kPathDoesNotExist, "Cannot open BIGCD1.BIG");
 	}
 	for (int disc = 2; disc <= 4; disc++) {
@@ -467,6 +474,10 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	loadCreditFontSprites();
 	loadMenuSprites();
 
+	// The executable's tables first: the player-row marker is needed to read
+	// an original players.atl (exe_build.h, exetables.cpp).
+	loadAtlantisExeTables();
+
 	// Episode checkpoint names + player profiles (per-episode save backend).
 	loadEpisodeNames();
 	loadPlayers();
@@ -474,7 +485,6 @@ Common::Error CryOmni3DEngine_Atlantis::run() {
 	// Inventory: extract the exe object table, build the object catalogue and
 	// load the item icons.  The inventory itself holds 30 records, like the
 	// original's table at 0x006ce138.
-	loadAtlantisExeTables();
 	setupObjects();
 	importOriginalSaves();
 	loadObjectSprites();

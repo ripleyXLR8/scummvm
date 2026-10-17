@@ -58,7 +58,8 @@ public:
 		if (!AtlantisTest::haveData()) { TS_WARN("data not configured; skipped"); return; }
 		int checked = 0;
 		for (const CryOmni3D::CryOmni3DGameDescription *g = CryOmni3D::gameDescriptions; g->desc.gameId; g++) {
-			if (strcmp(g->desc.gameId, "atlantis") || (g->desc.flags & ADGF_DEMO))
+			if (strcmp(g->desc.gameId, "atlantis") || (g->desc.flags & ADGF_DEMO) ||
+			        strcmp(g->desc.extra, ""))
 				continue;
 			for (const ADGameFileDescription *fd = g->desc.filesDescriptions; fd->fileName; fd++) {
 				Common::FSNode n = findCaseless(AtlantisTest::dataDir(), fd->fileName);
@@ -75,6 +76,38 @@ public:
 			TS_ASSERT_EQUALS(g->desc.platform, Common::kPlatformWindows);
 		}
 		TS_ASSERT_EQUALS(checked, 2);
+	}
+
+	// The GOG.com entries (one per language) against the files of GOG's
+	// installer: `gog` in atlantis_test.cfg names a directory with one
+	// sub-directory per language (en-US, fr-FR, de-DE, es-ES, it-IT), as
+	// extracted in atlantis-re experiment 2026-10-17-07.
+	void test_gog_entries_match_gog_files() {
+		const Common::String gog = AtlantisTest::configValue("gog");
+		if (gog.empty()) { TS_WARN("gog not configured; skipped"); return; }
+		int entries = 0;
+		for (const CryOmni3D::CryOmni3DGameDescription *g = CryOmni3D::gameDescriptions; g->desc.gameId; g++) {
+			if (strcmp(g->desc.gameId, "atlantis") || strcmp(g->desc.extra, "GOG.com"))
+				continue;
+			const char *sub = g->desc.language == Common::EN_ANY ? "en-US" :
+			                  g->desc.language == Common::FR_FRA ? "fr-FR" :
+			                  g->desc.language == Common::DE_DEU ? "de-DE" :
+			                  g->desc.language == Common::ES_ESP ? "es-ES" :
+			                  g->desc.language == Common::IT_ITA ? "it-IT" : "";
+			TS_ASSERT(*sub);
+			for (const ADGameFileDescription *fd = g->desc.filesDescriptions; fd->fileName; fd++) {
+				Common::FSNode n = findCaseless(gog + "/" + sub, fd->fileName);
+				TSM_ASSERT(fd->fileName, n.exists());
+				if (!n.exists())
+					continue;
+				int64 size = -1;
+				TSM_ASSERT_EQUALS(fd->fileName, md5Head(n, size), Common::String(fd->md5));
+				TSM_ASSERT_EQUALS(fd->fileName, size, (int64)fd->fileSize);
+			}
+			TS_ASSERT_EQUALS(g->desc.platform, Common::kPlatformWindows);
+			entries++;
+		}
+		TS_ASSERT_EQUALS(entries, 5);
 	}
 
 	// The full reference executable (not only its first 5000 bytes).

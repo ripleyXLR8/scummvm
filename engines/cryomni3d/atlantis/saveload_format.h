@@ -47,7 +47,8 @@ Common::String epiEpisodeName(const byte *text, uint32 size, uint chapter);
 // at "#New Player" or an empty name, 0x0041916b..0x004192e0).  Returns false
 // for neither.
 bool readPlayersFile(Common::SeekableReadStream &in, Common::String players[kSaveMaxPlayers],
-                     int chapters[kSaveMaxPlayers]);
+                     int chapters[kSaveMaxPlayers],
+                     const Common::String &newPlayerMarker = "#New Player");
 // Write the port's own players file.
 void writePlayersFile(Common::WriteStream &out, const Common::String players[kSaveMaxPlayers],
                       const int chapters[kSaveMaxPlayers]);

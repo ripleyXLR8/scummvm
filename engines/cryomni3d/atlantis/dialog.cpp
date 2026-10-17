@@ -183,7 +183,7 @@ int CryOmni3DEngine_Atlantis::pickDialCam(int persoId, int explicitCam, bool set
 		if (!sethLine)
 			cam = draw(cam);
 	}
-	if (persoId == 0x230)
+	if (persoId == 0x230 && _exeBuild->rheaCamera2)
 		cam = 2;
 	if (drawn && sethLine)
 		cam = draw(cam);
@@ -380,8 +380,19 @@ void CryOmni3DEngine_Atlantis::playConSection(ConSection &sec, const DialogView:
 			        atoi(item.setCmd.c_str() + 9) != 0) {
 				execConSetCommand(item.setCmd, item.offset);
 				pendingGameOver = atoi(item.setCmd.c_str() + 9);
-				if (conGameOverNarrator(sec.items, itemIdx, gameOverText))
+				if (conGameOverNarrator(sec.items, itemIdx, gameOverText)) {
 					gameOverTrack = conTrackLetter(lineIdx);
+					// The 1999 build (GOG): the second death in a section
+					// plays the next narrator line (exe_build.h).
+					if (_exeBuild->altGameOverNarration) {
+						const uint pick = conAltGameOverNarration(sec.items, itemIdx,
+						                                          _gameOverCount[sec.id]);
+						if (pick) {
+							gameOverText = sec.items[itemIdx + 1 + pick].line.text;
+							gameOverTrack = (char)(gameOverTrack + pick);
+						}
+					}
+				}
 				break;
 			}
 			execConSetCommand(item.setCmd, item.offset);

@@ -58,7 +58,8 @@ Common::String epiEpisodeName(const byte *text, uint32 size, uint chapter) {
 }
 
 static bool readOriginalPlayersAtl(Common::SeekableReadStream &in, Common::String players[kSaveMaxPlayers],
-                                   int chapters[kSaveMaxPlayers], char letters[kSaveMaxPlayers] = nullptr) {
+                                   int chapters[kSaveMaxPlayers], char letters[kSaveMaxPlayers],
+                                   const Common::String &newPlayerMarker) {
 	byte b[kOrigPlayersSize];
 	const uint32 size = (uint32)(in.size() - in.pos());
 	if (size != kOrigPlayersSize && size != kOrigPlayersSizeFr)
@@ -76,7 +77,7 @@ static bool readOriginalPlayersAtl(Common::SeekableReadStream &in, Common::Strin
 		Common::String name;
 		for (uint j = 0; j < 17 && b[17 * i + j]; j++)
 			name += (char)b[17 * i + j];
-		if (name.empty() || name == "#New Player")
+		if (name.empty() || name == newPlayerMarker)
 			break;
 		players[i] = name;
 		chapters[i] = b[85 + i];
@@ -85,7 +86,7 @@ static bool readOriginalPlayersAtl(Common::SeekableReadStream &in, Common::Strin
 }
 
 bool readPlayersFile(Common::SeekableReadStream &in, Common::String players[kSaveMaxPlayers],
-                     int chapters[kSaveMaxPlayers]) {
+                     int chapters[kSaveMaxPlayers], const Common::String &newPlayerMarker) {
 	for (uint i = 0; i < kSaveMaxPlayers; i++) {
 		players[i].clear();
 		chapters[i] = 0;
@@ -110,7 +111,7 @@ bool readPlayersFile(Common::SeekableReadStream &in, Common::String players[kSav
 	}
 	if ((in.size() - start != kOrigPlayersSize && in.size() - start != kOrigPlayersSizeFr) || !in.seek(start))
 		return false;
-	return readOriginalPlayersAtl(in, players, chapters);
+	return readOriginalPlayersAtl(in, players, chapters, nullptr, newPlayerMarker);
 }
 
 void writePlayersFile(Common::WriteStream &out, const Common::String players[kSaveMaxPlayers],
@@ -133,7 +134,7 @@ bool checkpointWritten(uint chapter) {
 bool readOriginalPlayersLetters(Common::SeekableReadStream &in, char letters[kSaveMaxPlayers]) {
 	Common::String players[kSaveMaxPlayers];
 	int chapters[kSaveMaxPlayers];
-	return readOriginalPlayersAtl(in, players, chapters, letters);
+	return readOriginalPlayersAtl(in, players, chapters, letters, "#New Player");
 }
 
 bool parseOriginalCheckpoint(const byte *b, uint32 size, OrigCheckpoint &cp) {

@@ -636,6 +636,96 @@ static const CryOmni3DGameDescription gameDescriptions[] = {
 		0,
 	},
 
+	// Atlantis: The Lost Tales
+	// English Windows, GOG.com (files unpacked, BIGCD*.BIG stubs; one 1999
+	// executable for all languages, atlantis-re binaries/atlantis-gog-fr-714752)
+	{
+		{
+			"atlantis",
+			"GOG.com",
+			AD_ENTRY2s("atlantis.exe", "bbb9f5827d67848af64e027cb8fa8beb", 714752,
+			           "BIGCD1.BIG",   "cd45d84446a2c9fd3fe4eabc98a1de2b", 493992),
+			Common::EN_ANY,
+			Common::kPlatformWindows,
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_ATLANTIS
+		},
+		GType_ATLANTIS,
+		0,
+	},
+
+	// Atlantis: The Lost Tales
+	// French Windows, GOG.com (files unpacked, BIGCD*.BIG stubs; one 1999
+	// executable for all languages, atlantis-re binaries/atlantis-gog-fr-714752)
+	{
+		{
+			"atlantis",
+			"GOG.com",
+			AD_ENTRY2s("atlantis.exe", "e679dc2dd672adb0a218aacf135c1e2a", 714752,
+			           "BIGCD1.BIG",   "cd45d84446a2c9fd3fe4eabc98a1de2b", 493992),
+			Common::FR_FRA,
+			Common::kPlatformWindows,
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_ATLANTIS
+		},
+		GType_ATLANTIS,
+		0,
+	},
+
+	// Atlantis: The Lost Tales
+	// German Windows, GOG.com (files unpacked, BIGCD*.BIG stubs; one 1999
+	// executable for all languages, atlantis-re binaries/atlantis-gog-fr-714752)
+	{
+		{
+			"atlantis",
+			"GOG.com",
+			AD_ENTRY2s("atlantis.exe", "356a9c3e365990bffc952962eeedee72", 714752,
+			           "BIGCD1.BIG",   "cd45d84446a2c9fd3fe4eabc98a1de2b", 493992),
+			Common::DE_DEU,
+			Common::kPlatformWindows,
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_ATLANTIS
+		},
+		GType_ATLANTIS,
+		0,
+	},
+
+	// Atlantis: The Lost Tales
+	// Spanish Windows, GOG.com (files unpacked, BIGCD*.BIG stubs; one 1999
+	// executable for all languages, atlantis-re binaries/atlantis-gog-fr-714752)
+	{
+		{
+			"atlantis",
+			"GOG.com",
+			AD_ENTRY2s("atlantis.exe", "7dfeb848adadf9a1d8bf421041c2f22a", 714752,
+			           "BIGCD1.BIG",   "cd45d84446a2c9fd3fe4eabc98a1de2b", 493992),
+			Common::ES_ESP,
+			Common::kPlatformWindows,
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_ATLANTIS
+		},
+		GType_ATLANTIS,
+		0,
+	},
+
+	// Atlantis: The Lost Tales
+	// Italian Windows, GOG.com (files unpacked, BIGCD*.BIG stubs; one 1999
+	// executable for all languages, atlantis-re binaries/atlantis-gog-fr-714752)
+	{
+		{
+			"atlantis",
+			"GOG.com",
+			AD_ENTRY2s("atlantis.exe", "7da80923f0db97e41d214566ac5f686a", 714752,
+			           "BIGCD1.BIG",   "cd45d84446a2c9fd3fe4eabc98a1de2b", 493992),
+			Common::IT_ITA,
+			Common::kPlatformWindows,
+			ADGF_UNSTABLE,
+			GUI_OPTIONS_ATLANTIS
+		},
+		GType_ATLANTIS,
+		0,
+	},
+
 	{ AD_TABLE_END_MARKER, 0, 0 }
 };
 

@@ -650,7 +650,7 @@ int CryOmni3DEngine_Atlantis::displayPlayerScreen() {
 		for (int j = 0; j < numRows; j++) {
 			int slot = rowSlot[j];
 			Common::String label = (slot == kRowNew)
-			    ? Common::String("New Player") : _players[slot];
+			    ? _newPlayerLabel : _players[slot];
 			// FUN_00420d8c highlights the row under the mouse only (the grid
 			// result, FUN_0041dea4 @ 0x0041e096).
 			bool hot = (j == hovered);

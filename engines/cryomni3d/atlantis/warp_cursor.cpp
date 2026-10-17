@@ -57,7 +57,7 @@ WarpCursorResult warpCursorStep(WarpCursorState &st, const WarpCursorInput &in) 
 	res.id = id;
 
 	// Ids 0x219 and 0x21a show the navigate cursor (0x0042313d).
-	if (id == 0x219 || id == 0x21a) {
+	if (in.idRule && (id == 0x219 || id == 0x21a)) {
 		id = 0;
 		zone = 100;
 	}

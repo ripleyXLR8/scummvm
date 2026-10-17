@@ -29,7 +29,7 @@
 namespace CryOmni3D {
 namespace Atlantis {
 
-BigFileArchive::BigFileArchive() {
+BigFileArchive::BigFileArchive() : _loose(nullptr) {
 }
 
 BigFileArchive::~BigFileArchive() {
@@ -119,6 +119,13 @@ void BigFileArchive::close() {
 	_files.clear();
 	_dataBases.clear();
 	_entries.clear();
+	delete _loose;
+	_loose = nullptr;
+}
+
+void BigFileArchive::addLooseRoot(const Common::FSNode &root) {
+	delete _loose;
+	_loose = new Common::FSDirectory(root, 4);
 }
 
 // static
@@ -129,7 +136,7 @@ Common::String BigFileArchive::normalizePath(const Common::Path &path) {
 }
 
 bool BigFileArchive::hasFile(const Common::String &name) const {
-	return _entries.contains(name);
+	return _entries.contains(name) || (_loose && _loose->hasFile(Common::Path(name, '\\')));
 }
 
 bool BigFileArchive::hasFile(const Common::Path &path) const {
@@ -160,7 +167,7 @@ Common::SeekableReadStream *BigFileArchive::createReadStreamForMember(const Comm
 Common::SeekableReadStream *BigFileArchive::createReadStreamForMember(const Common::String &name) const {
 	Common::HashMap<Common::String, Entry>::const_iterator it = _entries.find(name);
 	if (it == _entries.end())
-		return nullptr;
+		return _loose ? _loose->createReadStreamForMember(Common::Path(name, '\\')) : nullptr;
 
 	const Entry &e = it->_value;
 	if (e.disc >= _files.size())

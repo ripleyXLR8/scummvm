@@ -47,6 +47,7 @@ struct WarpCursorInput {
 	uint held;       // 0x611210[player]: the held object, 0 for none
 	bool hidden;     // 0x0049616c: set while FUN_004212cc turns the view
 	bool edgeScroll; // 0x004960c8 == 1 (edge-scroll look mode)
+	bool idRule = true; // the 2001 build's ids 0x219 / 0x21a rule (exe_build.h)
 };
 
 struct WarpCursorResult {

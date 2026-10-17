@@ -48,6 +48,7 @@
 #include "cryomni3d/atlantis/random.h"
 #include "cryomni3d/atlantis/inventory.h"
 #include "cryomni3d/atlantis/con_script.h"
+#include "cryomni3d/atlantis/exe_build.h"
 #include "cryomni3d/atlantis/menu_layout.h"
 #include "cryomni3d/atlantis/npc_click.h"
 #include "cryomni3d/atlantis/omni3d.h"
@@ -663,6 +664,16 @@ private:
 	static const uint kCinemaFrameMs = 13 * 5;
 
 	BigFileArchive _bigFile;
+	// The build of the player's atlantis.exe (exe_build.h), set by
+	// loadAtlantisExeTables(); the reference until then.
+	const AtlantisExeBuild *_exeBuild;
+	// The player-row strings of atlantis.exe at 0x00496570: the marker
+	// players.atl holds after the last name, then the label shown
+	// (language-dependent: "#NOUVEAU JOUEUR" in the GOG French build).
+	Common::String _newPlayerMarker, _newPlayerLabel;
+	// 0x6cccac[section] of FUN_00426590: game overs narrated per section
+	// (cleared at start-up only).
+	Common::HashMap<int, uint8> _gameOverCount;
 	AtlantisWAMParser _wam;
 	// The places' ambient sounds (atlantis-re task 20): FUN_00431580 /
 	// FUN_004315b4 after a WAM load (the centre table, never cleared),

@@ -25,6 +25,7 @@
 #include "common/archive.h"
 #include "common/array.h"
 #include "common/file.h"
+#include "common/fs.h"
 #include "common/hash-str.h"
 #include "common/hashmap.h"
 #include "common/path.h"
@@ -43,6 +44,11 @@ namespace Atlantis {
 // discs (shared menus, fonts, common scripts) the first-mounted copy wins —
 // duplicates across discs are byte-identical.
 // Implements Common::Archive so it can be registered with SearchMan.
+//
+// The GOG release ships its files unpacked in sub-directories (CYCLO\,
+// WAV\, ...) next to BIGCD1..4.BIG stubs holding 14 sounds (atlantis-re
+// experiment 2026-10-17-05): addLooseRoot() adds that tree; a name not in
+// the mounted archives is then looked up there.
 class BigFileArchive : public Common::Archive {
 public:
 	BigFileArchive();
@@ -53,6 +59,10 @@ public:
 	// left intact if a later call fails.
 	bool open(const Common::Path &path);
 	void close();
+	// Unpacked files under `root` (the game directory of the GOG release),
+	// used for names the archives do not hold.
+	void addLooseRoot(const Common::FSNode &root);
+	bool hasLooseRoot() const { return _loose != nullptr; }
 
 	// Common::Archive interface.
 	// Incoming paths are normalised (uppercase, backslash) before lookup.
@@ -81,6 +91,7 @@ private:
 	Common::Array<Common::File *> _files;     // one handle per mounted .BIG
 	Common::Array<uint32>         _dataBases; // data-section base, per disc
 	Common::HashMap<Common::String, Entry> _entries;
+	Common::FSDirectory *_loose;
 };
 
 } // namespace Atlantis

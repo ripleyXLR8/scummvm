@@ -53,7 +53,9 @@ typedef CryOmni3D::Atlantis::CryOmni3DEngine_Atlantis Eng;
 inline Eng *rawEngine() {
 	void *mem = ::operator new(sizeof(Eng));
 	memset(mem, 0, sizeof(Eng));
-	return static_cast<Eng *>(mem);
+	Eng *e = static_cast<Eng *>(mem);
+	e->_exeBuild = &CryOmni3D::Atlantis::kAtlantisExeBuilds[0];   // the reference build
+	return e;
 }
 
 inline void addDataDirToSearchMan() {
@@ -458,6 +460,19 @@ public:
 				moved++;
 		}
 		TS_ASSERT_EQUALS(moved, 0);
+	}
+
+	// The 1999 build (GOG, exe_build.h) has no forced camera for 0x230
+	// (atlantis-re experiment 2026-10-17-06, item 6): an off line of Rhea
+	// keeps the last cam like anyone's.
+	void test_gog_build_no_rhea_cam2() {
+		VideoPeek::Eng *e = VideoPeek::rawEngine();
+		new (&e->_dialInitData) Common::HashMap<int, VideoPeek::Eng::DialInitEntry>();
+		e->_exeBuild = &CryOmni3D::Atlantis::atlantisExeBuild(714752);
+		e->_lastDialCam = 4;
+		TS_ASSERT_EQUALS(e->pickDialCam(560, 0, false, true), 4);
+		e->_exeBuild = &CryOmni3D::Atlantis::atlantisExeBuild(714240);
+		TS_ASSERT_EQUALS(e->pickDialCam(560, 0, false, true), 2);
 	}
 };
 
