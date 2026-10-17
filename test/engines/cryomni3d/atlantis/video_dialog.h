@@ -462,6 +462,31 @@ public:
 		TS_ASSERT_EQUALS(moved, 0);
 	}
 
+	// FUN_0042844c @ 0x004287f6: a drawn cam is never one whose INITDIAL UBB
+	// is "none" (the draw loop spins on the clock).  INITDIAL row 604
+	// (garde17): cam 2 is "none".  The port once drew 64 times within one
+	// millisecond and kept the rejected cam (no character, no head).
+	void test_drawn_cam_never_none() {
+		VideoPeek::Eng *e = VideoPeek::rawEngine();
+		new (&e->_dialInitData) Common::HashMap<int, VideoPeek::Eng::DialInitEntry>();
+		VideoPeek::Eng::DialInitEntry d;
+		d.camUBB[0] = "none";
+		d.camUBB[1] = "grdan1c3";
+		d.camUBB[2] = "grdan1c4";
+		d.camUBB[3] = "grdan1c5";
+		e->_dialInitData[604] = d;
+		int bad = 0;
+		for (uint pass = 0; pass < 200; pass++) {
+			e->_lastDialCam = (int)(pass % 5) + 1;   // 1 (none yet), 2..5
+			const int cam = e->pickDialCam(604, 0, false, false);
+			// (the second draw is only against the first, so the last
+			// line's cam may come back)
+			if (cam == 2)
+				bad++;
+		}
+		TS_ASSERT_EQUALS(bad, 0);
+	}
+
 	// The 1999 build (GOG, exe_build.h) has no forced camera for 0x230
 	// (atlantis-re experiment 2026-10-17-06, item 6): an off line of Rhea
 	// keeps the last cam like anyone's.
